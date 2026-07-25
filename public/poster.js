@@ -144,7 +144,7 @@ export async function renderPoster(aha, siteUrl) {
   ctx.fillRect(8, 8, W - 16, 250);
   ctx.fillStyle = C.blue;
   ctx.font = font("900", 40);
-  ctx.fillText("满分男 · 酒桌局 · 年度理想型报告", W / 2, 92);
+  ctx.fillText("理想型 · 加载中 · 年度报告", W / 2, 92);
   ctx.font = font("900", 62);
   const heroLine = `${aha.protagonist.emoji || "🍺"} ${truncName(aha.protagonist.name, 8)} 的理想型`;
   ctx.lineWidth = 12;

@@ -341,7 +341,7 @@ function render() {
 
 function header(s, sub) {
   return `<div class="row">
-    <div class="grow"><div class="brand-title"><img class="brand-mark" src="/favicon.svg" alt="" width="42" height="42" /><h1 class="neon">满分男<span class="amber">·</span>酒桌局</h1></div>
+    <div class="grow"><div class="brand-title"><img class="brand-mark" src="/favicon.svg" alt="" width="42" height="42" /><h1 class="neon">理想型<span class="amber">·</span>加载中</h1></div>
     ${sub ? `<div class="dim">${sub}</div>` : ""}</div>
     <button class="btn ghost small" id="sndBtn">${sound.enabled ? "🔊" : "🔇"}</button>
   </div>`;
