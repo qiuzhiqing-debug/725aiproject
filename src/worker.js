@@ -710,6 +710,7 @@ export class RoomDO {
         me.lastDanmakuAt = now;
         const event = this.addSocialEvent("danmaku", me, { text }, now);
         for (const s of this.ctx.getWebSockets()) {
+          if (!this.tokenOf(s)) continue; // 未入座的连接不该收到弹幕原文
           this.send(s, event);
         }
         await this.save(); // 落盘限频时间戳
@@ -724,7 +725,10 @@ export class RoomDO {
         if (!this.allowRate(ws, me, "lastQuickReactionAt", SOCIAL.quickReactionCooldownMs, now)) return;
         me.lastQuickReactionAt = now;
         const event = this.addSocialEvent("quick_reaction", me, { reaction }, now);
-        for (const s of this.ctx.getWebSockets()) this.send(s, event);
+        for (const s of this.ctx.getWebSockets()) {
+          if (!this.tokenOf(s)) continue; // 同上，匿名连接不广播
+          this.send(s, event);
+        }
         await this.save();
         this.broadcast();
         return;
@@ -753,6 +757,7 @@ export class RoomDO {
         };
         this.syncCurrentAhaHistory();
         for (const s of this.ctx.getWebSockets()) {
+          if (!this.tokenOf(s)) continue; // 匿名连接不该看到谁爆灯谁灭灯
           this.send(s, {
             type: "light_fx",
             name: me.name,

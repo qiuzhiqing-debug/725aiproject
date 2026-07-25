@@ -944,7 +944,12 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .poster-img {
-  width: 100%;
+  /* 海报是 1080×1920 竖图，桌面端宽容器下按宽度铺满会拉得极高，改为限高等比缩放 */
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: 78vh;
+  margin: 0 auto;
   border: var(--stroke) solid var(--c-line);
   border-radius: var(--radius-btn);
   border-color: var(--c-line-soft);
@@ -1480,6 +1485,14 @@ body:not(.has-dmbar) .chat-fab {
   flex: none;
   width: 100%;
   aspect-ratio: 3 / 3.72;
+}
+
+/* 桌面端容器很宽，竖图按 100% 宽会被 aspect-ratio 撑到超出视口，改按视口高度限宽 */
+@media (min-width: 720px) {
+  .portrait-stage {
+    max-width: calc(58vh * 3 / 3.72);
+    margin-inline: auto;
+  }
 }
 
 .art-fallback {

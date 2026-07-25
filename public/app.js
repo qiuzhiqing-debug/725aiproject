@@ -805,7 +805,7 @@ function safeProfileColor(value, fallback) {
 function renderAha(s, aha, isFinal) {
   const me = s.you;
   if (!(aha.profile?.portrait && aha.profile?.matchCard && aha.profile?.relationship) && !buildIdealProfileFn) {
-    $app.innerHTML = `${header(s, `${esc(aha.protagonist.name)} 的理想型来了`)}<div class="boot glass">正在生成理想型档案…</div>`;
+    $app.innerHTML = `${header(s, "理想型加载中")}<div class="boot glass">正在生成理想型档案…</div>`;
     bindSound();
     loadIdealProfile().then(({ buildIdealProfile }) => {
       buildIdealProfileFn = buildIdealProfile;

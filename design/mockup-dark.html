@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>满分男·酒桌局 · 视觉样张 A：深空黑底 · 霓虹星云</title>
+<style>
+  :root{
+    --ink:#080022;
+    --violet:#6D35FF;
+    --nebula:#C85CFF;
+    --pink:#FF73D9;
+    --blue:#3F7BFF;
+    --white:#FFFFFF;
+    --dim:rgba(255,255,255,.62);
+    --dimmer:rgba(255,255,255,.42);
+    --line:rgba(255,255,255,.14);
+    --sys:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC","Source Han Sans SC",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
+  body{
+    font-family:var(--sys);
+    background:#050014;
+    color:var(--white);
+    padding:28px 16px 60px;
+  }
+  .wrap{max-width:820px;margin:0 auto}
+
+  /* ---------- 方案说明条 ---------- */
+  .spec{
+    border:1px solid rgba(200,92,255,.35);
+    border-radius:20px;
+    padding:20px 22px;
+    background:
+      radial-gradient(120% 160% at 0% 0%, rgba(109,53,255,.42) 0%, rgba(8,0,34,0) 62%),
+      radial-gradient(120% 160% at 100% 100%, rgba(255,115,217,.28) 0%, rgba(8,0,34,0) 60%),
+      #0b0126;
+    box-shadow:0 0 44px rgba(109,53,255,.28);
+    margin-bottom:34px;
+  }
+  .spec .tag{
+    display:inline-block;font-size:11px;letter-spacing:.28em;color:var(--pink);
+    border:1px solid rgba(255,115,217,.45);border-radius:999px;padding:4px 12px;margin-bottom:12px;
+  }
+  .spec h1{
+    font-size:26px;font-weight:800;letter-spacing:.06em;line-height:1.3;
+    background:linear-gradient(92deg,#FFFFFF 0%,#C85CFF 46%,#FF73D9 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .spec p{margin-top:9px;font-size:13.5px;line-height:1.7;color:var(--dim)}
+  .swatches{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+  .sw{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dim);
+      border:1px solid var(--line);border-radius:999px;padding:5px 11px 5px 6px;background:rgba(255,255,255,.04)}
+  .sw i{width:20px;height:20px;border-radius:7px;display:block;box-shadow:0 0 12px currentColor}
+
+  /* ---------- 手机框 ---------- */
+  .screens{display:flex;flex-direction:column;gap:38px;align-items:center}
+  .slot{width:390px}
+  .slot > h2{
+    font-size:13px;font-weight:700;letter-spacing:.16em;color:var(--nebula);margin-bottom:4px;
+  }
+  .slot > .note{font-size:11.5px;color:var(--dimmer);margin-bottom:12px;line-height:1.6}
+  .phone{
+    position:relative;width:390px;height:844px;overflow:hidden;
+    border-radius:38px;border:1px solid rgba(200,92,255,.3);
+    box-shadow:0 0 0 6px #0a0120, 0 22px 60px rgba(0,0,0,.75), 0 0 60px rgba(109,53,255,.22);
+    background:#080022;
+    display:flex;flex-direction:column;
+  }
+  /* 星云 + 星点背景（纯 CSS，无 DOM 粒子） */
+  .sky{position:absolute;inset:0;pointer-events:none;
+    background:
+      radial-gradient(1px 1px at 12% 8%, rgba(255,255,255,.9) 50%, transparent 51%),
+      radial-gradient(1px 1px at 34% 21%, rgba(255,255,255,.55) 50%, transparent 51%),
+      radial-gradient(1.4px 1.4px at 72% 12%, rgba(255,255,255,.8) 50%, transparent 51%),
+      radial-gradient(1px 1px at 88% 30%, rgba(200,92,255,.9) 50%, transparent 51%),
+      radial-gradient(1px 1px at 22% 46%, rgba(255,255,255,.5) 50%, transparent 51%),
+      radial-gradient(1.3px 1.3px at 58% 58%, rgba(255,255,255,.65) 50%, transparent 51%),
+      radial-gradient(1px 1px at 8% 68%, rgba(255,115,217,.8) 50%, transparent 51%),
+      radial-gradient(1px 1px at 80% 74%, rgba(255,255,255,.6) 50%, transparent 51%),
+      radial-gradient(1.2px 1.2px at 44% 88%, rgba(255,255,255,.7) 50%, transparent 51%),
+      radial-gradient(1px 1px at 66% 96%, rgba(63,123,255,.9) 50%, transparent 51%),
+      radial-gradient(78% 46% at 82% -6%, rgba(109,53,255,.55) 0%, rgba(8,0,34,0) 70%),
+      radial-gradient(70% 44% at -10% 26%, rgba(255,115,217,.24) 0%, rgba(8,0,34,0) 72%),
+      radial-gradient(90% 50% at 50% 112%, rgba(63,123,255,.32) 0%, rgba(8,0,34,0) 70%),
+      #080022;
+  }
+  .scr{position:relative;z-index:1;display:flex;flex-direction:column;height:100%}
+
+  /* 状态栏 */
+  .status{display:flex;justify-content:space-between;align-items:center;
+    padding:12px 22px 2px;font-size:11.5px;color:rgba(255,255,255,.72);letter-spacing:.04em;flex:0 0 auto}
+  .status b{font-weight:700}
+
+  .body{flex:1 1 auto;padding:6px 20px 0;display:flex;flex-direction:column;min-height:0}
+
+  /* 通用零件 */
+  .neon-title{
+    font-weight:900;letter-spacing:.1em;line-height:1.12;
+    background:linear-gradient(178deg,#FFFFFF 0%,#F0E4FF 34%,#C85CFF 72%,#FF73D9 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    filter:drop-shadow(0 0 14px rgba(200,92,255,.75)) drop-shadow(0 2px 0 rgba(109,53,255,.9)) drop-shadow(0 4px 12px rgba(0,0,0,.8));
+  }
+  .kicker{font-size:10.5px;letter-spacing:.34em;color:var(--pink);text-transform:uppercase}
+  .card{
+    border-radius:22px;border:1px solid var(--line);
+    background:linear-gradient(160deg,rgba(255,255,255,.10) 0%,rgba(255,255,255,.03) 46%,rgba(255,255,255,.055) 100%);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.28), 0 10px 26px rgba(0,0,0,.42);
+  }
+  .glass{ backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); }
+  .btn{
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    width:100%;height:56px;border:0;border-radius:18px;cursor:pointer;
+    font-family:var(--sys);font-size:17px;font-weight:800;letter-spacing:.08em;color:#fff;
+    background:linear-gradient(96deg,#6D35FF 0%,#C85CFF 52%,#FF73D9 100%);
+    box-shadow:0 0 26px rgba(200,92,255,.55), inset 0 1px 0 rgba(255,255,255,.5), 0 8px 20px rgba(0,0,0,.45);
+    text-shadow:0 1px 3px rgba(20,0,60,.7);
+  }
+  .btn.ghost{
+    background:rgba(255,255,255,.07);border:1px solid rgba(200,92,255,.55);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.2);color:#fff;
+  }
+  .input{
+    width:100%;height:52px;border-radius:16px;border:1px solid rgba(255,255,255,.18);
+    background:rgba(255,255,255,.06);box-shadow:inset 0 1px 0 rgba(255,255,255,.22);
+    color:#fff;font-family:var(--sys);font-size:15px;padding:0 16px;outline:none;
+  }
+  .input::placeholder{color:rgba(255,255,255,.4)}
+  .lbl{font-size:11px;letter-spacing:.2em;color:var(--dimmer);margin-bottom:8px}
+
+  /* 底部互动条 */
+  .dock{
+    flex:0 0 auto;position:relative;z-index:2;
+    padding:10px 16px calc(10px + env(safe-area-inset-bottom));
+    display:flex;align-items:center;gap:8px;
+    border-top:1px solid rgba(200,92,255,.28);
+    background:linear-gradient(180deg,rgba(20,2,52,.72) 0%,rgba(8,0,34,.96) 100%);
+    backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  }
+  .react{display:flex;gap:5px}
+  .react span{
+    width:34px;height:34px;border-radius:12px;display:grid;place-items:center;font-size:16px;
+    background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.24);
+  }
+  .dock .input{height:38px;font-size:13px;border-radius:999px;padding:0 14px}
+  .send{
+    flex:0 0 auto;width:38px;height:38px;border-radius:50%;border:0;color:#fff;
+    font-family:var(--sys);font-size:14px;font-weight:800;
+    background:linear-gradient(140deg,#FF73D9,#6D35FF);
+    box-shadow:0 0 16px rgba(255,115,217,.6),inset 0 1px 0 rgba(255,255,255,.5);
+  }
+  .fab{
+    position:absolute;right:16px;bottom:78px;z-index:3;
+    width:54px;height:54px;border-radius:50%;display:grid;place-items:center;font-size:22px;
+    background:linear-gradient(150deg,rgba(109,53,255,.95),rgba(255,115,217,.92));
+    border:1px solid rgba(255,255,255,.35);
+    box-shadow:0 0 28px rgba(200,92,255,.65),0 8px 20px rgba(0,0,0,.5);
+  }
+  .fab .dot{
+    position:absolute;top:-3px;right:-3px;min-width:21px;height:21px;padding:0 5px;border-radius:999px;
+    background:#FF2D6F;color:#fff;font-size:12px;font-weight:800;display:grid;place-items:center;
+    border:2px solid #080022;box-shadow:0 0 12px rgba(255,45,111,.9);
+  }
+
+  /* --- 屏1 --- */
+  .cups{display:grid;grid-template-columns:repeat(5,1fr);gap:9px}
+  .cup{
+    height:52px;border-radius:15px;display:grid;place-items:center;font-size:23px;
+    background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.14);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.2);
+  }
+  .cup.on{
+    background:linear-gradient(150deg,rgba(109,53,255,.85),rgba(255,115,217,.7));
+    border-color:rgba(255,255,255,.6);
+    box-shadow:0 0 20px rgba(200,92,255,.8),inset 0 1px 0 rgba(255,255,255,.6);
+  }
+  .code{display:flex;gap:8px}
+  .code i{
+    flex:1;height:52px;border-radius:14px;display:grid;place-items:center;font-style:normal;
+    font-size:24px;font-weight:800;letter-spacing:.04em;color:#fff;
+    background:rgba(255,255,255,.05);border:1px solid rgba(200,92,255,.4);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.22);
+  }
+  .code i.ph{color:rgba(255,255,255,.28)}
+  .rules{display:flex;gap:8px}
+  .rule{
+    flex:1;border-radius:16px;padding:11px 10px;text-align:center;
+    background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.12);
+  }
+  .rule b{display:block;font-size:17px;
+    background:linear-gradient(90deg,#C85CFF,#FF73D9);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .rule span{font-size:10.5px;color:var(--dim);letter-spacing:.06em}
+  .marquee{
+    display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--dim);
+    border:1px dashed rgba(200,92,255,.4);border-radius:999px;padding:7px 14px;overflow:hidden;white-space:nowrap;
+  }
+
+  /* --- 屏2 --- */
+  .spicy{display:flex;gap:3px;font-size:14px}
+  .qcard{padding:20px 18px}
+  .qcard p{font-size:17.5px;line-height:1.75;font-weight:600;color:#fff;letter-spacing:.01em}
+  .bigscore{
+    font-size:78px;font-weight:900;line-height:1;letter-spacing:-.02em;
+  }
+  .track{position:relative;height:12px;border-radius:999px;background:rgba(255,255,255,.1);
+    box-shadow:inset 0 1px 3px rgba(0,0,0,.6)}
+  .track .fill{position:absolute;left:0;top:0;bottom:0;width:50%;border-radius:999px;
+    background:linear-gradient(90deg,#3F7BFF,#6D35FF 40%,#C85CFF 75%,#FF73D9);
+    box-shadow:0 0 18px rgba(200,92,255,.85)}
+  .track .knob{position:absolute;left:50%;top:50%;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;
+    background:#fff;border:3px solid #C85CFF;box-shadow:0 0 22px rgba(255,115,217,.95),0 4px 10px rgba(0,0,0,.6)}
+  .ticks{display:flex;justify-content:space-between;font-size:10.5px;color:var(--dimmer);margin-top:10px}
+
+  /* --- 屏3 --- */
+  .danmu{
+    display:flex;align-items:center;gap:8px;font-size:12px;color:#fff;
+    background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.18);
+    border-radius:999px;padding:6px 13px;white-space:nowrap;overflow:hidden;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.24);
+  }
+  .danmu em{font-style:normal;color:var(--pink);font-weight:700}
+  .portrait{
+    position:relative;height:236px;border-radius:24px;overflow:hidden;
+    border:1px solid rgba(255,255,255,.22);
+    background:
+      radial-gradient(60% 50% at 30% 22%, rgba(255,115,217,.85) 0%, rgba(255,115,217,0) 70%),
+      radial-gradient(70% 60% at 78% 76%, rgba(63,123,255,.8) 0%, rgba(63,123,255,0) 72%),
+      linear-gradient(148deg,#6D35FF 0%,#C85CFF 48%,#FF73D9 100%);
+    box-shadow:0 0 42px rgba(200,92,255,.55),inset 0 1px 0 rgba(255,255,255,.4);
+    display:grid;place-items:center;
+  }
+  .portrait span{
+    font-size:32px;font-weight:900;letter-spacing:.42em;color:rgba(255,255,255,.92);
+    text-indent:.42em;text-shadow:0 3px 16px rgba(40,0,80,.85);
+  }
+  .pills{display:flex;gap:7px;flex-wrap:wrap;justify-content:center}
+  .pill{
+    font-size:12px;font-weight:700;letter-spacing:.04em;color:#fff;
+    border-radius:999px;padding:7px 13px;
+    background:rgba(255,255,255,.1);border:1px solid rgba(200,92,255,.6);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 0 16px rgba(109,53,255,.35);
+  }
+  .stats{font-size:12.5px;color:var(--dim);letter-spacing:.04em;text-align:center}
+  .stats b{color:#fff;font-weight:700}
+  .bulbs{display:flex;justify-content:center;gap:14px}
+  .tally{text-align:center;font-size:14px;font-weight:800;letter-spacing:.06em;color:#fff}
+  .vote{display:flex;gap:10px}
+  .vote .btn{height:58px;font-size:18px}
+  .btn.blackout{
+    background:linear-gradient(96deg,rgba(255,255,255,.10),rgba(255,255,255,.05));
+    border:1px solid rgba(255,255,255,.45);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.28);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- 方案说明条 -->
+  <div class="spec">
+    <div class="tag">方案 A · MOCKUP</div>
+    <h1>深空黑底 · 霓虹星云</h1>
+    <p>深夜酒吧的霓虹招牌被搬进太空：黑底压场、紫粉渐变发光、玻璃卡片只用在题卡与揭晓区。热闹、有节目感，扫码即开——零网络字体、零 JS 动画、星点用纯 CSS 铺，中低端安卓也不掉帧。</p>
+    <div class="swatches">
+      <span class="sw"><i style="background:#080022;color:#080022;box-shadow:0 0 0 1px rgba(255,255,255,.3)"></i>#080022 深空黑</span>
+      <span class="sw"><i style="background:#6D35FF;color:#6D35FF"></i>#6D35FF 赛博紫</span>
+      <span class="sw"><i style="background:#C85CFF;color:#C85CFF"></i>#C85CFF 星云紫</span>
+      <span class="sw"><i style="background:#FF73D9;color:#FF73D9"></i>#FF73D9 荧光粉</span>
+      <span class="sw"><i style="background:#3F7BFF;color:#3F7BFF"></i>#3F7BFF 电光蓝</span>
+      <span class="sw"><i style="background:#FFFFFF;color:#fff"></i>#FFFFFF 冷白</span>
+    </div>
+  </div>
+
+  <div class="screens">
+
+    <!-- ============ 屏 1 首页 ============ -->
+    <div class="slot">
+      <h2>屏 1 / 首页 · 开桌与入座</h2>
+      <div class="note">下半屏用「玩法三格 + 今夜战报跑马灯」承接，避免主按钮以下大片留白塌陷。</div>
+      <div class="phone">
+        <div class="sky"></div>
+        <div class="scr">
+          <div class="status"><b>23:41</b><span>霓虹酒馆 · 满座</span></div>
+          <div class="body" style="gap:0">
+
+            <div style="text-align:center;padding:14px 0 2px">
+              <div class="kicker">TONIGHT&nbsp;&nbsp;OPEN&nbsp;&nbsp;BAR</div>
+              <div class="neon-title" style="font-size:40px;margin-top:10px">满分男<span style="font-size:26px;opacity:.85">·</span>酒桌局</div>
+              <div style="margin-top:11px;font-size:13px;color:var(--dim);letter-spacing:.06em">0-10 打分猜分 · 谁最懂 TA 谁免罚</div>
+            </div>
+
+            <div style="height:16px"></div>
+
+            <div class="lbl">你的昵称</div>
+            <div class="input" style="display:flex;align-items:center;color:rgba(255,255,255,.4)">今晚我不喝&nbsp;<span style="color:var(--pink)">|</span></div>
+
+            <div style="height:16px"></div>
+            <div class="lbl">选一只你的杯子</div>
+            <div class="cups">
+              <div class="cup">🍺</div><div class="cup">🍷</div><div class="cup on">🥃</div><div class="cup">🍶</div><div class="cup">🍸</div>
+              <div class="cup">🍹</div><div class="cup">🥂</div><div class="cup">🍻</div><div class="cup">🫗</div><div class="cup">🥥</div>
+            </div>
+
+            <div style="height:18px"></div>
+            <button class="btn">🏮 开一桌（当房主）</button>
+
+            <div style="height:14px"></div>
+            <div class="card" style="padding:14px">
+              <div class="lbl" style="margin-bottom:9px">已经有房间码？</div>
+              <div style="display:flex;gap:9px;align-items:center">
+                <div class="code" style="flex:1">
+                  <i>7</i><i>3</i><i class="ph">–</i><i class="ph">–</i>
+                </div>
+                <button class="btn ghost" style="width:88px;height:52px;font-size:15px">入座</button>
+              </div>
+            </div>
+
+            <div style="height:16px"></div>
+            <div class="rules">
+              <div class="rule"><b>0–10</b><span>给他打个分</span></div>
+              <div class="rule"><b>猜均分</b><span>最准的免罚</span></div>
+              <div class="rule"><b>最偏的</b><span>自罚一杯 🍺</span></div>
+            </div>
+
+            <div style="height:12px"></div>
+            <div class="marquee">📣 <span>今夜 <b style="color:#fff">128</b> 桌开局 · 「小拇指指甲」题已灌倒 <b style="color:#fff">411</b> 人</span></div>
+
+            <div style="flex:1"></div>
+            <div style="text-align:center;font-size:10.5px;color:rgba(255,255,255,.3);letter-spacing:.24em;padding-bottom:10px">未 成 年 人 请 勿 饮 酒</div>
+          </div>
+
+          <div class="fab">💬<span class="dot">3</span></div>
+          <div class="dock">
+            <div class="react"><span>🍺</span><span>😂</span><span>💔</span><span>🔥</span></div>
+            <div class="input">发条弹幕…</div>
+            <button class="send">发</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 屏 2 打分 ============ -->
+    <div class="slot">
+      <h2>屏 2 / 打分屏 · 题卡与滑条</h2>
+      <div class="note">全屏唯一一处 backdrop-filter 用在题卡上，让题目从星云里“浮”出来；分值用大数字承担视觉重量。</div>
+      <div class="phone">
+        <div class="sky"></div>
+        <div class="scr">
+          <div class="status"><b>23:47</b><span>房间 7318 · 第 3 题</span></div>
+          <div class="body" style="gap:0">
+
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0 14px">
+              <div class="kicker">QUESTION&nbsp;03&nbsp;/&nbsp;08</div>
+              <div class="spicy">🌶️🌶️🌶️</div>
+            </div>
+
+            <div class="card glass qcard">
+              <div style="font-size:10.5px;letter-spacing:.26em;color:var(--pink);margin-bottom:12px">变态辣锅底</div>
+              <p>这是一个满分男，但他留着很长的小拇指指甲，说是用来开快递的，你没见他开过快递。</p>
+            </div>
+
+            <div style="height:22px"></div>
+
+            <div style="text-align:center">
+              <div class="lbl" style="margin-bottom:2px">我给他</div>
+              <div class="neon-title bigscore">5</div>
+              <div style="font-size:12px;color:var(--dim);letter-spacing:.12em;margin-top:4px">分 · 满分 10</div>
+            </div>
+
+            <div style="height:26px"></div>
+            <div style="padding:0 4px">
+              <div class="track"><div class="fill"></div><div class="knob"></div></div>
+              <div class="ticks"><span>0 一口闷</span><span>5 再看看</span><span>10 满分男</span></div>
+            </div>
+
+            <div style="height:24px"></div>
+            <div class="card" style="padding:13px 16px;display:flex;align-items:center;justify-content:space-between">
+              <span style="font-size:12.5px;color:var(--dim)">已锁分</span>
+              <span style="font-size:14px;font-weight:800;letter-spacing:.06em">4 / 7 人 🍻</span>
+            </div>
+
+            <div style="height:12px"></div>
+            <div class="danmu">😂 <em>阿May</em>：他上周还说指甲是用来弹吉他的</div>
+            <div style="height:9px"></div>
+            <div class="danmu">🔥 <em>老王喝多了</em>：这题谁给超过 6 分我陪一杯</div>
+
+            <div style="flex:1;min-height:10px"></div>
+            <div style="text-align:center;font-size:11px;color:rgba(255,255,255,.35);letter-spacing:.1em;margin-bottom:10px">锁分后不可改 · 离均分最远的自罚一杯</div>
+            <button class="btn" style="margin-bottom:14px">🔒 锁定我的分</button>
+          </div>
+
+          <div class="fab">💬<span class="dot">3</span></div>
+          <div class="dock">
+            <div class="react"><span>🍺</span><span>😂</span><span>💔</span><span>🔥</span></div>
+            <div class="input">发条弹幕…</div>
+            <button class="send">发</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 屏 3 揭晓 ============ -->
+    <div class="slot">
+      <h2>屏 3 / 理想型揭晓（aha 时刻）</h2>
+      <div class="note">全场高潮：立绘占位用液态渐变发光块，灯泡区照搬非诚勿扰的舞台语言，爆灯按钮是唯一的高饱和渐变。</div>
+      <div class="phone">
+        <div class="sky"></div>
+        <div class="scr">
+          <div class="status"><b>23:58</b><span>房间 7318 · 揭晓</span></div>
+          <div class="body" style="gap:0">
+
+            <div class="danmu">🍺 <em>老王喝多了</em>：这不就是我前任？？</div>
+
+            <div style="height:12px"></div>
+            <div class="portrait"><span>立绘</span></div>
+
+            <div style="height:14px;"></div>
+            <div style="text-align:center">
+              <div class="kicker">YOUR&nbsp;&nbsp;IDEAL&nbsp;&nbsp;TYPE</div>
+              <div class="neon-title" style="font-size:38px;margin-top:8px">陆时序</div>
+            </div>
+
+            <div style="height:14px"></div>
+            <div class="pills">
+              <span class="pill">ESFP</span>
+              <span class="pill">男性呈现</span>
+              <span class="pill">全场焦点 × 浪子挂</span>
+            </div>
+
+            <div style="height:12px"></div>
+            <div class="stats">全场最难猜的心 · 均分 <b>6.4</b> · 容忍度前 <b>12%</b></div>
+
+            <div style="height:16px"></div>
+            <div class="card glass" style="padding:16px 16px 18px">
+              <div class="bulbs">
+                <!-- 亮灯 ×3 -->
+                <svg width="52" height="60" viewBox="0 0 52 60" aria-label="爆灯">
+                  <defs><radialGradient id="onA" cx="50%" cy="42%" r="60%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="45%" stop-color="#FF73D9"/><stop offset="100%" stop-color="#C85CFF"/></radialGradient></defs>
+                  <circle cx="26" cy="24" r="23" fill="#FF73D9" opacity=".28"/>
+                  <circle cx="26" cy="24" r="16" fill="url(#onA)"/>
+                  <rect x="19" y="40" width="14" height="7" rx="2.5" fill="#C85CFF"/>
+                  <rect x="20" y="48" width="12" height="6" rx="2.5" fill="#6D35FF"/>
+                </svg>
+                <svg width="52" height="60" viewBox="0 0 52 60" aria-label="爆灯">
+                  <circle cx="26" cy="24" r="23" fill="#FF73D9" opacity=".28"/>
+                  <circle cx="26" cy="24" r="16" fill="url(#onA)"/>
+                  <rect x="19" y="40" width="14" height="7" rx="2.5" fill="#C85CFF"/>
+                  <rect x="20" y="48" width="12" height="6" rx="2.5" fill="#6D35FF"/>
+                </svg>
+                <svg width="52" height="60" viewBox="0 0 52 60" aria-label="爆灯">
+                  <circle cx="26" cy="24" r="23" fill="#FF73D9" opacity=".28"/>
+                  <circle cx="26" cy="24" r="16" fill="url(#onA)"/>
+                  <rect x="19" y="40" width="14" height="7" rx="2.5" fill="#C85CFF"/>
+                  <rect x="20" y="48" width="12" height="6" rx="2.5" fill="#6D35FF"/>
+                </svg>
+                <!-- 灭灯 -->
+                <svg width="52" height="60" viewBox="0 0 52 60" aria-label="灭灯">
+                  <circle cx="26" cy="24" r="16" fill="rgba(255,255,255,.07)" stroke="rgba(255,255,255,.35)" stroke-width="1.5"/>
+                  <rect x="19" y="40" width="14" height="7" rx="2.5" fill="rgba(255,255,255,.22)"/>
+                  <rect x="20" y="48" width="12" height="6" rx="2.5" fill="rgba(255,255,255,.16)"/>
+                </svg>
+              </div>
+              <div class="tally" style="margin-top:6px">💗 爆灯 3/4 · 🖤 灭灯 1</div>
+            </div>
+
+            <div style="height:14px"></div>
+            <div class="vote">
+              <button class="btn">爆灯</button>
+              <button class="btn blackout">灭灯</button>
+            </div>
+
+            <div style="flex:1;min-height:10px"></div>
+          </div>
+
+          <div class="fab">💬<span class="dot">3</span></div>
+          <div class="dock">
+            <div class="react"><span>🍺</span><span>😂</span><span>💔</span><span>🔥</span></div>
+            <div class="input">发条弹幕…</div>
+            <button class="send">发</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 屏 4 互动条细节 ============ -->
+    <div class="slot">
+      <h2>屏 4 / 底部常驻互动条 · 组件细节</h2>
+      <div class="note">互动条在前三屏常驻；此屏放大展示 reaction、弹幕输入、发送键与未读聊天 FAB 的状态与尺寸。</div>
+      <div class="phone">
+        <div class="sky"></div>
+        <div class="scr">
+          <div class="status"><b>00:06</b><span>组件规范</span></div>
+          <div class="body" style="gap:0">
+
+            <div style="padding:12px 0 6px">
+              <div class="kicker">PERSISTENT&nbsp;&nbsp;DOCK</div>
+              <div class="neon-title" style="font-size:28px;margin-top:9px">底部常驻互动条</div>
+            </div>
+
+            <div style="height:14px"></div>
+            <div class="card" style="padding:16px">
+              <div class="lbl">快捷 REACTION · 34×34 · 单击即飘</div>
+              <div class="react" style="gap:9px">
+                <span style="width:52px;height:52px;border-radius:16px;font-size:24px">🍺</span>
+                <span style="width:52px;height:52px;border-radius:16px;font-size:24px">😂</span>
+                <span style="width:52px;height:52px;border-radius:16px;font-size:24px">💔</span>
+                <span style="width:52px;height:52px;border-radius:16px;font-size:24px;background:linear-gradient(150deg,rgba(109,53,255,.85),rgba(255,115,217,.7));border-color:rgba(255,255,255,.55);box-shadow:0 0 20px rgba(200,92,255,.8)">🔥</span>
+              </div>
+            </div>
+
+            <div style="height:14px"></div>
+            <div class="card" style="padding:16px">
+              <div class="lbl">弹幕输入 + 发送</div>
+              <div style="display:flex;gap:9px;align-items:center">
+                <div class="input" style="height:44px;border-radius:999px;font-size:14px;display:flex;align-items:center;color:rgba(255,255,255,.4)">发条弹幕…</div>
+                <button class="send" style="width:44px;height:44px;font-size:16px">发</button>
+              </div>
+              <div style="height:14px"></div>
+              <div class="danmu">🔥 <em>指甲刀已寄出</em>：这题我给 0 分，不接受反驳</div>
+            </div>
+
+            <div style="height:14px"></div>
+            <div class="card" style="padding:16px">
+              <div class="lbl">悬浮聊天 FAB · 未读红点</div>
+              <div style="display:flex;align-items:center;gap:18px">
+                <div class="fab" style="position:relative;right:auto;bottom:auto;flex:0 0 auto">💬<span class="dot">3</span></div>
+                <div style="font-size:12px;color:var(--dim);line-height:1.7">
+                  固定右下角，距互动条 24px；<br>红点 ≥1 时常亮 <b style="color:#fff">#FF2D6F</b> 光晕。
+                </div>
+              </div>
+            </div>
+
+            <div style="height:14px"></div>
+            <div class="card glass" style="padding:16px">
+              <div class="lbl">对比度守则</div>
+              <div style="font-size:12.5px;color:var(--dim);line-height:1.85">
+                正文只用冷白与高亮度紫粉；<br>
+                <b style="color:#fff">#6D35FF</b> 仅用于按钮填充与大色块，<span style="color:#fff">不做正文色</span>；<br>
+                按钮白字统一加深色文字投影保底可读。
+              </div>
+            </div>
+
+            <div style="flex:1"></div>
+            <div style="text-align:center;font-size:10.5px;color:rgba(255,255,255,.3);letter-spacing:.24em;padding-bottom:10px">方 案 A · 深 空 黑 底</div>
+          </div>
+
+          <div class="fab">💬<span class="dot">3</span></div>
+          <div class="dock">
+            <div class="react"><span>🍺</span><span>😂</span><span>💔</span><span>🔥</span></div>
+            <div class="input">发条弹幕…</div>
+            <button class="send">发</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>

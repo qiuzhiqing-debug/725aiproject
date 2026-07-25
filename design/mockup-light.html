@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>满分男·酒桌局 — 视觉方案 A：亮色霓虹</title>
+<style>
+:root{
+  --purple:#6D35FF;
+  --nebula:#C85CFF;
+  --pink:#FF73D9;
+  --blue:#3F7BFF;
+  --ink:#160A2E;
+  --ink2:#4B3B६6;
+  --ink2:#4E3D72;
+  --paper:#F6F2FF;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#EFEAFB}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Segoe UI",Roboto,sans-serif;
+  color:var(--ink);
+  padding:28px 16px 60px;
+  background:
+    radial-gradient(900px 500px at 10% -5%, #FFD9F4 0%, rgba(255,217,244,0) 60%),
+    radial-gradient(800px 500px at 95% 5%, #D6E2FF 0%, rgba(214,226,255,0) 60%),
+    #EFEAFB;
+}
+
+/* ---------- 顶部说明条 ---------- */
+.brief{
+  max-width:860px;margin:0 auto 34px;padding:22px 24px;border-radius:26px;
+  background:#fff;border:3px solid var(--ink);
+  box-shadow:10px 10px 0 var(--purple);
+}
+.brief h1{
+  font-size:30px;letter-spacing:-.5px;line-height:1.15;
+  background:linear-gradient(92deg,var(--purple),var(--pink) 60%,var(--blue));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.brief .sub{margin-top:8px;font-size:15px;color:var(--ink2);line-height:1.6}
+.sw{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+.sw div{
+  width:110px;height:52px;border-radius:14px;border:2.5px solid var(--ink);
+  color:#fff;font-size:11px;font-weight:800;display:flex;align-items:flex-end;
+  padding:6px 8px;letter-spacing:.3px;text-shadow:0 1px 2px rgba(0,0,0,.35)
+}
+.sw .s5{background:linear-gradient(160deg,#FFFFFF,#F0E9FF);color:var(--ink);text-shadow:none}
+
+/* ---------- 手机屏容器 ---------- */
+.rack{display:flex;flex-direction:column;align-items:center;gap:46px}
+.slot{width:390px}
+.slot .cap{
+  display:inline-block;margin:0 0 12px;padding:6px 14px;border-radius:999px;
+  background:var(--ink);color:#fff;font-size:13px;font-weight:800;letter-spacing:.5px;
+}
+.phone{
+  width:390px;height:844px;border-radius:42px;overflow:hidden;position:relative;
+  border:4px solid var(--ink);background:#FBF8FF;
+  box-shadow:14px 16px 0 rgba(109,53,255,.28), 0 20px 50px rgba(30,10,70,.18);
+}
+.screen{position:absolute;inset:0;overflow:hidden;display:flex;flex-direction:column}
+
+/* 通用底纹：网格 + 液态渐变 */
+.bgfx{position:absolute;inset:0;pointer-events:none}
+.bgfx.grid{
+  background-image:linear-gradient(rgba(109,53,255,.10) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(109,53,255,.10) 1px,transparent 1px);
+  background-size:26px 26px;
+  -webkit-mask-image:linear-gradient(180deg,#000,rgba(0,0,0,.15));
+          mask-image:linear-gradient(180deg,#000,rgba(0,0,0,.15));
+}
+.blob{position:absolute;border-radius:50%;filter:blur(2px);opacity:.9}
+
+/* 状态栏 */
+.statusbar{
+  position:relative;z-index:5;height:42px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 22px;font-size:12px;font-weight:800;color:var(--ink);letter-spacing:.5px;flex:none
+}
+.dots{display:flex;gap:4px;align-items:center}
+.dots i{width:7px;height:7px;border-radius:50%;background:var(--ink);display:block}
+.dots i.p{background:var(--pink)}
+
+.body{position:relative;z-index:4;flex:1;display:flex;flex-direction:column;padding:0 20px;min-height:0}
+
+/* 贴纸标题 */
+.sticker{
+  font-weight:900;line-height:1.02;letter-spacing:-1px;color:#fff;
+  -webkit-text-stroke:3px #160A2E;
+  paint-order:stroke fill;
+  text-shadow:5px 5px 0 var(--purple), 9px 9px 0 rgba(255,115,217,.65);
+}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;border:2.5px solid var(--ink);
+  border-radius:999px;padding:6px 13px;font-size:12px;font-weight:800;background:#fff;
+  box-shadow:3px 3px 0 var(--ink);
+}
+.card{
+  border:3px solid var(--ink);border-radius:24px;background:#fff;
+  box-shadow:6px 6px 0 var(--ink);
+}
+.btn{
+  display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+  border:3px solid var(--ink);border-radius:20px;font-weight:900;font-size:19px;color:#fff;
+  height:62px;box-shadow:6px 6px 0 var(--ink);letter-spacing:.5px;
+  background:linear-gradient(100deg,var(--purple),var(--nebula) 55%,var(--pink));
+  text-shadow:0 2px 3px rgba(0,0,0,.28);
+}
+.btn.blue{background:linear-gradient(100deg,var(--blue),#7B4BFF)}
+.btn.sm{height:50px;font-size:16px;border-radius:16px;box-shadow:4px 4px 0 var(--ink)}
+.input{
+  width:100%;height:56px;border:3px solid var(--ink);border-radius:18px;background:#fff;
+  display:flex;align-items:center;padding:0 16px;font-size:16px;font-weight:700;color:var(--ink);
+  box-shadow:4px 4px 0 rgba(109,53,255,.35);
+}
+.input .ph{color:#9A8CBE;font-weight:600}
+.lab{font-size:12px;font-weight:900;letter-spacing:2px;color:var(--purple);margin-bottom:8px}
+
+/* ---------- 屏1 首页 ---------- */
+.cups{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.cup{
+  height:52px;border:2.5px solid var(--ink);border-radius:15px;background:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:24px;
+  box-shadow:3px 3px 0 rgba(22,10,46,.85);
+}
+.cup.on{background:linear-gradient(150deg,var(--pink),var(--nebula));box-shadow:3px 3px 0 var(--ink),0 0 0 3px #fff inset}
+.joinrow{display:flex;gap:10px}
+.code{
+  flex:1;height:56px;border:3px solid var(--ink);border-radius:18px;background:#fff;
+  display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:4px 4px 0 var(--blue);
+}
+.code b{
+  width:34px;height:38px;border-radius:9px;background:#F1ECFF;border:2px solid var(--ink);
+  display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900
+}
+.marquee{
+  border:3px solid var(--ink);border-radius:16px;overflow:hidden;
+  background:linear-gradient(90deg,var(--purple),var(--pink));color:#fff;
+  font-weight:900;font-size:13px;letter-spacing:1px;height:38px;
+  display:flex;align-items:center;padding:0 12px;white-space:nowrap;
+  box-shadow:4px 4px 0 var(--ink);
+}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tile{
+  border:3px solid var(--ink);border-radius:20px;padding:12px;color:#fff;
+  box-shadow:5px 5px 0 var(--ink);min-height:84px;display:flex;flex-direction:column;justify-content:space-between
+}
+.tile .n{font-size:26px;font-weight:900;text-shadow:0 2px 0 rgba(0,0,0,.25)}
+.tile .t{font-size:12px;font-weight:800;opacity:.95}
+.t1{background:linear-gradient(140deg,#6D35FF,#3F7BFF)}
+.t2{background:linear-gradient(140deg,#FF73D9,#C85CFF)}
+.t3{background:linear-gradient(140deg,#3F7BFF,#C85CFF)}
+.t4{background:linear-gradient(140deg,#C85CFF,#FF73D9)}
+.stripes{
+  height:26px;border:3px solid var(--ink);border-radius:999px;
+  background:repeating-linear-gradient(115deg,var(--purple) 0 14px,#fff 14px 28px,var(--pink) 28px 42px,#fff 42px 56px);
+}
+
+/* ---------- 屏2 打分 ---------- */
+.qcard{padding:18px;position:relative}
+.qcard .q{font-size:19px;line-height:1.55;font-weight:800;color:var(--ink)}
+.spice{display:flex;gap:4px;font-size:18px}
+.bigscore{
+  font-size:104px;font-weight:900;line-height:.95;letter-spacing:-4px;color:#fff;
+  -webkit-text-stroke:4px #160A2E;paint-order:stroke fill;
+  text-shadow:7px 7px 0 var(--purple),12px 12px 0 rgba(255,115,217,.6);
+}
+.slider{position:relative;height:26px;border:3px solid var(--ink);border-radius:999px;background:#fff;box-shadow:4px 4px 0 rgba(109,53,255,.3)}
+.slider .fill{position:absolute;left:0;top:0;bottom:0;width:50%;border-radius:999px;background:linear-gradient(90deg,var(--blue),var(--nebula),var(--pink))}
+.slider .knob{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:44px;height:44px;border-radius:50%;background:#fff;border:4px solid var(--ink);
+  box-shadow:0 4px 0 var(--purple);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:16px
+}
+.ticks{display:flex;justify-content:space-between;font-size:11px;font-weight:800;color:var(--ink2);margin-top:12px}
+
+/* ---------- 屏3 揭晓 ---------- */
+.danmu{
+  display:flex;align-items:center;gap:8px;border:3px solid var(--ink);border-radius:999px;
+  background:#fff;padding:6px 12px;font-size:13px;font-weight:800;box-shadow:4px 4px 0 var(--pink);
+}
+.danmu .who{background:var(--purple);color:#fff;border-radius:999px;padding:2px 8px;font-size:11px}
+.art{
+  position:relative;border:3px solid var(--ink);border-radius:26px;overflow:hidden;
+  box-shadow:7px 7px 0 var(--ink);
+  background:
+    radial-gradient(120px 120px at 70% 25%, rgba(255,255,255,.65), rgba(255,255,255,0)),
+    linear-gradient(150deg,#6D35FF,#C85CFF 45%,#FF73D9 78%,#3F7BFF);
+}
+.art .word{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:52px;font-weight:900;color:rgba(255,255,255,.92);letter-spacing:10px;
+  -webkit-text-stroke:3px rgba(22,10,46,.8);paint-order:stroke fill;
+}
+.art .rays{position:absolute;inset:0;background:repeating-conic-gradient(from 0deg at 50% 60%, rgba(255,255,255,.16) 0deg 9deg, rgba(255,255,255,0) 9deg 18deg)}
+.tags{display:flex;gap:7px;flex-wrap:wrap}
+.tag{border:2.5px solid var(--ink);border-radius:999px;padding:5px 12px;font-size:12px;font-weight:900;color:#fff;box-shadow:3px 3px 0 var(--ink)}
+.g1{background:linear-gradient(100deg,#6D35FF,#3F7BFF)}
+.g2{background:linear-gradient(100deg,#C85CFF,#6D35FF)}
+.g3{background:linear-gradient(100deg,#FF73D9,#C85CFF)}
+.bulbs{display:flex;gap:10px;justify-content:center}
+.bulb{
+  width:46px;height:46px;border-radius:50%;border:3px solid var(--ink);
+  display:flex;align-items:center;justify-content:center;font-size:20px;background:#EDE7FA;color:#8C7EB0;
+}
+.bulb.on{
+  background:radial-gradient(circle at 35% 30%,#FFF0FA,#FF73D9 60%,#C85CFF);
+  color:#fff;box-shadow:0 0 0 4px rgba(255,115,217,.35),3px 3px 0 var(--ink)
+}
+.duo{display:flex;gap:12px}
+
+/* ---------- 底部互动条 ---------- */
+.dock{
+  position:absolute;left:0;right:0;bottom:0;z-index:9;padding:10px 16px 16px;
+  background:linear-gradient(180deg,rgba(251,248,255,0),#FBF8FF 30%);
+}
+.dockbar{
+  display:flex;align-items:center;gap:8px;border:3px solid var(--ink);border-radius:22px;
+  background:#fff;padding:8px;box-shadow:5px 5px 0 var(--purple);
+}
+.re{
+  width:38px;height:38px;flex:none;border-radius:12px;border:2px solid var(--ink);background:#F3EEFF;
+  display:flex;align-items:center;justify-content:center;font-size:18px
+}
+.dockinput{flex:1;height:38px;border:2px solid var(--ink);border-radius:12px;background:#F8F5FF;display:flex;align-items:center;padding:0 10px;font-size:13px;color:#9A8CBE;font-weight:700}
+.send{
+  width:42px;height:42px;flex:none;border-radius:50%;border:3px solid var(--ink);color:#fff;font-weight:900;font-size:15px;
+  display:flex;align-items:center;justify-content:center;background:linear-gradient(140deg,var(--purple),var(--pink))
+}
+.fab{
+  position:absolute;right:16px;z-index:10;width:58px;height:58px;border-radius:50%;
+  border:3px solid var(--ink);background:linear-gradient(140deg,#3F7BFF,#6D35FF);
+  display:flex;align-items:center;justify-content:center;font-size:24px;
+  box-shadow:5px 5px 0 var(--ink);
+}
+.fab .dot{
+  position:absolute;top:-7px;right:-7px;width:26px;height:26px;border-radius:50%;
+  background:#FF2E88;border:3px solid var(--ink);color:#fff;font-size:13px;font-weight:900;
+  display:flex;align-items:center;justify-content:center
+}
+.note{max-width:860px;margin:38px auto 0;text-align:center;font-size:13px;color:var(--ink2)}
+</style>
+</head>
+<body>
+
+<div class="brief">
+  <h1>方案 A · 亮色霓虹 / Y2K 贴纸</h1>
+  <p class="sub">冷白＋极浅紫粉液态底 × 高饱和霓虹大色块。黑描边贴纸标题、硬阴影按钮、网格底纹撑满留白——亮底也要吵，像酒吧霓虹灯打在白墙上。正文一律深墨色（#160A2E），高饱和只做色块与强调。</p>
+  <div class="sw">
+    <div style="background:#6D35FF">#6D35FF 赛博紫</div>
+    <div style="background:#C85CFF">#C85CFF 星云紫</div>
+    <div style="background:#FF73D9">#FF73D9 荧光粉</div>
+    <div style="background:#3F7BFF">#3F7BFF 电光蓝</div>
+    <div class="s5">#F6F2FF 冷白底</div>
+  </div>
+</div>
+
+<div class="rack">
+
+<!-- ============ 屏 1 首页 ============ -->
+<div class="slot">
+  <div class="cap">① 首页 · 开桌 / 入座</div>
+  <div class="phone"><div class="screen">
+    <div class="bgfx grid"></div>
+    <div class="bgfx">
+      <div class="blob" style="width:230px;height:230px;left:-70px;top:60px;background:radial-gradient(circle at 35% 35%,rgba(255,115,217,.55),rgba(255,115,217,0) 70%)"></div>
+      <div class="blob" style="width:260px;height:260px;right:-90px;top:180px;background:radial-gradient(circle at 40% 40%,rgba(63,123,255,.45),rgba(63,123,255,0) 70%)"></div>
+    </div>
+
+    <div class="statusbar"><span>21:48</span><span class="dots"><i class="p"></i><i></i><i></i></span></div>
+
+    <div class="body" style="padding-bottom:6px">
+      <div class="marquee">🔥 今晚 3,182 桌正在开局 · 罚酒不认亲 🔥</div>
+
+      <div style="margin-top:16px">
+        <div class="sticker" style="font-size:47px">满分男</div>
+        <div class="sticker" style="font-size:47px;margin-top:2px">·酒桌局</div>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap">
+        <span class="chip">0-10 打分猜分</span>
+        <span class="chip" style="background:linear-gradient(100deg,#6D35FF,#C85CFF);color:#fff;border-color:#160A2E">谁最懂 TA 谁免罚</span>
+      </div>
+
+      <div style="margin-top:16px">
+        <div class="lab">你的昵称</div>
+        <div class="input"><span class="ph">起个骚一点的名字…</span></div>
+      </div>
+
+      <div style="margin-top:14px">
+        <div class="lab">选你的酒杯</div>
+        <div class="cups">
+          <div class="cup">🍺</div><div class="cup">🍷</div><div class="cup on">🥃</div><div class="cup">🍶</div><div class="cup">🍸</div>
+          <div class="cup">🍹</div><div class="cup">🥂</div><div class="cup">🍻</div><div class="cup">🫗</div><div class="cup">🥥</div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px"><div class="btn">🏮 开一桌（当房主）</div></div>
+
+      <div style="margin-top:14px">
+        <div class="lab">已有房间？输 4 位房间码</div>
+        <div class="joinrow">
+          <div class="code"><b>7</b><b>K</b><b>2</b><b>9</b></div>
+          <div class="btn blue sm" style="width:96px">入座</div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px" class="tiles">
+        <div class="tile t1"><div class="t">今晚罚酒</div><div class="n">12,904 杯</div></div>
+        <div class="tile t2"><div class="t">爆灯瞬间</div><div class="n">3,377 次</div></div>
+        <div class="tile t3"><div class="t">题库</div><div class="n">变态辣 🌶🌶🌶</div></div>
+        <div class="tile t4"><div class="t">平均一局</div><div class="n">8 分钟</div></div>
+      </div>
+
+      <div class="stripes" style="margin-top:14px"></div>
+      <div style="flex:1"></div>
+      <div style="height:96px"></div>
+    </div>
+
+    <div class="dock">
+      <div class="dockbar">
+        <div class="re">🍺</div><div class="re">😂</div><div class="re">💔</div><div class="re">🔥</div>
+        <div class="dockinput">发条弹幕…</div>
+        <div class="send">发</div>
+      </div>
+    </div>
+    <div class="fab" style="bottom:96px">💬<span class="dot">3</span></div>
+  </div></div>
+</div>
+
+<!-- ============ 屏 2 打分 ============ -->
+<div class="slot">
+  <div class="cap">② 打分屏 · 0–10 猜分</div>
+  <div class="phone"><div class="screen">
+    <div class="bgfx grid"></div>
+    <div class="bgfx">
+      <div class="blob" style="width:300px;height:300px;right:-110px;top:-60px;background:radial-gradient(circle at 40% 40%,rgba(200,92,255,.5),rgba(200,92,255,0) 70%)"></div>
+      <div class="blob" style="width:280px;height:280px;left:-110px;bottom:120px;background:radial-gradient(circle at 40% 40%,rgba(63,123,255,.45),rgba(63,123,255,0) 70%)"></div>
+    </div>
+
+    <div class="statusbar"><span>21:53</span><span class="dots"><i></i><i class="p"></i><i></i></span></div>
+
+    <div class="body">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span class="chip">房间 7K29</span>
+        <span class="chip" style="background:#160A2E;color:#fff">第 3 / 8 题 · ⏱ 00:14</span>
+      </div>
+
+      <div style="margin-top:14px;display:flex;align-items:center;justify-content:space-between">
+        <div class="lab" style="margin:0">题目卡</div>
+        <div class="spice">🌶️🌶️🌶️</div>
+      </div>
+
+      <div class="card qcard" style="margin-top:8px">
+        <div style="position:absolute;top:-14px;left:-10px;width:44px;height:44px;border-radius:50%;border:3px solid #160A2E;background:linear-gradient(140deg,#FF73D9,#C85CFF);display:flex;align-items:center;justify-content:center;font-size:20px">💅</div>
+        <div class="q" style="margin-top:14px">这是一个满分男，但他留着很长的小拇指指甲，说是用来开快递的，你没见他开过快递。</div>
+        <div style="margin-top:14px;display:flex;gap:6px;flex-wrap:wrap">
+          <span class="tag g1">变态辣锅底</span><span class="tag g3">细节杀</span>
+        </div>
+      </div>
+
+      <div style="margin-top:22px;text-align:center">
+        <div class="lab" style="margin-bottom:4px">你的打分</div>
+        <div class="bigscore">5</div>
+        <div style="margin-top:10px;font-size:13px;font-weight:800;color:#4E3D72">还行吧，但我得再想想</div>
+      </div>
+
+      <div style="margin-top:22px">
+        <div class="slider"><div class="fill"></div><div class="knob">5</div></div>
+        <div class="ticks"><span>0 立刻拉黑</span><span>5</span><span>10 我可以</span></div>
+      </div>
+
+      <div style="margin-top:18px" class="tiles">
+        <div class="tile t2" style="min-height:70px"><div class="t">已锁分</div><div class="n">3 / 6 人</div></div>
+        <div class="tile t1" style="min-height:70px"><div class="t">猜偏罚</div><div class="n">1 杯 🍺</div></div>
+      </div>
+
+      <div style="margin-top:16px"><div class="btn">🔒 锁定我的分</div></div>
+
+      <div class="stripes" style="margin-top:14px"></div>
+      <div style="flex:1"></div>
+      <div style="height:96px"></div>
+    </div>
+
+    <div class="dock">
+      <div class="dockbar">
+        <div class="re">🍺</div><div class="re">😂</div><div class="re">💔</div><div class="re">🔥</div>
+        <div class="dockinput">发条弹幕…</div>
+        <div class="send">发</div>
+      </div>
+    </div>
+    <div class="fab" style="bottom:96px">💬<span class="dot">3</span></div>
+  </div></div>
+</div>
+
+<!-- ============ 屏 3 揭晓 ============ -->
+<div class="slot">
+  <div class="cap">③ 理想型揭晓屏 · 爆灯高潮</div>
+  <div class="phone"><div class="screen">
+    <div class="bgfx grid"></div>
+    <div class="bgfx">
+      <div class="blob" style="width:340px;height:340px;left:-80px;top:-80px;background:radial-gradient(circle at 45% 45%,rgba(255,115,217,.55),rgba(255,115,217,0) 70%)"></div>
+      <div class="blob" style="width:300px;height:300px;right:-120px;bottom:60px;background:radial-gradient(circle at 40% 40%,rgba(109,53,255,.42),rgba(109,53,255,0) 70%)"></div>
+    </div>
+
+    <div class="statusbar"><span>22:01</span><span class="dots"><i></i><i></i><i class="p"></i></span></div>
+
+    <div class="body">
+      <div class="danmu"><span class="who">阿盐</span><span>这也太我了吧，罚我三杯我认</span></div>
+
+      <div class="art" style="margin-top:12px;height:250px">
+        <div class="rays"></div>
+        <div class="word">立绘</div>
+        <div style="position:absolute;left:12px;top:12px" class="tag g2">理想型 · 揭晓</div>
+      </div>
+
+      <div style="margin-top:12px;display:flex;align-items:flex-end;gap:10px">
+        <div class="sticker" style="font-size:42px">陆时序</div>
+        <div style="font-size:12px;font-weight:800;color:#4E3D72;padding-bottom:6px">LU SHIXU</div>
+      </div>
+
+      <div class="tags" style="margin-top:10px">
+        <span class="tag g1">ESFP</span>
+        <span class="tag g2">男性呈现</span>
+        <span class="tag g3">全场焦点 × 浪子挂</span>
+      </div>
+
+      <div style="margin-top:10px;font-size:13px;font-weight:800;color:#160A2E;background:#fff;border:2.5px solid #160A2E;border-radius:14px;padding:9px 12px;box-shadow:4px 4px 0 rgba(63,123,255,.5)">
+        全场最难猜的心 · 均分 6.4 · 容忍度前 12%
+      </div>
+
+      <div class="card" style="margin-top:14px;padding:14px">
+        <div class="lab" style="text-align:center;margin-bottom:10px">爆灯环节 · 灭灯需当众说理由</div>
+        <div class="bulbs">
+          <div class="bulb on">💗</div><div class="bulb on">💗</div><div class="bulb on">💗</div><div class="bulb">🖤</div>
+        </div>
+        <div style="margin-top:10px;text-align:center;font-size:15px;font-weight:900;color:#160A2E">💗 爆灯 3/4 · 🖤 灭灯 1</div>
+        <div class="duo" style="margin-top:12px">
+          <div class="btn sm" style="background:linear-gradient(100deg,#FF73D9,#C85CFF)">爆灯</div>
+          <div class="btn sm" style="background:linear-gradient(100deg,#160A2E,#3B2A66)">灭灯</div>
+        </div>
+      </div>
+
+      <div class="stripes" style="margin-top:12px"></div>
+      <div style="flex:1"></div>
+      <div style="height:96px"></div>
+    </div>
+
+    <div class="dock">
+      <div class="dockbar">
+        <div class="re">🍺</div><div class="re">😂</div><div class="re">💔</div><div class="re">🔥</div>
+        <div class="dockinput">发条弹幕…</div>
+        <div class="send">发</div>
+      </div>
+    </div>
+    <div class="fab" style="bottom:96px">💬<span class="dot">3</span></div>
+  </div></div>
+</div>
+
+<!-- ============ 屏 4 互动条细节 ============ -->
+<div class="slot">
+  <div class="cap">④ 底部常驻互动条 · 弹幕 / reaction / 聊天 FAB</div>
+  <div class="phone"><div class="screen">
+    <div class="bgfx grid"></div>
+    <div class="bgfx">
+      <div class="blob" style="width:320px;height:320px;right:-100px;top:40px;background:radial-gradient(circle at 40% 40%,rgba(200,92,255,.5),rgba(200,92,255,0) 70%)"></div>
+      <div class="blob" style="width:300px;height:300px;left:-110px;bottom:180px;background:radial-gradient(circle at 40% 40%,rgba(63,123,255,.45),rgba(63,123,255,0) 70%)"></div>
+    </div>
+
+    <div class="statusbar"><span>22:04</span><span class="dots"><i class="p"></i><i></i><i></i></span></div>
+
+    <div class="body">
+      <div class="sticker" style="font-size:38px">互动条</div>
+      <div style="margin-top:10px;font-size:13px;font-weight:800;color:#4E3D72">常驻在每一屏底部，任何时刻都能起哄。</div>
+
+      <div style="margin-top:16px" class="tiles">
+        <div class="tile t2"><div class="t">快捷 reaction</div><div class="n">🍺 😂 💔 🔥</div></div>
+        <div class="tile t1"><div class="t">未读消息</div><div class="n">3 条</div></div>
+      </div>
+
+      <div style="margin-top:16px">
+        <div class="lab">弹幕流</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div class="danmu"><span class="who">阿盐</span><span>指甲那题我给 0，别拦我</span></div>
+          <div class="danmu" style="box-shadow:4px 4px 0 var(--blue);margin-left:24px"><span class="who" style="background:#3F7BFF">老周</span><span>爆灯了爆灯了 🔥🔥</span></div>
+          <div class="danmu" style="box-shadow:4px 4px 0 var(--nebula)"><span class="who" style="background:#C85CFF">Cici</span><span>房主快点，酒都温了 🍺</span></div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px">
+        <div class="lab">互动条放大</div>
+        <div class="dockbar" style="box-shadow:6px 6px 0 var(--ink)">
+          <div class="re">🍺</div><div class="re">😂</div><div class="re">💔</div><div class="re">🔥</div>
+          <div class="dockinput">发条弹幕…</div>
+          <div class="send">发</div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;display:flex;align-items:center;gap:14px">
+        <div style="position:relative;width:58px;height:58px;flex:none">
+          <div class="fab" style="position:static;right:auto;bottom:auto">💬<span class="dot">3</span></div>
+        </div>
+        <div style="font-size:13px;font-weight:800;color:#160A2E;line-height:1.5">悬浮聊天气泡 FAB<br><span style="color:#4E3D72;font-weight:700">红点提示未读，长按可拖动避让</span></div>
+      </div>
+
+      <div class="stripes" style="margin-top:18px"></div>
+      <div style="flex:1"></div>
+      <div style="height:96px"></div>
+    </div>
+
+    <div class="dock">
+      <div class="dockbar">
+        <div class="re">🍺</div><div class="re">😂</div><div class="re">💔</div><div class="re">🔥</div>
+        <div class="dockinput">发条弹幕…</div>
+        <div class="send">发</div>
+      </div>
+    </div>
+    <div class="fab" style="bottom:96px">💬<span class="dot">3</span></div>
+  </div></div>
+</div>
+
+</div>
+
+<p class="note">方案 A（亮色霓虹）— 全部为静态样张，无外部字体与网络资源，纯 CSS 渐变／网格实现。</p>
+</body>
+</html>
