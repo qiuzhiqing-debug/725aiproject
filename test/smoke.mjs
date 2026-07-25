@@ -97,7 +97,7 @@ async function main() {
   ok(dupRes.type === "error" && dupRes.code === "name_taken", `重名被拒：${dupRes.msg}`);
   DUP.ws.close();
 
-  await sleep(200);
+  await waitUntil(() => A.state?.players?.length === 3);
   ok(A.state?.players?.length === 3, "state 广播：3 人在桌");
   ok(A.state.you.isHost === true, "A 是房主");
 
@@ -123,11 +123,15 @@ async function main() {
 
   // 摇签（降级路径消息：shake 强度广播 + draw_stick）
   for (let i = 0; i < 4; i++) { shakerP.send({ type: "shake", intensity: 0.3 + i * 0.15 }); await sleep(60); }
-  await sleep(200);
+  await waitUntil(() => B.shakes.length >= 3 && C.shakes.length >= 3);
   ok(B.shakes.length >= 3 && C.shakes.length >= 3, `shake 强度广播到其他人（B 收到 ${B.shakes.length} 条）`);
   shakerP.send({ type: "draw_stick" });
-  await sleep(200);
-  ok(A.state.current.drawn === true && A.state.current.protagonist?.name, `出签：主角 = ${A.state.current.protagonist.name}`);
+  const stickDrawn = await waitUntil(
+    () => A.state?.current?.drawn === true && Boolean(A.state.current.protagonist?.name),
+    5000,
+  );
+  ok(stickDrawn, `出签：主角 = ${A.state?.current?.protagonist?.name || "未返回"}`);
+  if (!stickDrawn) throw new Error("等待出签状态超时");
   shakerP.send({ type: "stick_done" });
   await A.waitPhase("protagonist_setup");
   ok(true, "stick_done → protagonist_setup");
@@ -156,7 +160,10 @@ async function main() {
       others[0].send({ type: "assign_drink", target: others[1].name });
       // 主角补刀
       hero.send({ type: "comment", text: "你们根本不懂我" });
-      await sleep(200);
+      await waitUntil(() => {
+        const target = A.state?.players?.find((p) => p.name === others[1].name);
+        return A.state?.current?.reveal?.comment === "你们根本不懂我" && target?.drinks === 2;
+      });
       ok(A.state.current.reveal.comment === "你们根本不懂我", "主角补刀文字广播");
       const o2pub = A.state.players.find((p) => p.name === others[1].name);
       ok(o2pub.drinks === 2, `被指定者共 2 杯（罚1+被指定1）`);
@@ -183,15 +190,21 @@ async function main() {
 
   // 聊天室：发消息 → 全员 state.chat 可见（断线重连也能靠 state 恢复）
   others[0].send(chatPayload("这题出得太狠了哈哈哈"));
-  await sleep(250);
+  const chatArrived = await waitUntil(() => all.every((player) =>
+    player.state?.chat?.some((message) => message.text === "这题出得太狠了哈哈哈")), 5000);
   const lastChat = A.state.chat?.[A.state.chat.length - 1];
-  ok(lastChat?.text === "这题出得太狠了哈哈哈" && lastChat.name === others[0].name,
+  ok(chatArrived && lastChat?.text === "这题出得太狠了哈哈哈" && lastChat.name === others[0].name,
     `聊天消息入 state.chat（id=${lastChat?.id}）`);
+  if (!chatArrived) throw new Error("等待聊天消息同步超时");
 
   // emoji 回应：服务端白名单、聚合计数、mine 个性化视图、再贴一次取消。
-  others[1].send(messageReactionPayload(lastChat.id, "😂"));
-  await sleep(350);
   const reactionObserver = all.find((player) => player !== others[1]);
+  others[1].send(messageReactionPayload(lastChat.id, "😂"));
+  await waitUntil(() => {
+    const observerReaction = reactionObserver.state?.chat?.find((m) => m.id === lastChat.id)?.reactions?.["😂"];
+    const ownReaction = others[1].state?.chat?.find((m) => m.id === lastChat.id)?.reactions?.["😂"];
+    return observerReaction?.count === 1 && observerReaction.mine === false && ownReaction?.mine === true;
+  });
   let rMsg = reactionObserver.state.chat.find((m) => m.id === lastChat.id);
   const ownRMsg = others[1].state.chat.find((m) => m.id === lastChat.id);
   ok(rMsg.reactions["😂"]?.count === 1 && rMsg.reactions["😂"].mine === false,
@@ -202,13 +215,14 @@ async function main() {
   await waitUntil(() => others[1].lastError?.code === "invalid_reaction");
   ok(others[1].lastError?.code === "invalid_reaction", "非白名单消息 emoji 被拒绝");
   others[1].send(messageReactionPayload(lastChat.id, "😂"));
-  await sleep(350);
+  await waitUntil(() => !reactionObserver.state?.chat?.find((m) => m.id === lastChat.id)?.reactions?.["😂"]
+    && !others[1].state?.chat?.find((m) => m.id === lastChat.id)?.reactions?.["😂"]);
   rMsg = reactionObserver.state.chat.find((m) => m.id === lastChat.id);
   ok(!rMsg.reactions["😂"], "同人再贴一次 → 回应取消");
 
   // 弹幕：aha 屏广播 + 3 秒限频
   others[1].send(danmakuPayload("理想型有点帅啊"));
-  await sleep(250);
+  await waitUntil(() => A.danmakus.some((d) => d.text === "理想型有点帅啊" && d.name === others[1].name));
   ok(A.danmakus.some((d) => d.text === "理想型有点帅啊" && d.name === others[1].name),
     "弹幕广播到其他玩家");
   const dmCountBefore = A.danmakus.length;
@@ -218,7 +232,8 @@ async function main() {
 
   // 快捷 reaction：白名单 transient 事件 + recent 持久化。
   others[0].send(quickReactionPayload("🔥"));
-  await sleep(250);
+  await waitUntil(() => A.quickReactions.some((event) => event.reaction === "🔥" && event.name === others[0].name)
+    && A.state?.social?.recent?.some((event) => event.type === "quick_reaction" && event.reaction === "🔥"));
   ok(A.quickReactions.some((event) => event.reaction === "🔥" && event.name === others[0].name),
     "快捷 reaction 实时广播");
   ok(A.state.social?.recent?.some((event) => event.type === "quick_reaction" && event.reaction === "🔥"),
@@ -232,7 +247,9 @@ async function main() {
   others[0].send(lightVotePayload("burst"));
   others[1].send(lightVotePayload("off"));
   hero.send(lightVotePayload("burst")); // 主角不能给自己爆灯，应被忽略
-  await sleep(300);
+  await waitUntil(() => A.state?.aha?.light?.burst === 1 && A.state?.aha?.light?.off === 1
+    && others[0].state?.aha?.light?.mine === "burst" && others[1].state?.aha?.light?.mine === "off");
+  await waitUntil(() => hero.lightFx.length >= 2);
   const lt = A.state.aha.light;
   ok(lt.burst === 1 && lt.off === 1 && lt.total === 2, `灯计数 爆${lt.burst}/灭${lt.off}/共${lt.total}`);
   ok(others[0].state.aha.light.mine === "burst" && others[1].state.aha.light.mine === "off",
@@ -244,7 +261,8 @@ async function main() {
   ok(hero.lightFx.length >= 2, `light_fx 特效事件广播（主角收到 ${hero.lightFx.length} 条）`);
   await sleep(550);
   others[0].send(lightVotePayload("off"));
-  await sleep(250);
+  await waitUntil(() => A.state?.aha?.light?.burst === 0 && A.state?.aha?.light?.off === 2
+    && others[0].state?.aha?.light?.mine === "off");
   ok(A.state.aha.light.burst === 0 && A.state.aha.light.off === 2, "改票后实时统计从爆1/灭1更新为爆0/灭2");
   ok(others[0].state.aha.light.mine === "off", "改票后 mine 同步为 off");
   ok(A.state.aha.stats.lights.burst === 0 && A.state.aha.stats.lights.off === 2,
@@ -256,11 +274,11 @@ async function main() {
   // 断线重连回座
   const heroToken = hero.token;
   hero.ws.close();
-  await sleep(400);
+  await waitUntil(() => A.state?.players?.find((p) => p.name === hero.name)?.connected === false);
   ok(A.state.players.find((p) => p.name === hero.name)?.connected === false, "掉线后 connected=false 广播");
   const back = await hero.connect(code, heroToken);
   ok(back.type === "welcome" && back.reconnected === true, "凭 token 重连回座 reconnected=true");
-  await sleep(200);
+  await waitUntil(() => hero.state?.phase === "aha" && hero.state?.you?.name === hero.name);
   ok(hero.state?.phase === "aha" && hero.state.you.name === hero.name, "重连后拿回自己视角 state");
   ok(hero.state.chat?.some((m) => m.text === "这题出得太狠了哈哈哈"), "重连后聊天记录恢复");
   ok(hero.state.social?.recent?.some((e) => e.type === "danmaku"), "重连后近期弹幕/reaction 事件恢复");

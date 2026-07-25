@@ -30,3 +30,10 @@
 - 视觉 QA：390×844 与 1400×900 共 11 个状态无横向溢出、脚本错误 0、可见按钮均 ≥44px；最终证据在 `qa/final-*`、`qa/online-*` 与 `qa/visual-v3-*`。
 - 公网预览：`https://manfen-nan.pentagonal-whippoorwill.workers.dev`（Cloudflare 临时账号部署，需在认领链接过期前由 Kim 接管）。
 - 剩余真实设备风险：iOS DeviceMotion 授权与不同 Android 机型的传感器阈值仍需至少一台真机各跑一次；无传感器或拒绝授权时已有点按降级。
+
+## 2026-07-25（M4 正式认证与永久部署）
+- Cloudflare Wrangler OAuth 已认证到 Kim 自有账号；不记录账号密码、验证码或 OAuth 令牌到项目文件。
+- 正式 Worker：`https://manfen-nan.kimnin-iup.workers.dev`，Cloudflare Version ID：`0920014b-72c5-4ae2-9dd6-d9f5f4b657a0`。Durable Object `RoomDO` 与静态资源均在同一正式 Worker 下。
+- 永久地址多人端到端冒烟 57/57 通过。针对公网延迟，将 smoke 中固定毫秒等待改为有条件的状态等待，覆盖出签、聊天回应、灯票特效与断线重连，避免把网络抖动误判为产品失败。
+- 正式地址双视口证据：`qa/production-home-390.png`（innerWidth/scrollWidth 390/390）与 `qa/production-home-1400.png`（1400/1400），脚本错误均为 0，人工复核通过。
+- 本机代理对新域名使用 `198.18.*` Fake-IP，刚部署时曾造成仅本机的 TLS 假失败；使用公共 DoH 查得真实 Cloudflare 边缘地址后验证 HTTPS 200。代理映射刷新后，普通网络路径再次完成 57/57 与标准双视口截图；临时 QA 脚本已删除，未改系统网络设置。

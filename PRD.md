@@ -6,7 +6,7 @@
 一个公网可访问的多人酒桌 H5：同桌好友进同一房间，轮流"拷打"一人玩满分男/满分女游戏，用 0-10 打分猜分罚酒来测"谁最懂她"，若干轮后 AI 生成她的理想型立绘 + 网易云年报式分享海报（带二维码）。
 
 ## 2. 技术架构（免费白嫖栈）
-- **部署**：Cloudflare Workers（免费版）+ Durable Objects（房间状态 + WebSocket 广播）+ Workers Static Assets（前端）。一个 worker 搞定前后端，公网 URL：`*.workers.dev`。
+- **部署**：Cloudflare Workers（免费版）+ Durable Objects（房间状态 + WebSocket 广播）+ Workers Static Assets（前端）。一个 worker 搞定前后端，正式公网 URL：`https://manfen-nan.kimnin-iup.workers.dev`。
 - **前端**：无构建 vanilla JS + CSS 单页应用（`public/`），移动优先（390×844 为第一视口）。
 - **实时**：WebSocket，每房间一个 Durable Object 实例，房间码 4 位。
 - **立绘生成**：免费图像 API（Pollinations，无 key），服务端拼 prompt；样图必须经 PM 人审后才算通过。后续可换 image2（GPT 图像），接口层抽象成 `generateImage(prompt)`。
