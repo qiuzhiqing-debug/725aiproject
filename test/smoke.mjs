@@ -30,9 +30,10 @@ async function waitUntil(predicate, ms = 5000) {
 }
 
 class Player {
-  constructor(name, emoji) {
+  constructor(name, emoji, drink = "beer") {
     this.name = name;
     this.emoji = emoji;
+    this.drink = drink;
     this.token = null;
     this.state = null;
     this.lastError = null;
@@ -46,7 +47,7 @@ class Player {
     this.ws = new WebSocket(`${WS_BASE}/api/room/${code}/ws`);
     return new Promise((res, rej) => {
       this.ws.on("open", () => {
-        this.ws.send(JSON.stringify({ type: "join", name: this.name, emoji: this.emoji, token }));
+        this.ws.send(JSON.stringify({ type: "join", name: this.name, emoji: this.emoji, drink: this.drink, token }));
       });
       this.ws.on("message", (raw) => {
         const m = JSON.parse(raw.toString());
@@ -84,7 +85,7 @@ async function main() {
   ok(/^\d{4}$/.test(code), `建房得到 4 位房间码 ${code}`);
 
   // 入房 ×3
-  const A = new Player("阿豪", "🍺"), B = new Player("嘉欣", "🍷"), C = new Player("老王", "🥃");
+  const A = new Player("阿豪", "🍺", "beer"), B = new Player("嘉欣", "🍷", "wine"), C = new Player("老王", "🥃", "soft");
   await A.connect(code);
   ok(A.token, "A 入房拿到 token");
   await B.connect(code);
@@ -100,6 +101,9 @@ async function main() {
   await waitUntil(() => A.state?.players?.length === 3);
   ok(A.state?.players?.length === 3, "state 广播：3 人在桌");
   ok(A.state.you.isHost === true, "A 是房主");
+  ok(A.state.players.find((p) => p.name === "嘉欣")?.drink?.label === "红酒"
+    && A.state.players.find((p) => p.name === "老王")?.drink?.label === "无酒精",
+    "玩家自选酒种已同步到全桌");
 
   // 聊天室在 lobby 就可用；近期消息通过 state 持久化。
   B.lastError = null;
@@ -169,6 +173,28 @@ async function main() {
       ok(o2pub.drinks === 2, `被指定者共 2 杯（罚1+被指定1）`);
     }
     A.send({ type: "next" });
+    await A.waitPhase("drinking");
+    const ceremony = A.state.current.drinking;
+    const punished = ceremony.drinkers.find((item) => item.name === others[1].name);
+    if (round === 1) {
+      ok(punished?.cups === 2, "罚酒仪式保留猜错1杯 + 被指定1杯");
+      ok(punished?.drink?.id === others[1].drink, `罚酒页展示玩家自选酒：${punished?.drink?.label}`);
+      A.lastError = null;
+      A.send({ type: "next" });
+      await waitUntil(() => A.lastError?.code === "drinks_pending");
+      ok(A.lastError?.code === "drinks_pending", "有人没喝完时房主不能直接进入下一题");
+      others[1].send({ type: "drink_done" });
+      await waitUntil(() => A.state?.current?.drinking?.allDone === true);
+      ok(A.state.current.drinking.allDone, "喝酒人确认后全桌同步完成状态");
+    } else if (round === 2) {
+      A.send({ type: "skip_drinking" });
+      await waitUntil(() => A.state?.current?.drinking?.skipped === true);
+      ok(A.state.current.drinking.skipped, "房主可跳过罚酒仪式，避免卡局");
+    } else {
+      others[1].send({ type: "drink_done" });
+      await waitUntil(() => A.state?.current?.drinking?.allDone === true);
+    }
+    A.send({ type: "next" });
     if (round < 3) await A.waitPhase("answering");
   }
 
@@ -214,6 +240,7 @@ async function main() {
   others[1].send({ type: "react", msgId: lastChat.id, emoji: "🚫" });
   await waitUntil(() => others[1].lastError?.code === "invalid_reaction");
   ok(others[1].lastError?.code === "invalid_reaction", "非白名单消息 emoji 被拒绝");
+  await sleep(350);
   others[1].send(messageReactionPayload(lastChat.id, "😂"));
   await waitUntil(() => !reactionObserver.state?.chat?.find((m) => m.id === lastChat.id)?.reactions?.["😂"]
     && !others[1].state?.chat?.find((m) => m.id === lastChat.id)?.reactions?.["😂"]);
@@ -285,6 +312,8 @@ async function main() {
   ok(hero.state.aha?.light?.off === 2, "重连后灯状态恢复");
 
   // 房主推进 → 下一位主角（picking），摇签人应为上一任主角
+  await waitUntil(() => all.every((player) =>
+    player.state?.players?.find((p) => p.name === hero.name)?.connected === true));
   A.send({ type: "next" });
   await Promise.all(all.map((player) => player.waitPhase("picking", 10000)));
   const shaker2 = all.find((p) => p.state.current.youAreShaker);

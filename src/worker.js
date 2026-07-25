@@ -34,7 +34,17 @@ export default {
       return stub.fetch("https://do/info");
     }
 
-    return env.ASSETS.fetch(req);
+    const asset = await env.ASSETS.fetch(req);
+    if (req.method !== "GET" || !asset.ok) return asset;
+    const headers = new Headers(asset.headers);
+    if (/\.(?:jpg|jpeg|png|webp|svg|woff2)$/i.test(url.pathname)) {
+      headers.set("cache-control", "public, max-age=86400, stale-while-revalidate=604800");
+    } else if (/\.(?:js|css)$/i.test(url.pathname)) {
+      headers.set("cache-control", "public, max-age=0, must-revalidate");
+    } else if ((headers.get("content-type") || "").includes("text/html")) {
+      headers.set("cache-control", "public, max-age=0, must-revalidate");
+    }
+    return new Response(asset.body, { status: asset.status, statusText: asset.statusText, headers });
   },
 };
 
@@ -70,6 +80,24 @@ const SOCIAL = Object.freeze({
 const MESSAGE_REACTIONS = Object.freeze(["😂", "🔥", "🍺", "💔", "👏", "🤯", "❤️", "👀"]);
 const QUICK_REACTIONS = Object.freeze(["🍺", "😂", "💔", "🔥", "👏", "🤯"]);
 
+// 局终即焚：房间数据最长保留 12 小时（PRD §2）
+const ROOM_TTL_MS = 12 * 3600 * 1000;
+// 单个房间题库上限，避免 DO 单值 128KiB 写爆后房间彻底不可用
+const MAX_QUESTIONS = 300;
+const MAX_QUESTION_TEXT = 200;
+
+const DRINKS = Object.freeze({
+  beer: { id: "beer", label: "啤酒", emoji: "🍺" },
+  wine: { id: "wine", label: "红酒", emoji: "🍷" },
+  baijiu: { id: "baijiu", label: "白酒", emoji: "🥃" },
+  cocktail: { id: "cocktail", label: "调酒", emoji: "🍸" },
+  soft: { id: "soft", label: "无酒精", emoji: "🫧" },
+});
+
+function drinkOf(id) {
+  return DRINKS[id] || DRINKS.beer;
+}
+
 /* ============ RoomDO ============ */
 
 export class RoomDO {
@@ -89,6 +117,19 @@ export class RoomDO {
         if (this.room.aha && !this.room.aha.protagonistToken && this.room.current?.protagonist) {
           this.room.aha.protagonistToken = this.room.current.protagonist;
         }
+        if (this.room.settings?.deck === "biantaila") {
+          this.room.settings.deck = "zhongkou";
+          this.room.settings.deckName = "重口锅底";
+        }
+        if (this.room.current) {
+          if (!this.room.current.penalties) this.room.current.penalties = {};
+          if (!this.room.current.drinking) this.room.current.drinking = null;
+        }
+        for (const player of this.room.players || []) {
+          if (!DRINKS[player.drink]) player.drink = "beer";
+          // 旧存档没有公开 id，补一个（token 不再外发）
+          if (!player.id) player.id = crypto.randomUUID();
+        }
       }
     });
   }
@@ -97,14 +138,12 @@ export class RoomDO {
     const url = new URL(req.url);
 
     if (url.pathname === "/create") {
-      const active =
-        this.room &&
-        this.room.phase !== "finished" &&
-        Date.now() - this.room.createdAt < 12 * 3600 * 1000 &&
-        this.room.players.length > 0;
+      // 只按 createdAt TTL 回收：空房也是别人刚建的房，finished 房还有人在看海报
+      const active = this.room && Date.now() - this.room.createdAt < ROOM_TTL_MS;
       if (active) return new Response("occupied", { status: 409 });
       this.room = this.freshRoom(url.searchParams.get("code"));
       await this.save();
+      await this.scheduleReap();
       return new Response("ok");
     }
 
@@ -152,6 +191,21 @@ export class RoomDO {
     await this.ctx.storage.put("room", this.room);
   }
 
+  // 局终即焚：建房 / 收局时把删除闹钟推到 12h 后
+  async scheduleReap() {
+    try {
+      await this.ctx.storage.setAlarm(Date.now() + ROOM_TTL_MS);
+    } catch {}
+  }
+
+  async alarm() {
+    await this.ctx.storage.deleteAll();
+    this.room = null;
+    for (const ws of this.ctx.getWebSockets()) {
+      try { ws.close(4002, "expired"); } catch {}
+    }
+  }
+
   /* ---- WS 生命周期（hibernation API）---- */
 
   async webSocketMessage(ws, raw) {
@@ -174,14 +228,25 @@ export class RoomDO {
 
   async webSocketClose(ws) {
     const token = this.tokenOf(ws);
-    if (token && this.room) {
-      const p = this.room.players.find((p) => p.token === token);
-      if (p && !this.liveSockets(token).length) {
-        p.connected = false;
-        await this.save();
-        this.broadcast();
+    if (!token || !this.room) return;
+    const r = this.room;
+    const p = r.players.find((p) => p.token === token);
+    // 显式排除正在关闭的这条连接，否则 connected 永远置不回 false
+    if (!p || this.liveSockets(token, ws).length) return;
+    p.connected = false;
+    // 房主掉线必须转移房主，否则 start/next/kick 全部不可达、房间冻结
+    if (p.isHost) {
+      const heir = r.players.find((q) => q !== p && q.connected);
+      if (heir) {
+        p.isHost = false;
+        heir.isHost = true;
       }
     }
+    this.ensureRoleIntegrity();
+    // 挂机/掉线者不该无限挂住答题阶段
+    if (r.phase === "answering" && r.current) this.maybeReveal();
+    await this.save();
+    this.broadcast();
   }
 
   async webSocketError(ws) {
@@ -196,10 +261,38 @@ export class RoomDO {
     }
   }
 
-  liveSockets(token) {
+  liveSockets(token, exclude = null) {
     return this.ctx
       .getWebSockets()
-      .filter((s) => this.tokenOf(s) === token && s.readyState === 1);
+      .filter((s) => s !== exclude && this.tokenOf(s) === token && s.readyState === 1);
+  }
+
+  /* ---- 主角 / 摇签人 / 房主 的离席兜底 ---- */
+
+  ensureRoleIntegrity() {
+    const r = this.room;
+    if (!r.players.length) return;
+    if (!r.players.some((p) => p.isHost)) {
+      const heir = r.players.find((p) => p.connected) || r.players[0];
+      heir.isHost = true;
+    }
+    const cur = r.current;
+    if (!cur) return;
+    const host = r.players.find((p) => p.isHost);
+    const shakerP = r.players.find((p) => p.token === cur.shaker);
+    // 摇签人被踢或掉线 → 回落到房主，避免 picking 无出口
+    if (!shakerP || !shakerP.connected) cur.shaker = host ? host.token : r.players[0].token;
+    const heroAlive = r.players.some((p) => p.token === cur.protagonist);
+    const liveRound = ["picking", "protagonist_setup", "answering", "reveal", "drinking"].includes(r.phase);
+    if (!heroAlive && liveRound) {
+      // 主角中途离席：本轮作废，重新抽签；没人可抽就直接收局
+      const candidates = r.players.filter((p) => !p.done);
+      if (candidates.length && r.players.length >= 2) this.pickProtagonist();
+      else {
+        r.current = null;
+        r.phase = "finished";
+      }
+    }
   }
 
   send(ws, obj) {
@@ -249,6 +342,7 @@ export class RoomDO {
           ),
         },
         reveal: inReveal ? cur.reveal : null,
+        drinking: r.phase === "drinking" ? this.drinkingView(cur, token) : null,
       };
     }
     return {
@@ -256,10 +350,8 @@ export class RoomDO {
       phase: r.phase,
       settings: r.settings,
       you: me ? { ...this.pub(me), token: me.token, isHost: me.isHost } : null,
-      players: r.players.map((p) =>
-        // 房主视角附带 token，用于踢人
-        me?.isHost ? { ...this.pub(p), token: p.token } : this.pub(p)
-      ),
+      // token 是唯一身份凭证，绝不出现在 players[] 里；踢人改用公开 id
+      players: r.players.map((p) => this.pub(p)),
       current: curView,
       aha:
         r.phase === "aha" || r.phase === "finished"
@@ -326,6 +418,7 @@ export class RoomDO {
   pub(p) {
     if (!p) return null;
     return {
+      id: p.id,
       name: p.name,
       emoji: p.emoji,
       isHost: p.isHost,
@@ -333,6 +426,34 @@ export class RoomDO {
       drinks: p.drinks,
       know: p.know,
       done: p.done,
+      drink: drinkOf(p.drink),
+    };
+  }
+
+  drinkingView(cur, token) {
+    const penalties = cur?.penalties || {};
+    const done = new Set(cur?.drinking?.done || []);
+    const drinkers = Object.entries(penalties)
+      .filter(([, cups]) => Number(cups) > 0)
+      .map(([playerToken, cups]) => {
+        const player = this.room.players.find((p) => p.token === playerToken);
+        return player ? {
+          name: player.name,
+          emoji: player.emoji,
+          drink: drinkOf(player.drink),
+          cups: Number(cups),
+          done: done.has(playerToken),
+          mine: playerToken === token,
+        } : null;
+      })
+      .filter(Boolean);
+    return {
+      drinkers,
+      completed: drinkers.filter((item) => item.done).length,
+      total: drinkers.length,
+      allDone: drinkers.length === 0 || drinkers.every((item) => item.done),
+      skipped: !!cur?.drinking?.skipped,
+      canConfirm: Number(penalties[token]) > 0 && !done.has(token),
     };
   }
 
@@ -353,8 +474,16 @@ export class RoomDO {
         if (!me.isHost || r.phase !== "lobby") return;
         const n = Math.round(Number(msg.rounds));
         if (n >= 3 && n <= 8) r.settings.rounds = n;
-        if (typeof msg.deck === "string") r.settings.deck = msg.deck;
-        if (typeof msg.deckName === "string") r.settings.deckName = msg.deckName;
+        const deckNames = { qingtang: "清汤锅底", fanqie: "番茄锅底", zhongkou: "重口锅底" };
+        if (deckNames[msg.deck]) {
+          r.settings.deck = msg.deck;
+          r.settings.deckName = deckNames[msg.deck];
+        }
+        break;
+      }
+      case "set_drink": {
+        if (!DRINKS[msg.drink]) return;
+        me.drink = msg.drink;
         break;
       }
       case "kick": {
@@ -368,6 +497,10 @@ export class RoomDO {
           this.send(s, { type: "kicked" });
           try { s.close(4001, "kicked"); } catch {}
         }
+        if (r.current?.penalties) delete r.current.penalties[kicked.token];
+        if (Array.isArray(r.current?.drinking?.done)) {
+          r.current.drinking.done = r.current.drinking.done.filter((t) => t !== kicked.token);
+        }
         r.players.splice(idx, 1);
         break;
       }
@@ -379,14 +512,17 @@ export class RoomDO {
         if (!qs.length)
           return this.send(ws, { type: "error", msg: "题库为空，无法开局" });
         r.questions = qs
+          .slice(0, MAX_QUESTIONS)
           .filter((q) => q && q.id && (q.m || q.f || q.n))
           .map((q) => ({
-            id: String(q.id),
-            spice: q.spice || 1,
-            tags: Array.isArray(q.tags) ? q.tags : [],
-            m: q.m || q.n || q.f,
-            f: q.f || q.n || q.m,
-            n: q.n || q.m || q.f,
+            id: String(q.id).slice(0, 40),
+            spice: Math.max(1, Math.min(5, Number(q.spice) || 1)),
+            tags: Array.isArray(q.tags)
+              ? q.tags.slice(0, 8).map((tag) => String(tag).slice(0, 20))
+              : [],
+            m: String(q.m || q.n || q.f).slice(0, MAX_QUESTION_TEXT),
+            f: String(q.f || q.n || q.m).slice(0, MAX_QUESTION_TEXT),
+            n: String(q.n || q.m || q.f).slice(0, MAX_QUESTION_TEXT),
           }));
         if (!r.questions.length)
           return this.send(ws, { type: "error", msg: "题库格式不合法，无法开局" });
@@ -456,6 +592,8 @@ export class RoomDO {
         );
         if (!target) return;
         target.drinks++;
+        if (!r.current.penalties) r.current.penalties = {};
+        r.current.penalties[target.token] = (r.current.penalties[target.token] || 0) + 1;
         myRes.assigned = target.name;
         break;
       }
@@ -471,19 +609,38 @@ export class RoomDO {
       case "next": {
         if (!me.isHost) return;
         if (r.phase === "reveal") {
-          if (r.current.roundIndex >= r.settings.rounds) {
-            this.buildAha();
-            r.phase = "aha";
-          } else {
-            r.current.roundIndex++;
-            this.drawQuestion();
-            r.phase = "answering";
+          const liveTokens = new Set(r.players.map((player) => player.token));
+          const hasPenalty = Object.entries(r.current?.penalties || {})
+            .some(([playerToken, cups]) => liveTokens.has(playerToken) && cups > 0);
+          if (hasPenalty) {
+            r.current.drinking = { done: [], skipped: false };
+            r.phase = "drinking";
+          } else this.advanceAfterReveal();
+        } else if (r.phase === "drinking") {
+          const view = this.drinkingView(r.current, token);
+          if (!view.allDone && !view.skipped) {
+            return this.send(ws, { type: "error", code: "drinks_pending", msg: "还有人没喝完" });
           }
+          this.advanceAfterReveal();
         } else if (r.phase === "aha") {
           const remaining = r.players.filter((p) => !p.done);
           if (remaining.length) this.pickProtagonist();
           else r.phase = "finished";
         }
+        break;
+      }
+      case "drink_done": {
+        if (r.phase !== "drinking" || !r.current?.drinking) return;
+        if (!Number(r.current.penalties?.[token])) return;
+        if (!r.current.drinking.done.includes(token)) r.current.drinking.done.push(token);
+        break;
+      }
+      case "skip_drinking": {
+        if (!me.isHost || r.phase !== "drinking" || !r.current?.drinking) return;
+        r.current.drinking.skipped = true;
+        r.current.drinking.done = Object.entries(r.current.penalties || {})
+          .filter(([, cups]) => Number(cups) > 0)
+          .map(([playerToken]) => playerToken);
         break;
       }
       case "finish_game": {
@@ -544,7 +701,7 @@ export class RoomDO {
       }
       case "danmaku": {
         // 弹幕：aha 主战场，答题/开牌/收局同样开放；限长 30 字、限频 3s
-        if (!["aha", "answering", "reveal", "finished"].includes(r.phase))
+        if (!["aha", "answering", "reveal", "drinking", "finished"].includes(r.phase))
           return;
         const text = cleanUserText(msg.text, SOCIAL.danmakuMaxLength);
         if (!text) return;
@@ -656,12 +813,14 @@ export class RoomDO {
     const r = this.room;
     const name = String(msg.name || "").trim().slice(0, 12);
     const emoji = String(msg.emoji || "🍺").slice(0, 4);
+    const drink = DRINKS[msg.drink] ? msg.drink : "beer";
 
     // 凭 token 回收座位（断线重连）
     if (msg.token) {
       const p = r.players.find((p) => p.token === msg.token);
       if (p) {
         p.connected = true;
+        p.drink = drink;
         ws.serializeAttachment({ token: p.token });
         this.send(ws, { type: "welcome", token: p.token, reconnected: true });
         await this.save();
@@ -701,6 +860,7 @@ export class RoomDO {
       drinks: 0,
       know: 0,
       done: false,
+      drink,
     };
     r.players.push(player);
     ws.serializeAttachment({ token });
@@ -730,6 +890,8 @@ export class RoomDO {
       score: null,
       guesses: {},
       reveal: null,
+      penalties: {},
+      drinking: null,
     };
     r.aha = null;
     r.phase = "picking";
@@ -761,11 +923,14 @@ export class RoomDO {
     cur.score = null;
     cur.guesses = {};
     cur.reveal = null;
+    cur.penalties = {};
+    cur.drinking = null;
   }
 
   maybeReveal() {
     const r = this.room;
     const cur = r.current;
+    if (!cur.penalties) cur.penalties = {};
     if (cur.score == null) return;
     const guessers = r.players.filter(
       (p) => p.token !== cur.protagonist && p.connected
@@ -783,6 +948,7 @@ export class RoomDO {
       const drink = diff >= 3;
       const exact = diff === 0;
       if (drink) p.drinks++;
+      if (drink) cur.penalties[p.token] = (cur.penalties[p.token] || 0) + 1;
       if (exact) p.know++;
       results.push({ name: p.name, emoji: p.emoji, guess: g, diff, drink, exact });
     }
@@ -799,6 +965,18 @@ export class RoomDO {
       comment: null,
     });
     r.phase = "reveal";
+  }
+
+  advanceAfterReveal() {
+    const r = this.room;
+    if (r.current.roundIndex >= r.settings.rounds) {
+      this.buildAha();
+      r.phase = "aha";
+    } else {
+      r.current.roundIndex++;
+      this.drawQuestion();
+      r.phase = "answering";
+    }
   }
 
   /* ---- Aha 结算 ---- */
