@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="满分酒桌局">
+  <rect width="64" height="64" rx="14" fill="#075dff"/>
+  <path d="M5 48h54v11H5z" fill="#22dcff"/>
+  <path d="M14 18h8v27h-8V27l-5 3v-8l8-4h5zm27-1c10 0 14 7 14 15s-4 15-14 15-14-7-14-15 4-15 14-15zm0 8c-4 0-5 3-5 7s1 7 5 7 5-3 5-7-1-7-5-7z" fill="#fff"/>
+</svg>

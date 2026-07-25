@@ -192,15 +192,66 @@ export const sound = {
     bass.start(t0);
     bass.stop(t0 + 1.15);
   },
+
+  // 罚酒仪式三拍：低鼓 + 杯沿脆响，原创合成，不加载外部音频。
+  chug() {
+    if (!this.enabled) return;
+    const c = ensureCtx();
+    if (!c || c.state !== "running") return;
+    const t0 = c.currentTime;
+    [0, 0.32, 0.64].forEach((dt, index) => {
+      const t = t0 + dt;
+      const bass = c.createOscillator();
+      bass.type = "sine";
+      bass.frequency.setValueAtTime(index === 2 ? 104 : 88, t);
+      bass.frequency.exponentialRampToValueAtTime(48, t + 0.18);
+      const bassGain = c.createGain();
+      bassGain.gain.setValueAtTime(0.34, t);
+      bassGain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+      bass.connect(bassGain).connect(c.destination);
+      bass.start(t);
+      bass.stop(t + 0.24);
+
+      const rim = c.createOscillator();
+      rim.type = "triangle";
+      rim.frequency.setValueAtTime(index === 2 ? 1568 : 1174, t + 0.02);
+      const rimGain = c.createGain();
+      rimGain.gain.setValueAtTime(0.16, t + 0.02);
+      rimGain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+      rim.connect(rimGain).connect(c.destination);
+      rim.start(t + 0.02);
+      rim.stop(t + 0.1);
+    });
+  },
 };
 
 /* ================= 高光粒子（纯 DOM/CSS，无外部资源） ================= */
+
+/* 彩带配色真源：public/theme.css 的 --fx-confetti-1..5。
+   样式同事改 theme.css 彩带就换色，读不到时回退到默认值。 */
+const CONFETTI_FALLBACK = ["#ff4081", "#ffb84d", "#ff77a9", "#fff3e0", "#ff7a45"];
+let confettiCache = null;
+
+function confettiColors() {
+  if (confettiCache) return confettiCache;
+  let cs = null;
+  try {
+    cs = getComputedStyle(document.documentElement);
+  } catch {
+    cs = null;
+  }
+  confettiCache = CONFETTI_FALLBACK.map((def, i) => {
+    const v = cs ? String(cs.getPropertyValue(`--fx-confetti-${i + 1}`) || "").trim() : "";
+    return v || def;
+  });
+  return confettiCache;
+}
 
 // 精确命中高光：全屏彩带 + 酒杯碰撞粒子，~600ms 后自清理
 export function celebrate() {
   const layer = document.createElement("div");
   layer.className = "fx-layer";
-  const colors = ["#ff4081", "#ffb84d", "#ff77a9", "#fff3e0", "#ff7a45"];
+  const colors = confettiColors();
   for (let i = 0; i < 36; i++) {
     const c = document.createElement("i");
     c.className = "confetti";
@@ -300,7 +351,12 @@ export function createShaker() {
       // Android/桌面 Chrome 下 devicemotion 事件可能注册成功但永不触发
       // （无传感器）。1.2s 内没收到事件就报告不支持，由调用方降级。
       return await new Promise((resolve) => {
-        setTimeout(() => resolve(gotEvent), 1200);
+        setTimeout(() => {
+          // 超时判为不支持时必须先摘掉监听：否则传感器晚到会和「点按充能」两条路径并行，
+          // 进度条乱跳并重复发 draw_stick。
+          if (!gotEvent) api.stop();
+          resolve(gotEvent);
+        }, 1200);
         const orig = cbs.onIntensity;
         cbs.onIntensity = (v) => {
           if (!gotEvent) {

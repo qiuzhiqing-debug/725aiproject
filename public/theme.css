@@ -1,0 +1,197 @@
+/* ==========================================================================
+   满分男 · 主题真源 theme.css
+   --------------------------------------------------------------------------
+   【改这里就能换肤】
+   全站（网页 + Canvas 海报 + 特效彩带）的颜色、字体、圆角、描边、硬阴影
+   都只在这一个文件里定义。想换主题：只改本文件的值，不用碰任何 .js。
+
+   规则：
+   1. style.css 里不允许出现字面色值，一律 var(--...) 引用本文件。
+   2. poster.js / fx.js 启动时用 getComputedStyle 读同一批变量，
+      所以改本文件海报和特效配色会跟着变。
+   3. 变量名是「角色」不是「颜色名」，换肤时改值不改名，
+      新增颜色请追加到对应分组末尾。
+
+   分组目录：
+     1) 主色系（品牌三色）
+     2) 语义强调色
+     3) 墨色与描边色（文字 / 边框）
+     4) 纸面与背景色
+     5) 浅色调（组件底色）
+     6) 失效态与占位色
+     7) 网格线（主色半透明衍生）
+     8) 光晕与投影色（半透明衍生）
+     9) 字体栈
+    10) 圆角半径
+    11) 描边宽度
+    12) 硬阴影偏移
+    13) 复合阴影
+    14) 海报专用配色（poster.js 读取）
+    15) 特效彩带配色（fx.js 读取）
+   ========================================================================== */
+
+:root {
+  /* ---------- 1) 主色系（品牌三色：电光蓝 / 冰川青 / 酸性黄） ---------- */
+  --c-blue: #075cff;          /* 主色：按钮、标题、强调 */
+  --c-blue-deep: #003bbf;     /* 主色深：hover / 文字投影 */
+  --c-blue-mid: #70a9ff;      /* 主色中：酒杯渐变 */
+  --c-blue-pale: #b8d5ff;     /* 主色浅：杯口渐变 */
+  --c-cyan: #13d8f4;          /* 副色：互动反馈与局部高光 */
+  --c-cyan-soft: #a5f0fb;     /* 副色浅：签子渐变 */
+  --c-yellow: #eaff32;        /* 点睛色：爆灯、命中、罚酒高潮 */
+  --c-yellow-deep: #d6ef00;   /* 点睛色深：高潮按钮 hover */
+
+  /* ---------- 2) 语义强调色 ---------- */
+  --c-red: #ff315a;           /* 罚酒 / 危险 / 辛辣提示 */
+  --c-purple: #7848ff;        /* 次强调（.amber 类） */
+
+  /* ---------- 3) 墨色与描边色 ---------- */
+  --c-ink: #090d18;           /* 正文主色 */
+  --c-ink-soft: #303b50;      /* 次级文字 */
+  --c-ink-dim: #536078;       /* 弱化文字 / 灭灯按钮硬阴影 */
+  --c-ink-mute: #6a7486;      /* 更弱：弹幕灭灯阴影 */
+  --c-line: #111725;          /* 主描边 */
+  --c-line-soft: #c3cede;     /* 次描边 */
+  --c-rail-dark: #0b1427;     /* 左侧竖条的深色段 */
+
+  /* ---------- 4) 纸面与背景色 ---------- */
+  --c-white: #ffffff;         /* 纯白 */
+  --c-page-bg: #f1f5fb;       /* html 兜底底色（橡皮筋回弹区） */
+  --c-paper: #ffffff;         /* body 舞台纸面 */
+  --c-paper-blue: #f1f7ff;    /* 纸面偏蓝变体 */
+  --c-mist: #f4f9ff;          /* body 空气感蓝白 */
+  --c-mist-deep: #eaf4ff;     /* body 空气感蓝白深层 */
+  --c-mist-mobile: #f3f8ff;   /* 手机端 body 渐变第 2 段 */
+  --c-ice: #e9f7ff;           /* 冰蓝：标签底、hover 底 */
+  --c-silver: #dbe4ef;        /* 银灰：输入框层级 */
+
+  /* 半透明纸面（毛玻璃层，透明度不同请分别命名） */
+  --c-card: rgba(255, 255, 255, 0.94);        /* 玻璃卡片底 */
+  --c-card-solid: #ffffff;                    /* 实心卡片底 */
+  --c-card-glass: rgba(255, 255, 255, 0.92);  /* aha 分段导航 */
+  --c-card-frost: rgba(255, 255, 255, 0.96);  /* 摇签台 */
+  --c-card-bar: rgba(255, 255, 255, 0.97);    /* 弹幕输入条 */
+
+  /* ---------- 5) 浅色调（组件底色） ---------- */
+  --c-tint-emoji: #f6fbff;      /* emoji 选择格 */
+  --c-tint-chip: #eef5fc;       /* 表情回应 chip */
+  --c-tint-flip-back: #f8fcff;  /* 翻卡背面 */
+  --c-tint-shimmer-a: #e6f2ff;  /* 立绘加载流光 起 */
+  --c-tint-shimmer-b: #cbe9ff;  /* 立绘加载流光 止 */
+  --c-tint-track: #d8eaff;      /* 滑杆轨道左段 */
+  --c-tint-cup-top: #dcecff;    /* 酒杯高光起点 */
+  --c-tint-sky: #b9e2ff;        /* 立绘兜底底纹 */
+  --c-tint-drink: #fff1f4;      /* 罚酒行底 */
+  --c-tint-exact: #fbffd5;      /* 精确命中行底 */
+
+  /* ---------- 6) 失效态与占位色 ---------- */
+  --c-disabled-fg: #7a8799;
+  --c-disabled-bg: #dfe7f0;
+  --c-disabled-line: #9cabbd;
+  --c-lamp-off: #dfe7f0;        /* 未点亮的灯 */
+  --c-placeholder: #667892;
+  --c-offline: #8997a9;         /* 掉线玩家左边条 */
+
+  /* ---------- 7) 网格线（主色的半透明衍生，工程蓝图底纹） ---------- */
+  --c-grid-bold: rgba(7, 92, 255, 0.075);
+  --c-grid-strong: rgba(7, 92, 255, 0.06);
+  --c-grid: rgba(7, 92, 255, 0.052);
+  --c-grid-mobile: rgba(7, 92, 255, 0.05);
+  --c-grid-h-strong: rgba(7, 92, 255, 0.05);
+  --c-grid-h: rgba(7, 92, 255, 0.045);
+  --c-grid-h-soft: rgba(7, 92, 255, 0.04);
+
+  /* ---------- 8) 光晕与投影色 ---------- */
+  --c-glow-blue-16: rgba(7, 93, 255, 0.16);
+  --c-glow-blue-18: rgba(7, 93, 255, 0.18);
+  --c-glow-blue-20: rgba(7, 93, 255, 0.2);
+  --c-glow-blue-22: rgba(7, 93, 255, 0.22);
+  --c-glow-blue-25: rgba(7, 93, 255, 0.25);
+  --c-glow-blue-28: rgba(7, 93, 255, 0.28);
+  --c-glow-blue-30: rgba(7, 93, 255, 0.3);
+  --c-glow-cyan: rgba(39, 220, 255, 0.95);
+  --c-glow-cyan-soft: rgba(39, 220, 255, 0.4);
+  --c-glow-yellow: rgba(237, 255, 61, 0.7);
+  --c-glow-yellow-soft: rgba(237, 255, 61, 0.35);
+  --c-glow-lime: rgba(195, 220, 0, 0.22);
+
+  --c-ink-a14: rgba(10, 16, 32, 0.14);
+  --c-ink-a16: rgba(10, 16, 32, 0.16);
+  --c-ink-a20: rgba(10, 16, 32, 0.2);
+  --c-ink-a25: rgba(10, 16, 32, 0.25);
+  --c-ink-a28: rgba(10, 16, 32, 0.28);
+  --c-ink-a45: rgba(10, 16, 32, 0.45);
+  --c-ink-a52: rgba(10, 16, 32, 0.52);
+  --c-line-a25: rgba(17, 26, 45, 0.25);
+
+  --c-shade-blue: rgba(16, 39, 78, 0.1);       /* 大卡片柔和投影 */
+  --c-shade-blue-sm: rgba(16, 39, 78, 0.08);
+  --c-shade-card: rgba(16, 39, 78, 0.06);
+  --c-shade-card-md: rgba(16, 39, 78, 0.09);
+  --c-cup-inner: rgba(0, 32, 126, 0.28);       /* 酒杯内壁暗部 */
+  --c-focus-ring: rgba(7, 93, 255, 0.18);      /* 键盘聚焦环 */
+
+  --c-white-a90: rgba(255, 255, 255, 0.9);
+  --c-white-a70: rgba(255, 255, 255, 0.7);
+  --c-white-a22: rgba(255, 255, 255, 0.22);
+
+  /* ---------- 9) 字体栈 ---------- */
+  --font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-poster: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+
+  /* ---------- 10) 圆角半径 ---------- */
+  --radius-card: 8px;   /* 大卡片 / 玻璃面板 */
+  --radius-btn: 8px;    /* 按钮 / 房间号 */
+  --radius-sm: 6px;     /* 输入框 / 小组件 */
+  --radius-pill: 999px; /* 胶囊标签 */
+
+  /* ---------- 11) 描边宽度 ---------- */
+  --stroke-thin: 1px;
+  --stroke: 1.5px;      /* 全站默认漫画描边 */
+  --stroke-bold: 2px;
+
+  /* ---------- 12) 硬阴影偏移（贴纸风格的实心位移） ---------- */
+  --hs-1: 1px;
+  --hs-2: 2px;
+  --hs-3: 3px;
+  --hs-4: 4px;
+  --hs-5: 5px;
+  --hs-6: 6px;
+  --hs-7: 7px;
+  --hs-8: 8px;
+  --hs-9: 9px;
+  --hs-10: 10px;
+  --hs-7-5: 7.5px;      /* 双层硬阴影的第二层 = 第一层 + 1.5px */
+  --hs-9-5: 9.5px;
+  --hs-10-5: 10.5px;
+  --hs-11-5: 11.5px;
+
+  /* ---------- 13) 复合阴影 ---------- */
+  --shadow-soft: 0 14px 36px var(--c-shade-blue), 0 1px 0 var(--c-white-a90) inset;
+  --shadow-soft-sm: 0 7px 18px var(--c-shade-blue-sm);
+  --focus-ring: 0 0 0 4px var(--c-focus-ring);
+
+  /* ---------- 14) 海报专用配色（poster.js 通过 getComputedStyle 读取） ----------
+     海报是 1080×1920 Canvas 长图，配色独立于网页，改这里海报就换肤。 */
+  --poster-bg-top: #ffffff;
+  --poster-bg-mid: #f3f8ff;
+  --poster-bg-bottom: #e9f2ff;
+  --poster-band: #d8efff;              /* 立绘下方横带 */
+  --poster-blue: #075bff;              /* 海报主色 */
+  --poster-lime: #d7ff34;              /* 底部酸性黄条 / 容忍度卡色条 */
+  --poster-ink: #07111f;               /* 海报描边与硬阴影 */
+  --poster-white: #ffffff;
+  --poster-portrait-fallback: #e9f3ff; /* 立绘加载失败底 */
+  --poster-banner-from: #0047d8;       /* 称号横幅渐变 起 */
+  --poster-banner-to: #00bfe8;         /* 称号横幅渐变 止 */
+  --poster-cyan: #00bfe8;              /* 最懂 TA 的人 卡色条 */
+  --poster-red: #ff315c;               /* 一票否决 卡色条 */
+  --poster-amber: #ffb800;             /* 罚酒榜 卡色条 */
+
+  /* ---------- 15) 特效彩带配色（fx.js 通过 getComputedStyle 读取） ---------- */
+  --fx-confetti-1: #ff4081;
+  --fx-confetti-2: #ffb84d;
+  --fx-confetti-3: #ff77a9;
+  --fx-confetti-4: #fff3e0;
+  --fx-confetti-5: #ff7a45;
+}

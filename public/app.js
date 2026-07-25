@@ -1,9 +1,5 @@
 // 满分男 · 酒桌局 — 前端 SPA（无构建 vanilla JS）
-import { DECKS } from "./questions.js";
-import { drawQR } from "./qrcode.js";
-import { renderPoster } from "./poster.js";
 import { sound, createShaker, celebrate, heartBurst, lampOffFx } from "./fx.js";
-import { buildIdealProfile } from "./ideal-profile.js";
 import {
   MESSAGE_REACTIONS,
   QUICK_REACTIONS,
@@ -18,13 +14,32 @@ import {
 const $app = document.getElementById("app");
 const $toast = document.getElementById("toast");
 
+// 首屏只加载游戏壳和实时互动；题库、二维码、理想型和海报在进入对应环节后再取。
+const lazyModules = {};
+function lazyImport(key, path) {
+  return lazyModules[key] || (lazyModules[key] = import(path));
+}
+const loadQuestions = () => lazyImport("questions", "./questions.js");
+const loadQr = () => lazyImport("qr", "./qrcode.js");
+const loadPoster = () => lazyImport("poster", "./poster.js");
+const loadIdealProfile = () => lazyImport("idealProfile", "./ideal-profile.js");
+let buildIdealProfileFn = null;
+
 const EMOJIS = ["🍺", "🍷", "🥃", "🍶", "🍸", "🍹", "🥂", "🍻", "🫗", "🧉"];
+const DRINK_OPTIONS = [
+  { id: "beer", label: "啤酒", emoji: "🍺" },
+  { id: "wine", label: "红酒", emoji: "🍷" },
+  { id: "baijiu", label: "白酒", emoji: "🥃" },
+  { id: "cocktail", label: "调酒", emoji: "🍸" },
+  { id: "soft", label: "无酒精", emoji: "🫧" },
+];
 
 /* ---------- 本地状态 ---------- */
 const ui = {
   screen: "home", // home | game
   name: localStorage.getItem("mfn_name") || "",
   emoji: localStorage.getItem("mfn_emoji") || "🍺",
+  drink: localStorage.getItem("mfn_drink") || "beer",
   code: new URLSearchParams(location.search).get("room") || "",
   state: null, // 服务端下发的房间视图
   slider: 5,
@@ -38,6 +53,9 @@ const ui = {
   shakeMode: null, // null | "motion" | "tap"
   shakeCharge: 0,
   stickDoneSent: false,
+  stickDrawSent: false,
+  tapCharge: 0,
+  submitPendingAt: 0,
   lastPhase: null,
   lastDrawn: false,
   // 互动体系（PRD §9）
@@ -50,6 +68,7 @@ const ui = {
 let ws = null;
 let shaker = null; // createShaker 实例
 let reconnectTimer = null;
+let reconnectAttempt = 0;
 
 function toast(msg) {
   $toast.textContent = msg;
@@ -70,9 +89,25 @@ const PREVIEW =
     ? new URLSearchParams(location.search).get("preview")
     : null;
 
+// 返回 true=已发出，false=连接不可用（调用方需回滚本地乐观状态并提示）
 function send(obj) {
-  if (PREVIEW) return; // 预览模式无连接，吞掉所有出站消息
-  if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
+  if (PREVIEW) return true; // 预览模式无连接，吞掉所有出站消息但视为成功
+  if (ws && ws.readyState === 1) {
+    try {
+      ws.send(JSON.stringify(obj));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+// 发送失败时统一提示，方便调用方 `if (!sendOrWarn(x)) { 回滚 }`
+function sendOrWarn(obj) {
+  const ok = send(obj);
+  if (!ok) toast("网络断开，请重试");
+  return ok;
 }
 
 /* ---------- 连接 ---------- */
@@ -89,10 +124,13 @@ function connect(code, { silentFail = false } = {}) {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   ws = new WebSocket(`${proto}//${location.host}/api/room/${code}/ws`);
   ws.onopen = () => {
+    reconnectAttempt = 0; // 连上即重置退避
+    hideReconnectBar();
     send({
       type: "join",
       name: ui.name,
       emoji: ui.emoji,
+      drink: ui.drink,
       token: localStorage.getItem("mfn_token_" + code) || undefined,
     });
   };
@@ -103,15 +141,57 @@ function connect(code, { silentFail = false } = {}) {
   };
   ws.onclose = (e) => {
     if (e.code === 4001) return; // 被踢，onMessage 已处理
-    if (ui.screen === "game") {
-      // 断线自动重连（凭 token 回座）
-      clearTimeout(reconnectTimer);
-      reconnectTimer = setTimeout(() => connect(ui.code, { silentFail: true }), 1500);
-    }
+    if (ui.screen === "game") scheduleReconnect();
   };
   ws.onerror = () => {
     if (!silentFail && ui.screen !== "game") toast("连接失败，检查房间码");
   };
+}
+
+/* 断线重连：指数退避 1.5s→3→6→12，封顶 30s，带 ±25% jitter；
+   连续 MAX_RECONNECT 次仍失败就停手，改成用户可点的重连条，避免重连风暴。 */
+const MAX_RECONNECT = 6;
+function scheduleReconnect() {
+  clearTimeout(reconnectTimer);
+  if (reconnectAttempt >= MAX_RECONNECT) {
+    showReconnectBar();
+    return;
+  }
+  const base = Math.min(30000, 1500 * Math.pow(2, reconnectAttempt));
+  const delay = Math.round(base * (0.75 + Math.random() * 0.5));
+  reconnectAttempt++;
+  showReconnectBar(true);
+  reconnectTimer = setTimeout(() => connect(ui.code, { silentFail: true }), delay);
+}
+
+function manualReconnect() {
+  reconnectAttempt = 0;
+  clearTimeout(reconnectTimer);
+  connect(ui.code, { silentFail: true });
+}
+
+function reconnectBar() {
+  let el = document.getElementById("reconnectBar");
+  if (!el) {
+    el = document.createElement("button");
+    el.id = "reconnectBar";
+    el.className = "reconnect-bar";
+    el.type = "button";
+    el.addEventListener("click", manualReconnect);
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function showReconnectBar(retrying = false) {
+  const el = reconnectBar();
+  el.textContent = retrying ? "连接断开，正在重连…" : "已断线，点此重连";
+  el.classList.toggle("retrying", retrying);
+  el.classList.remove("hidden");
+}
+
+function hideReconnectBar() {
+  document.getElementById("reconnectBar")?.classList.add("hidden");
 }
 
 function onMessage(msg) {
@@ -119,6 +199,7 @@ function onMessage(msg) {
     localStorage.setItem("mfn_token_" + ui.code, msg.token);
     localStorage.setItem("mfn_name", ui.name);
     localStorage.setItem("mfn_emoji", ui.emoji);
+    localStorage.setItem("mfn_drink", ui.drink);
     ui.screen = "game";
     if (msg.reconnected) toast("已回到座位");
     const u = new URL(location.href);
@@ -167,21 +248,29 @@ function onMessage(msg) {
     // 阶段切换时重置局部 UI 状态
     if (msg.state.phase !== ui.lastPhase || (cur && cur.question?.id) !== onMessage._qid) {
       ui.submitted = false;
+      ui.submitPendingAt = 0;
       ui.commentSent = false;
       ui.assigned = false;
       if (msg.state.phase !== ui.lastPhase) {
         if (msg.state.phase === "aha") sound.riff(); // 理想型入场 riff
+        if (msg.state.phase === "drinking") sound.chug();
         ui.ahaStage = 0;
         ui.posterUrl = null;
         ui.stickDoneSent = false;
         if (msg.state.phase === "picking") {
           ui.shakeMode = null;
           ui.shakeCharge = 0;
+          ui.tapCharge = 0;
+          ui.stickDrawSent = false;
         }
       }
       ui.lastPhase = msg.state.phase;
       onMessage._qid = cur && cur.question?.id;
     }
+    // 「已提交」以服务端 state 为准：瞬断丢包时本地会自动回到可重交状态。
+    // 刚点完还没等到回执的 4s 内保留乐观显示，避免竞态广播导致的闪回。
+    const optimistic = ui.submitPendingAt && Date.now() - ui.submitPendingAt < 4000;
+    ui.submitted = derivedSubmitted(msg.state) || !!optimistic;
     // 出签瞬间：清脆「嗒」
     if (cur?.drawn && !ui.lastDrawn) sound.tick();
     ui.lastDrawn = !!cur?.drawn;
@@ -189,12 +278,32 @@ function onMessage(msg) {
   }
 }
 
+// spice 由服务端下发，负数/超大值会让 repeat 抛 RangeError 卡死全房
+function spiceLevel(v) {
+  return Math.max(0, Math.min(5, Math.round(Number(v)) || 1));
+}
+
+// 我这一轮到底交没交：只看服务端下发的 current.submitted
+function derivedSubmitted(s) {
+  const cur = s?.current;
+  if (!cur || !cur.submitted) return false;
+  if (cur.youAreProtagonist) return !!cur.submitted.protagonist;
+  return (cur.submitted.guessers || []).includes(s.you?.name);
+}
+
 /* ---------- 渲染 ---------- */
 
 function render() {
-  // 阶段切换时给容器加 phase-in，子块做入场瀑布；同阶段重渲染不再动画
+  // 入场 class 只存在于真正的 screen/phase 切换；同阶段重绘不会让新 DOM 再次闪入。
   const key = ui.screen + ":" + (ui.state?.phase || "");
-  $app.classList.toggle("phase-in", key !== render._key);
+  const phaseChanged = key !== render._key;
+  // 离开抽签屏必须拆掉 devicemotion 监听：否则整局都在响哗啦声、发无效 shake、操作已销毁的 DOM
+  if (ui.state?.phase !== "picking" && shaker) {
+    shaker.stop();
+    shaker = null;
+  }
+  if (render._animationEnd) render._animationEnd();
+  $app.classList.remove("phase-in");
   render._key = key;
   if (ui.screen === "home") {
     renderHome();
@@ -209,17 +318,30 @@ function render() {
         case "protagonist_setup": renderSetup(s); break;
         case "answering": renderAnswering(s); break;
         case "reveal": renderReveal(s); break;
+        case "drinking": renderDrinking(s); break;
         case "aha": renderAha(s, s.aha, false); break;
         case "finished": renderFinished(s); break;
       }
     }
+  }
+  if (phaseChanged) {
+    $app.classList.add("phase-in");
+    const endAnimation = () => {
+      $app.classList.remove("phase-in");
+      $app.removeEventListener("animationend", endAnimation);
+      clearTimeout(render._animationTimer);
+      render._animationEnd = null;
+    };
+    render._animationEnd = endAnimation;
+    $app.addEventListener("animationend", endAnimation);
+    render._animationTimer = setTimeout(endAnimation, 900);
   }
   updateOverlays();
 }
 
 function header(s, sub) {
   return `<div class="row">
-    <div class="grow"><h1 class="neon">满分男<span class="amber">·</span>酒桌局</h1>
+    <div class="grow"><div class="brand-title"><img class="brand-mark" src="/favicon.svg" alt="" width="42" height="42" /><h1 class="neon">满分男<span class="amber">·</span>酒桌局</h1></div>
     ${sub ? `<div class="dim">${sub}</div>` : ""}</div>
     <button class="btn ghost small" id="sndBtn">${sound.enabled ? "🔊" : "🔇"}</button>
   </div>`;
@@ -244,6 +366,10 @@ function renderHome() {
       <div class="emoji-grid" id="emojiGrid">
         ${EMOJIS.map((e) => `<button data-e="${e}" class="${e === ui.emoji ? "sel" : ""}">${e}</button>`).join("")}
       </div>
+      <label class="dim">今晚罚酒喝什么</label>
+      <div class="emoji-grid drink-choice-grid" id="drinkGrid">
+        ${DRINK_OPTIONS.map((d) => `<button data-drink="${d.id}" class="${d.id === ui.drink ? "sel" : ""}" title="${d.label}">${d.emoji}<small>${d.label}</small></button>`).join("")}
+      </div>
     </div>
     <div class="glass stack">
       <button class="btn" id="createBtn">🏮 开一桌（当房主）</button>
@@ -258,6 +384,12 @@ function renderHome() {
     const b = ev.target.closest("button[data-e]");
     if (!b) return;
     ui.emoji = b.dataset.e;
+    renderHome();
+  });
+  document.getElementById("drinkGrid").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-drink]");
+    if (!b) return;
+    ui.drink = b.dataset.drink;
     renderHome();
   });
   const go = async (create) => {
@@ -285,6 +417,7 @@ function renderHome() {
 function renderLobby(s) {
   const me = s.you;
   const invite = `${location.origin}/?room=${s.code}`;
+  const decks = renderLobby._decks;
   $app.innerHTML = `
     ${header(s, "把房间码甩到群里，人齐开局")}
     <div class="glass center stack">
@@ -297,6 +430,7 @@ function renderLobby(s) {
       <div class="players">${s.players.map((p) => `
         <div class="player ${p.connected ? "" : "offline"}">
           <span>${esc(p.emoji)}</span><b>${esc(p.name)}</b>
+          <span class="dim">${esc(p.drink?.emoji || "🍺")} ${esc(p.drink?.label || "啤酒")}</span>
           ${p.isHost ? `<span class="tag">房主</span>` : ""}
           ${me.isHost && !p.isHost ? `<button class="btn ghost small kickBtn" data-t="${esc(p.token)}">踢</button>` : ""}
         </div>`).join("")}
@@ -312,31 +446,45 @@ function renderLobby(s) {
       </div>
       <div class="row">
         <label class="dim grow">锅底</label>
-        <select id="deckSel">${Object.entries(DECKS).map(([k, d]) =>
-          `<option value="${k}" ${k === s.settings.deck ? "selected" : ""}>${d.name}</option>`).join("")}
+        <select id="deckSel" ${decks ? "" : "disabled"}>${decks
+          ? Object.entries(decks).map(([k, d]) =>
+              `<option value="${k}" ${k === s.settings.deck ? "selected" : ""}>${d.name}</option>`).join("")
+          : `<option>锅底加载中…</option>`}
         </select>
       </div>
-      <button class="btn" id="startBtn" ${s.players.length < 2 ? "disabled" : ""}>🍻 开局（≥2人）</button>
+      <button class="btn" id="startBtn" ${s.players.length < 2 || !decks ? "disabled" : ""}>🍻 开局（≥2人）</button>
     </div>` : `<div class="glass center dim">等房主开局…锅底：${esc(s.settings.deckName)}</div>`}`;
-  drawQR(document.getElementById("qrCv").getContext("2d"), invite, 0, 0, 180, { light: "#ffffff", dark: "#241333" });
+  const qrCanvas = document.getElementById("qrCv");
+  loadQr().then(({ drawQR }) => {
+    if (qrCanvas?.isConnected) {
+      drawQR(qrCanvas.getContext("2d"), invite, 0, 0, 180, { light: "#ffffff", dark: "#241333" });
+    }
+  }).catch(() => qrCanvas?.closest(".qr-wrap")?.classList.add("hidden"));
   document.getElementById("copyBtn").addEventListener("click", async () => {
     try { await navigator.clipboard.writeText(invite); toast("链接已复制"); }
     catch { toast(invite); }
   });
-  if (me.isHost) {
+  if (me.isHost && !decks) {
+    loadQuestions().then(({ DECKS }) => {
+      renderLobby._decks = DECKS;
+      if (ui.state?.phase === "lobby" && ui.state?.code === s.code) render();
+    }).catch(() => toast("题库加载失败，请刷新重试"));
+  }
+  if (me.isHost && decks) {
     const roundsSel = document.getElementById("roundsSel");
     const deckSel = document.getElementById("deckSel");
     const pushSettings = () => send({
       type: "set_settings",
       rounds: Number(roundsSel.value),
       deck: deckSel.value,
-      deckName: DECKS[deckSel.value].name,
+      deckName: decks[deckSel.value].name,
     });
     roundsSel.addEventListener("change", pushSettings);
     deckSel.addEventListener("change", pushSettings);
     document.getElementById("startBtn").addEventListener("click", () => {
       sound.unlock();
-      send({ type: "start", questions: DECKS[s.settings.deck].questions });
+      const selectedDeck = decks[s.settings.deck] || decks.qingtang || Object.values(decks)[0];
+      send({ type: "start", questions: selectedDeck.questions });
     });
   }
   $app.querySelectorAll(".kickBtn").forEach((b) =>
@@ -370,7 +518,7 @@ function renderPicking(s) {
     document.getElementById("doneBtn")?.addEventListener("click", () => {
       if (ui.stickDoneSent) return;
       ui.stickDoneSent = true;
-      send({ type: "stick_done" });
+      if (!sendOrWarn({ type: "stick_done" })) ui.stickDoneSent = false; // 断线回滚，允许重点
     });
     return;
   }
@@ -378,6 +526,8 @@ function renderPicking(s) {
 
   const onIntensity = throttleIntensity();
   const onCharged = () => {
+    if (ui.stickDrawSent) return; // 达标后重复触发不再重发（与 stickDoneSent 同风格）
+    ui.stickDrawSent = true;
     ui.shakeCharge = 1;
     send({ type: "draw_stick" });
   };
@@ -402,15 +552,15 @@ function renderPicking(s) {
   });
 
   // 降级：点按/连点驱动同一套动画与出签
-  let tapCharge = 0;
+  // 充能量存在 ui 上：picking 阶段的任何 state 广播都会重渲染，局部变量会被清零导致永远点不满
   document.getElementById("tapBtn")?.addEventListener("click", () => {
     sound.unlock();
     const v = 0.7 + Math.random() * 0.3;
     onIntensity(v);
-    tapCharge += 16;
-    ui.shakeCharge = Math.min(1, tapCharge / 130);
+    ui.tapCharge += 16;
+    ui.shakeCharge = Math.min(1, ui.tapCharge / 130);
     updateChargeBar();
-    if (tapCharge >= 130) onCharged();
+    if (ui.tapCharge >= 130) onCharged();
   });
 
   function addCharge() {}
@@ -483,7 +633,7 @@ function renderAnswering(s) {
     ${header(s, `${esc(cur.protagonist.name)} 的第 ${cur.roundIndex}/${cur.totalRounds} 轮`)}
     <div class="glass question-card">
       ${esc(cur.question.text)}
-      <div class="spice">${"🌶️".repeat(cur.question.spice)}</div>
+      <div class="spice">${"🌶️".repeat(spiceLevel(cur.question.spice))}</div>
     </div>
     <div class="glass stack center">
       ${ui.submitted ? `
@@ -510,8 +660,9 @@ function renderAnswering(s) {
     });
     document.getElementById("submitBtn").addEventListener("click", () => {
       sound.unlock();
+      if (!sendOrWarn({ type: me ? "score" : "guess", v: ui.slider })) return; // 没发出去就别显示已提交
       ui.submitted = true;
-      send({ type: me ? "score" : "guess", v: ui.slider });
+      ui.submitPendingAt = Date.now();
       render();
     });
   }
@@ -566,7 +717,7 @@ function renderReveal(s) {
       <input type="text" id="cmtIn" maxlength="100" placeholder="补刀一句（可选）" class="grow" value="${esc(ui.commentDraft)}" />
       <button class="btn ghost small" id="cmtBtn">发</button>
     </div>` : ""}
-    ${me.isHost ? `<button class="btn" id="nextBtn">${cur.roundIndex >= cur.totalRounds ? "🎴 看 TA 的理想型" : "➡️ 下一题"}</button>` : `<div class="dim center">等房主进下一步…</div>`}`;
+    ${me.isHost ? `<button class="btn" id="nextBtn">${rv.results.some((x) => x.drink || x.assigned) ? "🥂 进入罚酒仪式" : (cur.roundIndex >= cur.totalRounds ? "🎴 看 TA 的理想型" : "➡️ 下一题")}</button>` : `<div class="dim center">等房主进下一步…</div>`}`;
   bindSound();
   if (fresh) {
     // 罚酒判定时刻：行底色/抖动/飘字/高光，一次性播放
@@ -593,22 +744,54 @@ function renderReveal(s) {
   $app.querySelectorAll(".assignBtn").forEach((b) =>
     b.addEventListener("click", () => {
       ui.assigned = true;
-      send({ type: "assign_drink", target: b.dataset.n });
+      if (!sendOrWarn({ type: "assign_drink", target: b.dataset.n })) ui.assigned = false;
     }));
   const cmtIn = document.getElementById("cmtIn");
   cmtIn?.addEventListener("input", () => (ui.commentDraft = cmtIn.value));
   document.getElementById("cmtBtn")?.addEventListener("click", () => {
     if (!ui.commentDraft.trim()) return;
     ui.commentSent = true;
-    send({ type: "comment", text: ui.commentDraft.trim() });
+    if (!sendOrWarn({ type: "comment", text: ui.commentDraft.trim() })) ui.commentSent = false;
   });
-  document.getElementById("nextBtn")?.addEventListener("click", () => send({ type: "next" }));
+  document.getElementById("nextBtn")?.addEventListener("click", () => sendOrWarn({ type: "next" }));
+}
+
+/* --- CHUG CHUG CHUG 罚酒仪式 --- */
+function renderDrinking(s) {
+  const cur = s.current;
+  const ceremony = cur.drinking || { drinkers: [], completed: 0, total: 0 };
+  const finished = ceremony.allDone || ceremony.skipped;
+  $app.innerHTML = `
+    ${header(s, `罚酒仪式 · 第 ${cur.roundIndex}/${cur.totalRounds} 轮`)}
+    <section class="chug-stage">
+      <div class="chug-title">CHUG<br>CHUG<br>CHUG</div>
+      <div class="chug-beat">举杯 · 干杯！</div>
+      <div class="drinkers-grid">
+        ${ceremony.drinkers.map((item) => `
+          <div class="drinker-card ${item.done ? "done" : ""}">
+            <div class="drink-cup">${esc(item.drink?.emoji || "🍺")}</div>
+            <div><b>${esc(item.emoji)} ${esc(item.name)}</b><div class="dim">${esc(item.drink?.label || "啤酒")} × ${item.cups} 杯</div></div>
+            <div class="drink-progress" style="--drink-progress:${item.done ? 100 : 18}%"></div>
+          </div>`).join("")}
+      </div>
+      <div class="center dim">已完成 ${ceremony.completed}/${ceremony.total}${ceremony.skipped ? " · 房主已跳过" : ""}</div>
+      <div class="chug-actions">
+        ${ceremony.canConfirm ? `<button class="btn" id="drinkDoneBtn">我喝完了 ✓</button>` : ""}
+        ${s.you.isHost && !finished ? `<button class="btn ghost" id="skipDrinkBtn">跳过仪式</button>` : ""}
+        ${s.you.isHost && finished ? `<button class="btn" id="nextBtn">${cur.roundIndex >= cur.totalRounds ? "看 TA 的理想型" : "下一题"}</button>` : ""}
+      </div>
+      ${!s.you.isHost && !ceremony.canConfirm && !finished ? `<div class="center dim">等喝酒的人干杯…</div>` : ""}
+    </section>`;
+  bindSound();
+  document.getElementById("drinkDoneBtn")?.addEventListener("click", () => sendOrWarn({ type: "drink_done" }));
+  document.getElementById("skipDrinkBtn")?.addEventListener("click", () => sendOrWarn({ type: "skip_drinking" }));
+  document.getElementById("nextBtn")?.addEventListener("click", () => sendOrWarn({ type: "next" }));
 }
 
 /* --- Aha 结算卡：立绘 → 相亲档案 → 相处细节 --- */
 function resolveAhaProfile(aha) {
   if (aha.profile?.portrait && aha.profile?.matchCard && aha.profile?.relationship) return aha.profile;
-  return buildIdealProfile({
+  return buildIdealProfileFn({
     records: [],
     genderPreference: aha.gender,
     seed: aha.id || `${aha.idolName || "ideal"}:${aha.stats?.avgScore || 0}`,
@@ -621,6 +804,15 @@ function safeProfileColor(value, fallback) {
 
 function renderAha(s, aha, isFinal) {
   const me = s.you;
+  if (!(aha.profile?.portrait && aha.profile?.matchCard && aha.profile?.relationship) && !buildIdealProfileFn) {
+    $app.innerHTML = `${header(s, `${esc(aha.protagonist.name)} 的理想型来了`)}<div class="boot glass">正在生成理想型档案…</div>`;
+    bindSound();
+    loadIdealProfile().then(({ buildIdealProfile }) => {
+      buildIdealProfileFn = buildIdealProfile;
+      if (["aha", "finished"].includes(ui.state?.phase)) render();
+    }).catch(() => toast("理想型档案加载失败，请刷新重试"));
+    return;
+  }
   const profile = resolveAhaProfile(aha);
   const card = profile.matchCard;
   const portrait = profile.portrait;
@@ -749,6 +941,7 @@ function renderAha(s, aha, isFinal) {
     ui.posterBusy = true;
     render();
     try {
+      const { renderPoster } = await loadPoster();
       ui.posterUrl = await renderPoster({ ...aha, profile }, `${location.origin}/?room=${s.code}`);
     } catch (e) {
       toast("海报生成失败：" + e.message);
@@ -756,7 +949,7 @@ function renderAha(s, aha, isFinal) {
     ui.posterBusy = false;
     render();
   });
-  document.getElementById("nextBtn")?.addEventListener("click", () => send({ type: "next" }));
+  document.getElementById("nextBtn")?.addEventListener("click", () => sendOrWarn({ type: "next" }));
   document.getElementById("burstBtn")?.addEventListener("click", () => castLight("burst"));
   document.getElementById("offBtn")?.addEventListener("click", () => castLight("off"));
 
@@ -933,7 +1126,12 @@ function renderChat() {
       ${ui.pickerFor === m.id ? `<div class="emoji-picker">${MESSAGE_REACTIONS.map((e) =>
         `<button class="picker-e" data-id="${m.id}" data-e="${e}">${e}</button>`).join("")}</div>` : ""}
     </div>`).join("") : `<div class="dim center" style="padding:24px 0">还没人说话，开个头？</div>`;
-  if (atBottom || ui.chatOpen) box.scrollTop = box.scrollHeight;
+  if (atBottom) box.scrollTop = box.scrollHeight; // 不能恒真：抽屉开着翻历史时不该被拽回底部
+  // 抽屉开着时持续推进已读水位，避免关闭后出现幽灵未读红点
+  if (ui.chatOpen) {
+    const last = chat[chat.length - 1];
+    if (last && last.id > ui.chatLastSeen) ui.chatLastSeen = last.id;
+  }
 }
 
 // 弹幕飘屏（弹幕 & 快捷 reaction 同一渲染体系）
@@ -941,11 +1139,12 @@ function spawnDanmaku({ name, emoji, text, special }) {
   const layer = document.getElementById("dmLayer");
   if (!layer) return;
   const el = document.createElement("div");
-  const isEmojiOnly = QUICK_REACTIONS.includes(text);
+  const t = String(text ?? ""); // text 缺失时不能抛异常打断 onMessage
+  const isEmojiOnly = QUICK_REACTIONS.includes(t);
   el.className = "dm-item" + (special ? " " + special : "") + (isEmojiOnly ? " dm-emoji" : "");
-  el.textContent = isEmojiOnly ? text : `${emoji || ""} ${name ? name + "：" : ""}${text}`;
+  el.textContent = isEmojiOnly ? t : `${emoji || ""} ${name ? name + "：" : ""}${t}`;
   el.style.top = 6 + Math.random() * 38 + "vh";
-  el.style.animationDuration = (isEmojiOnly ? 5 : 7 + Math.min(3, text.length * 0.1)) + "s";
+  el.style.animationDuration = (isEmojiOnly ? 5 : 7 + Math.min(3, t.length * 0.1)) + "s";
   layer.appendChild(el);
   el.addEventListener("animationend", () => el.remove());
   // 兜底清理
@@ -970,7 +1169,7 @@ function updateOverlays() {
   const s = ui.state;
   const inGame = ui.screen === "game" && !!s;
   document.getElementById("chatFab")?.classList.toggle("hidden", !inGame);
-  const barOn = inGame && ["answering", "reveal", "aha", "finished"].includes(s?.phase);
+  const barOn = inGame && ["answering", "reveal", "drinking", "aha", "finished"].includes(s?.phase);
   document.getElementById("dmBar")?.classList.toggle("hidden", !barOn);
   document.body.classList.toggle("has-dmbar", barOn);
   if (inGame) {
@@ -1007,12 +1206,13 @@ function buildPreviewState(screen) {
     { name: "这是一个超长昵称测试员", emoji: "🍶", isHost: false, connected: false, token: "t4", done: false },
     { name: "麦当劳", emoji: "🧉", isHost: false, connected: true, token: "t5", done: false },
   ];
-  const deck = Object.keys(DECKS)[0];
+  const decks = renderLobby._decks;
+  const deck = Object.keys(decks)[0];
   const base = {
     code: "8848",
     you: { name: "嘉欣", isHost: true },
     players,
-    settings: { rounds: 5, deck, deckName: DECKS[deck].name },
+    settings: { rounds: 5, deck, deckName: decks[deck].name },
     chat: [
       { id: 1, name: "阿豪", emoji: "🍺", text: "这题出得太狠了哈哈哈", reactions: { "😂": ["嘉欣", "麦当劳"], "🍺": ["嘉欣"] } },
       { id: 2, name: "麦当劳", emoji: "🧉", text: "主角面不改色，有点东西", reactions: {} },
@@ -1022,7 +1222,7 @@ function buildPreviewState(screen) {
   const question = { id: "q1", text: "这是一个满分男，但他留着很长的小拇指指甲，说是用来开快递的，你没见他开过快递。", spice: 3 };
   const protagonist = { name: "赛百诺女士", emoji: "🥂" };
   const mkAha = (p, seed) => {
-    const profile = buildIdealProfile({
+    const profile = buildIdealProfileFn({
       records: [
         { question: { id: "q-preview-1", tags: ["职场", "控制"] }, score: seed === 2 ? 9 : 3 },
         { question: { id: "q-preview-2", tags: ["纯爱", "温柔"] }, score: 9 },
@@ -1082,6 +1282,15 @@ function buildPreviewState(screen) {
             { name: "麦当劳", emoji: "🧉", guess: 3, exact: false, drink: false },
           ],
         } } };
+    case "drinking":
+      return { ...base, phase: "drinking", current: {
+        protagonist, roundIndex: 2, totalRounds: 5,
+        drinking: { completed: 1, total: 3, allDone: false, skipped: false, canConfirm: true, drinkers: [
+          { name: "嘉欣", emoji: "🍷", drink: { id: "wine", label: "红酒", emoji: "🍷" }, cups: 1, done: true, mine: false },
+          { name: "阿豪", emoji: "🍺", drink: { id: "beer", label: "啤酒", emoji: "🍺" }, cups: 2, done: false, mine: false },
+          { name: "麦当劳", emoji: "🧉", drink: { id: "soft", label: "无酒精", emoji: "🫧" }, cups: 1, done: false, mine: true },
+        ] },
+      } };
     case "aha":
     case "profile":
     case "chemistry":
@@ -1120,8 +1329,17 @@ function bootPreview(screen) {
 }
 
 /* ---------- 启动 ---------- */
-(function boot() {
-  if (PREVIEW && bootPreview(PREVIEW)) return;
+(async function boot() {
+  if (PREVIEW) {
+    try {
+      const [{ DECKS }, { buildIdealProfile }] = await Promise.all([loadQuestions(), loadIdealProfile()]);
+      renderLobby._decks = DECKS;
+      buildIdealProfileFn = buildIdealProfile;
+      if (bootPreview(PREVIEW)) return;
+    } catch {
+      toast("预览资源加载失败");
+    }
+  }
   // 带 ?room= 且有历史 token → 自动回座
   const code = ui.code;
   if (/^\d{4}$/.test(code) && localStorage.getItem("mfn_token_" + code) && localStorage.getItem("mfn_name")) {

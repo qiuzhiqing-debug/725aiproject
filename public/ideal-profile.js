@@ -1,4 +1,4 @@
-const PROFILE_VERSION = "ideal-profile-v1";
+const PROFILE_VERSION = "ideal-profile-v2";
 
 const ARCHETYPE_LIST = [
   {
@@ -178,6 +178,58 @@ const MBTI_SIGNALS = Object.freeze({
   P: ["自由", "冒险", "抽象", "刺激", "即兴", "浪子"],
 });
 
+const DIMENSION_LABELS = Object.freeze({
+  agency: "行动与掌控",
+  warmth: "回应与共情",
+  stability: "稳定与边界",
+  intellect: "理性与智识",
+  spontaneity: "自由与新鲜感",
+  creativity: "审美与表达",
+  sociability: "社交能量",
+});
+
+// These vectors describe relationship style, not gender or sexual orientation.
+const ARCHETYPE_DIMENSIONS = Object.freeze({
+  "power-ceo": Object.freeze({ agency: 1, warmth: -0.15, stability: 0.55, intellect: 0.3, spontaneity: -0.4, creativity: 0, sociability: 0.2 }),
+  "sunny-puppy": Object.freeze({ agency: 0.1, warmth: 1, stability: 0.1, intellect: 0, spontaneity: 0.45, creativity: 0.15, sociability: 0.65 }),
+  "steady-guardian": Object.freeze({ agency: 0.3, warmth: 0.7, stability: 1, intellect: 0.15, spontaneity: -0.5, creativity: 0, sociability: -0.15 }),
+  "frost-scholar": Object.freeze({ agency: 0.1, warmth: 0.05, stability: 0.4, intellect: 1, spontaneity: -0.25, creativity: 0.25, sociability: -0.45 }),
+  "wild-charmer": Object.freeze({ agency: 0.25, warmth: 0.05, stability: -0.45, intellect: 0, spontaneity: 1, creativity: 0.25, sociability: 0.8 }),
+  "gentle-artist": Object.freeze({ agency: -0.1, warmth: 0.75, stability: 0.05, intellect: 0.1, spontaneity: 0.35, creativity: 1, sociability: 0.05 }),
+});
+
+// A positive weight means the scenario embodies the dimension. Because answer
+// scores are centred at 5, rejecting a negative behaviour reverses its signal.
+const TAG_DIMENSIONS = Object.freeze({
+  "沟通": { warmth: -0.8 }, "情绪沟通": { warmth: -1, stability: -0.2 }, "敷衍": { warmth: -1 },
+  "时间观念": { stability: -0.9 }, "记性": { stability: -0.7, warmth: -0.25 }, "选择困难": { agency: -0.7, stability: -0.2 },
+  "生活习惯": { stability: -0.45 }, "卫生": { stability: -1 }, "外卖": { stability: -0.15 },
+  "社交边界": { warmth: -0.5, stability: -0.9 }, "边界": { warmth: -0.35, stability: -0.8 }, "前任边界": { warmth: -0.45, stability: -1 },
+  "账号边界": { warmth: -0.35, stability: -0.9 }, "性边界": { warmth: -0.6, stability: -1 }, "公开关系": { warmth: -0.7, stability: -0.55 },
+  "隐私": { warmth: -0.75, stability: -0.8 }, "出柜隐私": { warmth: -0.85, stability: -0.9 }, "定位": { warmth: -0.55, stability: -0.7 },
+  "公审": { warmth: -0.9, stability: -0.6 }, "双标": { warmth: -0.7, stability: -0.6 }, "甩锅": { warmth: -0.6, stability: -0.75 },
+  "前任": { stability: -0.45 }, "前任同居": { stability: -0.9 }, "关系混乱": { stability: -1, spontaneity: 0.45 }, "海王": { stability: -1, sociability: 0.5 },
+  "AI": { intellect: 1 }, "科技": { intellect: 1 }, "理性": { intellect: 0.85 }, "学习": { intellect: 0.9 }, "知识": { intellect: 0.9 },
+  "职场": { agency: 0.8, stability: 0.45 }, "控制": { agency: 0.9, stability: 0.4, warmth: -0.2 }, "控制欲": { agency: 1, stability: 0.45, warmth: -0.3 },
+  "量化恋爱": { intellect: 0.5, agency: 0.45, warmth: -0.35 }, "自律人设": { agency: 0.45, stability: 0.25 }, "金钱": { agency: 0.35, stability: 0.35 },
+  "消费": { agency: 0.15, stability: -0.45 }, "择偶": { agency: 0.4, stability: 0.2 },
+  "夜生活": { spontaneity: 0.9, sociability: 1, stability: -0.25 }, "圈内社交": { sociability: 0.75 }, "姬友": { sociability: 0.45 },
+  "朋友圈": { sociability: 0.5, creativity: 0.15 }, "社交人设": { sociability: 0.45, creativity: 0.3, stability: -0.2 }, "人设": { sociability: 0.2, creativity: 0.35 },
+  "附近的人": { sociability: 0.55, spontaneity: 0.5 }, "交友软件": { sociability: 0.55, spontaneity: 0.4 }, "兄弟闺蜜": { sociability: 0.45 },
+  "旅游": { spontaneity: 0.65 }, "游戏": { spontaneity: 0.35, intellect: 0.15 }, "怪癖": { spontaneity: 0.65, stability: -0.3 },
+  "抽象": { spontaneity: 0.75, creativity: 0.45 }, "自由": { spontaneity: 1 }, "冒险": { spontaneity: 1 }, "刺激": { spontaneity: 0.9 },
+  "艺术": { creativity: 1 }, "文艺": { creativity: 0.9 }, "拍照": { creativity: 0.45 }, "照片": { creativity: 0.25 }, "合照": { creativity: 0.25, warmth: -0.2 },
+  "表情包": { creativity: 0.45, spontaneity: 0.3 }, "剧透": { warmth: -0.35, intellect: 0.15 }, "短剧": { creativity: 0.55, spontaneity: 0.35 },
+  "乙游": { creativity: 0.5, warmth: 0.2 }, "虚拟亲密": { creativity: 0.35, warmth: 0.15 }, "仪式感": { creativity: 0.65, warmth: 0.55 },
+  "表演型人格": { creativity: 0.45, sociability: 0.4, warmth: -0.25 }, "主播": { sociability: 0.55 },
+  "温柔": { warmth: 1 }, "体贴": { warmth: 0.9 }, "陪伴": { warmth: 0.85 }, "纯爱": { warmth: 0.8, stability: 0.35 },
+  "稳定": { stability: 1 }, "靠谱": { stability: 0.9 }, "家务": { stability: 0.75 }, "规划": { agency: 0.45, stability: 0.7 },
+});
+
+// Identity describes who someone is attracted to, not what kind of partner they
+// prefer. These tags are therefore deliberately excluded from personality math.
+const IDENTITY_ONLY_TAGS = new Set(["gay", "lesbian", "lgbt", "lgbtq", "性向", "同性恋", "双性恋", "跨性别", "非二元", "圈内角色"]);
+
 function hashString(value) {
   let hash = 0x811c9dc5;
   const text = String(value);
@@ -223,6 +275,7 @@ function normalizeRecords(input) {
         : [];
     return {
       id: String(question.id || record?.questionId || `round-${index + 1}`).slice(0, 40),
+      text: String(question.text || question.variant || record?.questionText || `第 ${index + 1} 题`).trim().slice(0, 100),
       score: clampScore(record?.score ?? record?.value),
       tags: tags.slice(0, 8).map((tag) => String(tag).trim().slice(0, 20)).filter(Boolean),
     };
@@ -255,14 +308,100 @@ function tagAffinity(records, keywords) {
   return result;
 }
 
-function deriveArchetype(records, seedText, hint) {
-  if (hint && ARCHETYPES[hint]) return ARCHETYPES[hint];
-  return ARCHETYPE_LIST
-    .map((archetype) => ({
-      archetype,
-      score: tagAffinity(records, archetype.tags) + (hashString(`${seedText}|${archetype.id}`) % 1000) / 1e6,
-    }))
-    .sort((a, b) => b.score - a.score)[0].archetype;
+function roundMetric(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function dimensionsFor(records) {
+  const totals = Object.fromEntries(Object.keys(DIMENSION_LABELS).map((key) => [key, 0]));
+  for (const record of records) {
+    const preference = (record.score - 5) / 5;
+    if (!preference) continue;
+    for (const tag of record.tags) {
+      if (IDENTITY_ONLY_TAGS.has(tag.toLowerCase())) continue;
+      const dimensions = TAG_DIMENSIONS[tag];
+      if (!dimensions) continue;
+      for (const [dimension, weight] of Object.entries(dimensions)) {
+        totals[dimension] += preference * weight;
+      }
+    }
+  }
+  return totals;
+}
+
+function archetypeScore(archetype, dimensions) {
+  const vector = ARCHETYPE_DIMENSIONS[archetype.id];
+  return Object.entries(dimensions).reduce(
+    (sum, [dimension, value]) => sum + value * (vector[dimension] || 0),
+    0,
+  );
+}
+
+function inferenceEvidence(records, archetype) {
+  const vector = ARCHETYPE_DIMENSIONS[archetype.id];
+  return records
+    .map((record) => {
+      const preference = (record.score - 5) / 5;
+      let impact = 0;
+      const matchedSignals = [];
+      for (const tag of record.tags) {
+        if (IDENTITY_ONLY_TAGS.has(tag.toLowerCase())) continue;
+        const dimensions = TAG_DIMENSIONS[tag];
+        if (!dimensions) continue;
+        for (const [dimension, weight] of Object.entries(dimensions)) {
+          const contribution = preference * weight * (vector[dimension] || 0);
+          impact += contribution;
+          if (Math.abs(contribution) >= 0.03) {
+            matchedSignals.push(`${tag} → ${DIMENSION_LABELS[dimension]}`);
+          }
+        }
+      }
+      return {
+        question: record.text,
+        score: record.score,
+        matchedSignals: [...new Set(matchedSignals)],
+        impact: roundMetric(impact),
+      };
+    })
+    .filter((item) => item.matchedSignals.length && Math.abs(item.impact) >= 0.01)
+    .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact) || a.question.localeCompare(b.question, "zh-CN"))
+    .slice(0, 6);
+}
+
+function inferenceChoice(archetype, score) {
+  return Object.freeze({
+    id: archetype.id,
+    label: archetype.label,
+    shortLabel: archetype.shortLabel,
+    score: roundMetric(score),
+  });
+}
+
+function deriveArchetype(records, hint) {
+  const dimensions = dimensionsFor(records);
+  const ranked = ARCHETYPE_LIST
+    .map((archetype, index) => ({ archetype, index, score: archetypeScore(archetype, dimensions) }))
+    .sort((a, b) => b.score - a.score || a.index - b.index);
+  const hasAnswerSignal = Object.values(dimensions).some((value) => Math.abs(value) >= 0.0001);
+  const hinted = hint && ARCHETYPES[hint] ? ranked.find((item) => item.archetype.id === hint) : null;
+  const chosen = hinted || (hasAnswerSignal
+    ? ranked[0]
+    : ranked.find((item) => item.archetype.id === "steady-guardian"));
+  const runnerUp = ranked.find((item) => item.archetype.id !== chosen.archetype.id);
+  const dimensionScores = Object.freeze(Object.fromEntries(
+    Object.entries(dimensions).map(([key, value]) => [key, Object.freeze({ label: DIMENSION_LABELS[key], value: roundMetric(value) })]),
+  ));
+  const inference = Object.freeze({
+    method: hinted ? "explicit-hint" : hasAnswerSignal ? "answer-dimensions" : "neutral-default",
+    chosen: inferenceChoice(chosen.archetype, chosen.score),
+    runnerUp: inferenceChoice(runnerUp.archetype, runnerUp.score),
+    dimensions: dimensionScores,
+    evidence: Object.freeze(inferenceEvidence(records, chosen.archetype).map((item) => Object.freeze({
+      ...item,
+      matchedSignals: Object.freeze(item.matchedSignals),
+    }))),
+  });
+  return { archetype: chosen.archetype, inference };
 }
 
 function deriveMbti(records, seedText, override) {
@@ -385,7 +524,8 @@ export function buildIdealProfile(input = {}) {
   const seedText = canonicalSeed(input, records, requestedGender);
   const seed = hashString(seedText);
   const rng = rngFromSeed(seed);
-  const archetype = deriveArchetype(records, seedText, input.archetypeHint);
+  const archetypeResult = deriveArchetype(records, input.archetypeHint);
+  const archetype = archetypeResult.archetype;
   const mbti = deriveMbti(records, seedText, input.mbtiHint ?? input.mbti);
   const style = MBTI_STYLES[mbti];
   const presentation = presentationFor(requestedGender, seedText);
@@ -441,6 +581,7 @@ export function buildIdealProfile(input = {}) {
     portrait,
     matchCard,
     relationship,
+    inference: archetypeResult.inference,
     stages,
   });
 }
