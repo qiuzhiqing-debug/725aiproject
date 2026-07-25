@@ -1,0 +1,14 @@
+{
+  "name": "manfen-nan",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "smoke": "node test/smoke.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.114.0",
+    "ws": "^8.21.1"
+  }
+}
