@@ -2,6 +2,14 @@
 // 前置：wrangler dev 已在 BASE 运行（或由 run-smoke 包装脚本拉起）
 import WebSocket from "ws";
 import { DECKS } from "../public/questions.js";
+import {
+  chatPayload,
+  danmakuPayload,
+  lightVotePayload,
+  messageReactionPayload,
+  quickReactionPayload,
+  socialModel,
+} from "../public/social.js";
 
 const BASE = process.env.BASE || "http://127.0.0.1:8787";
 const WS_BASE = BASE.replace(/^http/, "ws");
@@ -12,6 +20,14 @@ function ok(cond, label) {
   else { failed++; console.log("  ❌", label); }
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function waitUntil(predicate, ms = 5000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < ms) {
+    if (predicate()) return true;
+    await sleep(50);
+  }
+  return false;
+}
 
 class Player {
   constructor(name, emoji) {
@@ -23,6 +39,7 @@ class Player {
     this.shakes = [];
     this.welcome = null;
     this.danmakus = [];
+    this.quickReactions = [];
     this.lightFx = [];
   }
   connect(code, token) {
@@ -38,6 +55,7 @@ class Player {
         if (m.type === "state") this.state = m.state;
         if (m.type === "shake") this.shakes.push(m.intensity);
         if (m.type === "danmaku") this.danmakus.push(m);
+        if (m.type === "quick_reaction") this.quickReactions.push(m);
         if (m.type === "light_fx") this.lightFx.push(m);
       });
       this.ws.on("error", rej);
@@ -82,6 +100,15 @@ async function main() {
   await sleep(200);
   ok(A.state?.players?.length === 3, "state 广播：3 人在桌");
   ok(A.state.you.isHost === true, "A 是房主");
+
+  // 聊天室在 lobby 就可用；近期消息通过 state 持久化。
+  B.lastError = null;
+  B.send(chatPayload("先干一杯再开局"));
+  B.send(chatPayload("刷屏应被拦截"));
+  await waitUntil(() => A.state.chat?.at(-1)?.text === "先干一杯再开局" && B.lastError?.code === "rate_limited");
+  ok(A.state.chat?.at(-1)?.text === "先干一杯再开局", "lobby 阶段聊天室全员可见");
+  const lobbyChatCount = A.state.chat.length;
+  ok(A.state.chat.length === lobbyChatCount && B.lastError?.code === "rate_limited", "聊天室短间隔刷屏被限频");
 
   // 设置 3 轮 + 开局（题库客户端下发）
   A.send({ type: "set_settings", rounds: 3, deck: "qingtang", deckName: "清汤锅底" });
@@ -145,52 +172,86 @@ async function main() {
   ok(typeof aha.prompt === "string" && aha.prompt.includes("man"), "aha.prompt 立绘 prompt 已生成");
   ok(Array.isArray(aha.details) && aha.details.length >= 3, `相处细节 ${aha.details.length} 条（≥3）`);
   ok(aha.idolName && aha.title, `理想型：${aha.idolName} / 称号：${aha.title}`);
+  ok(aha.profile?.stages?.map((stage) => stage.id).join(",") === "portrait,profile,relationship",
+    "理想型三段式数据：立绘 → 相亲档案 → 相处细节");
+  ok(/^[EI][NS][TF][JP]$/.test(aha.profile?.matchCard?.mbti || "") && aha.profile?.matchCard?.occupation,
+    `相亲档案包含 MBTI/职业：${aha.profile?.matchCard?.mbti} · ${aha.profile?.matchCard?.occupation}`);
   ok(aha.stats.bestKnower?.name === others[0].name && aha.stats.bestKnower.count === 3, `最懂TA：${others[0].name} 命中3次`);
   ok(aha.stats.avgScore === 7 && aha.stats.tolerancePct === 70, "均分7 / 容忍度70%");
 
   /* ---- 非诚勿扰互动体系（PRD §9）---- */
 
   // 聊天室：发消息 → 全员 state.chat 可见（断线重连也能靠 state 恢复）
-  others[0].send({ type: "chat", text: "这题出得太狠了哈哈哈" });
+  others[0].send(chatPayload("这题出得太狠了哈哈哈"));
   await sleep(250);
   const lastChat = A.state.chat?.[A.state.chat.length - 1];
   ok(lastChat?.text === "这题出得太狠了哈哈哈" && lastChat.name === others[0].name,
     `聊天消息入 state.chat（id=${lastChat?.id}）`);
 
-  // emoji 回应：贴上聚合计数，再贴一次取消
-  others[1].send({ type: "react", msgId: lastChat.id, emoji: "😂" });
-  await sleep(250);
-  let rMsg = A.state.chat.find((m) => m.id === lastChat.id);
-  ok(rMsg.reactions["😂"]?.length === 1 && rMsg.reactions["😂"][0] === others[1].name,
-    "emoji 回应聚合计数 =1");
-  others[1].send({ type: "react", msgId: lastChat.id, emoji: "😂" });
-  await sleep(250);
-  rMsg = A.state.chat.find((m) => m.id === lastChat.id);
+  // emoji 回应：服务端白名单、聚合计数、mine 个性化视图、再贴一次取消。
+  others[1].send(messageReactionPayload(lastChat.id, "😂"));
+  await sleep(350);
+  const reactionObserver = all.find((player) => player !== others[1]);
+  let rMsg = reactionObserver.state.chat.find((m) => m.id === lastChat.id);
+  const ownRMsg = others[1].state.chat.find((m) => m.id === lastChat.id);
+  ok(rMsg.reactions["😂"]?.count === 1 && rMsg.reactions["😂"].mine === false,
+    "emoji 回应对旁观者聚合为 count=1/mine=false");
+  ok(ownRMsg.reactions["😂"]?.mine === true, "贴表情者自己的 state 可直接判断 mine=true");
+  others[1].lastError = null;
+  others[1].send({ type: "react", msgId: lastChat.id, emoji: "🚫" });
+  await waitUntil(() => others[1].lastError?.code === "invalid_reaction");
+  ok(others[1].lastError?.code === "invalid_reaction", "非白名单消息 emoji 被拒绝");
+  others[1].send(messageReactionPayload(lastChat.id, "😂"));
+  await sleep(350);
+  rMsg = reactionObserver.state.chat.find((m) => m.id === lastChat.id);
   ok(!rMsg.reactions["😂"], "同人再贴一次 → 回应取消");
 
   // 弹幕：aha 屏广播 + 3 秒限频
-  others[1].send({ type: "danmaku", text: "理想型有点帅啊" });
+  others[1].send(danmakuPayload("理想型有点帅啊"));
   await sleep(250);
   ok(A.danmakus.some((d) => d.text === "理想型有点帅啊" && d.name === others[1].name),
     "弹幕广播到其他玩家");
   const dmCountBefore = A.danmakus.length;
-  others[1].send({ type: "danmaku", text: "刷屏测试" });
+  others[1].send(danmakuPayload("刷屏测试"));
   await sleep(250);
   ok(A.danmakus.length === dmCountBefore, "3 秒内第二条弹幕被限频拦截");
 
-  // 爆灯/灭灯：非主角各持一盏，计数进 aha.light 与海报 stats
-  others[0].send({ type: "light", on: true });
-  others[1].send({ type: "light", on: false });
-  hero.send({ type: "light", on: true }); // 主角不能给自己爆灯，应被忽略
+  // 快捷 reaction：白名单 transient 事件 + recent 持久化。
+  others[0].send(quickReactionPayload("🔥"));
+  await sleep(250);
+  ok(A.quickReactions.some((event) => event.reaction === "🔥" && event.name === others[0].name),
+    "快捷 reaction 实时广播");
+  ok(A.state.social?.recent?.some((event) => event.type === "quick_reaction" && event.reaction === "🔥"),
+    "快捷 reaction 写入 recent，供重连恢复");
+  others[0].lastError = null;
+  others[0].send({ type: "quick_reaction", emoji: "🚫" });
+  await waitUntil(() => others[0].lastError?.code === "invalid_reaction");
+  ok(others[0].lastError?.code === "invalid_reaction", "非白名单快捷 reaction 被拒绝");
+
+  // 爆灯/灭灯：每人一张当前票、可改票；统计进入 aha 和海报 summary。
+  others[0].send(lightVotePayload("burst"));
+  others[1].send(lightVotePayload("off"));
+  hero.send(lightVotePayload("burst")); // 主角不能给自己爆灯，应被忽略
   await sleep(300);
   const lt = A.state.aha.light;
   ok(lt.burst === 1 && lt.off === 1 && lt.total === 2, `灯计数 爆${lt.burst}/灭${lt.off}/共${lt.total}`);
-  ok(A.state.aha.stats.lights?.burst === 1 && A.state.aha.stats.lights.total === 2,
-    "海报数据 stats.lights = 1/2 爆灯");
+  ok(others[0].state.aha.light.mine === "burst" && others[1].state.aha.light.mine === "off",
+    "每位玩家 state.aha.light.mine 返回当前票");
+  ok(hero.state.aha.light.canVote === false && others[0].state.aha.light.canVote === true,
+    "state 可直接判断当前玩家是否有投票资格");
+  ok(A.state.aha.stats.lights?.burst === 1 && A.state.aha.stats.lights.voted === 2 && A.state.aha.stats.lights.total === 2,
+    "海报数据 stats.lights 包含 burst/off/voted/total");
   ok(hero.lightFx.length >= 2, `light_fx 特效事件广播（主角收到 ${hero.lightFx.length} 条）`);
-  others[0].send({ type: "light", on: false }); // 已定灯不可反悔
+  await sleep(550);
+  others[0].send(lightVotePayload("off"));
   await sleep(250);
-  ok(A.state.aha.light.burst === 1 && A.state.aha.light.off === 1, "灯按下不可反悔");
+  ok(A.state.aha.light.burst === 0 && A.state.aha.light.off === 2, "改票后实时统计从爆1/灭1更新为爆0/灭2");
+  ok(others[0].state.aha.light.mine === "off", "改票后 mine 同步为 off");
+  ok(A.state.aha.stats.lights.burst === 0 && A.state.aha.stats.lights.off === 2,
+    "改票后的海报 summary 同步更新");
+
+  const model = socialModel(others[0].state);
+  ok(model.light.mine === "off" && model.chat.length >= 2, "public/social.js 可直接归一化互动 state");
 
   // 断线重连回座
   const heroToken = hero.token;
@@ -202,13 +263,22 @@ async function main() {
   await sleep(200);
   ok(hero.state?.phase === "aha" && hero.state.you.name === hero.name, "重连后拿回自己视角 state");
   ok(hero.state.chat?.some((m) => m.text === "这题出得太狠了哈哈哈"), "重连后聊天记录恢复");
-  ok(hero.state.aha?.light?.burst === 1, "重连后灯状态恢复");
+  ok(hero.state.social?.recent?.some((e) => e.type === "danmaku"), "重连后近期弹幕/reaction 事件恢复");
+  ok(hero.state.aha?.light?.off === 2, "重连后灯状态恢复");
 
   // 房主推进 → 下一位主角（picking），摇签人应为上一任主角
   A.send({ type: "next" });
-  await A.waitPhase("picking");
+  await Promise.all(all.map((player) => player.waitPhase("picking", 10000)));
   const shaker2 = all.find((p) => p.state.current.youAreShaker);
   ok(shaker2 === hero, `第二轮摇签人 = 上一任主角 ${hero.name}`);
+
+  // 当前新主角尚无答题记录，提前收局；第一位主角的历史统计必须保持独立快照。
+  A.send({ type: "finish_game" });
+  await A.waitPhase("finished");
+  const firstSummary = A.state.ahaHistory?.[0];
+  ok(A.state.ahaHistory.length === 1, "最终 summary 包含已完成主角的 ahaHistory");
+  ok(firstSummary.stats.lights.burst === 0 && firstSummary.stats.lights.off === 2,
+    "ahaHistory 保存最终灯票统计，未被后续主角状态污染");
 
   console.log(`\n== 结果：${passed} 通过 / ${failed} 失败`);
   all.forEach((p) => p.ws.close());

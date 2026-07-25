@@ -20,3 +20,13 @@
 - 验证：node --check 全部改动 JS 通过；smoke.mjs 扩到 40/40 全绿（聊天入 state+重连恢复、回应贴/取消、弹幕广播+限频拦截、爆灯灭灯计数/不可反悔/主角无灯/stats.lights、light_fx 广播、灯状态重连恢复）；wrangler dev 热更未重启；双视口截图 qa/aha-390.png + qa/aha-desktop.png 自审通过（弹幕三态、灯板、快捷 reaction、聊天 FAB 均可见）。
 
 - 遗留：①iOS 真机摇一摇授权路径未验证（fx.js 有注释）；②立绘 imageUrl 依赖 Pollinations 在线服务，浏览器端加载失败有兜底占位；③M3 视觉打磨/双视口截图 QA 未做（需浏览器）；④questions.placeholder.js 为前任占位文件，待 M3 确认后可删；⑤部署需 Kim wrangler login（M4）。
+
+## 2026-07-25（Codex 接管：M3-M6）
+- 先将可玩基线提交并推送到 GitHub `main`：`bc03846 Initialize 满分男 multiplayer game`；后续改动集中在 `codex/experience-overhaul` 分支。
+- 三条子线程并行交付并由主线程集成：①高对比白蓝视觉重做；②聊天室/弹幕/快捷 reaction/消息 emoji/爆灯灭灯可改票；③6 类乙游原型、16 MBTI 穿搭配色与三段式理想型档案。
+- Aha 流程升级为「立绘亮相 → 相亲档案 → 相处细节」；海报同步加入真实立绘、MBTI、原型、星座、职业与爆灯率。Pollinations 不可达时 2.2 秒切换已人审的本地立绘，避免空白。
+- Cloudflare 静态资产路由修正为 SPA fallback，并让 Worker 优先处理 `/api/*`；公网环境完整冒烟 57/57 通过。
+- 自动化验证：`test/ideal-profile.mjs` 7/7；本地与公网多人流程均 57/57；覆盖重名拒绝、断线回座、摇签广播、3 轮计分、档案生成、互动协议、改票和历史回看。
+- 视觉 QA：390×844 与 1400×900 共 11 个状态无横向溢出、脚本错误 0、可见按钮均 ≥44px；最终证据在 `qa/final-*`、`qa/online-*` 与 `qa/visual-v3-*`。
+- 公网预览：`https://manfen-nan.pentagonal-whippoorwill.workers.dev`（Cloudflare 临时账号部署，需在认领链接过期前由 Kim 接管）。
+- 剩余真实设备风险：iOS DeviceMotion 授权与不同 Android 机型的传感器阈值仍需至少一台真机各跑一次；无传感器或拒绝授权时已有点按降级。

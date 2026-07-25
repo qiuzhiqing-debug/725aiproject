@@ -3,6 +3,17 @@ import { DECKS } from "./questions.js";
 import { drawQR } from "./qrcode.js";
 import { renderPoster } from "./poster.js";
 import { sound, createShaker, celebrate, heartBurst, lampOffFx } from "./fx.js";
+import { buildIdealProfile } from "./ideal-profile.js";
+import {
+  MESSAGE_REACTIONS,
+  QUICK_REACTIONS,
+  chatPayload,
+  danmakuPayload,
+  lightVotePayload,
+  messageReactionPayload,
+  quickReactionPayload,
+  socialModel,
+} from "./social.js";
 
 const $app = document.getElementById("app");
 const $toast = document.getElementById("toast");
@@ -21,7 +32,7 @@ const ui = {
   commentDraft: "",
   commentSent: false,
   assigned: false,
-  flip: false,
+  ahaStage: 0,
   posterUrl: null,
   posterBusy: false,
   shakeMode: null, // null | "motion" | "tap"
@@ -135,6 +146,10 @@ function onMessage(msg) {
     spawnDanmaku(msg);
     return;
   }
+  if (msg.type === "quick_reaction") {
+    spawnDanmaku({ ...msg, text: msg.reaction });
+    return;
+  }
   if (msg.type === "light_fx") {
     playLightFx(msg);
     return;
@@ -156,7 +171,7 @@ function onMessage(msg) {
       ui.assigned = false;
       if (msg.state.phase !== ui.lastPhase) {
         if (msg.state.phase === "aha") sound.riff(); // 理想型入场 riff
-        ui.flip = false;
+        ui.ahaStage = 0;
         ui.posterUrl = null;
         ui.stickDoneSent = false;
         if (msg.state.phase === "picking") {
@@ -590,72 +605,151 @@ function renderReveal(s) {
   document.getElementById("nextBtn")?.addEventListener("click", () => send({ type: "next" }));
 }
 
-/* --- Aha 结算卡 --- */
+/* --- Aha 结算卡：立绘 → 相亲档案 → 相处细节 --- */
+function resolveAhaProfile(aha) {
+  if (aha.profile?.portrait && aha.profile?.matchCard && aha.profile?.relationship) return aha.profile;
+  return buildIdealProfile({
+    records: [],
+    genderPreference: aha.gender,
+    seed: aha.id || `${aha.idolName || "ideal"}:${aha.stats?.avgScore || 0}`,
+  });
+}
+
+function safeProfileColor(value, fallback) {
+  return /^#[0-9a-f]{6}$/i.test(String(value || "")) ? value : fallback;
+}
+
 function renderAha(s, aha, isFinal) {
   const me = s.you;
-  const lt = aha.light || { burst: 0, off: 0, total: 0, yours: null, burstNames: [], offNames: [] };
-  const canVote =
-    !isFinal && s.phase === "aha" && !s.current?.youAreProtagonist && lt.yours == null;
+  const profile = resolveAhaProfile(aha);
+  const card = profile.matchCard;
+  const portrait = profile.portrait;
+  const relationship = profile.relationship;
+  const primary = safeProfileColor(portrait.palette?.primary, "#075BFF");
+  const accent = safeProfileColor(portrait.palette?.accent, "#00C8FF");
+  const stages = ["理想型亮相", "相亲人物档案", "相处细节"];
+  const stage = Math.max(0, Math.min(2, ui.ahaStage || 0));
+  const lt = aha.light || { burst: 0, off: 0, voted: 0, total: 0, mine: null, burstNames: [], offNames: [] };
+  const mine = lt.mine ?? lt.yours ?? null;
+  const canVote = !isFinal && s.phase === "aha" && (lt.canVote ?? !s.current?.youAreProtagonist);
   const lampRow = Array.from({ length: Math.max(lt.total, lt.burst + lt.off) }, (_, i) =>
-    `<span class="lamp ${i < lt.burst ? "on" : i < lt.burst + lt.off ? "dead" : ""}"></span>`
+    `<span class="lamp ${i < lt.burst ? "on" : i < lt.burst + lt.off ? "dead" : "pending"}"></span>`
   ).join("");
+  const stageBody = stage === 0 ? `
+    <div class="aha-stage portrait-stage" style="--profile-primary:${primary};--profile-accent:${accent}">
+      <div class="art-wrap" id="artWrap">
+        <div class="art-fallback"><b>${esc(card.name)}</b><span>${esc(portrait.archetype)}</span></div>
+        <img id="artImg" src="${esc(portrait.imageUrl || aha.imageUrl)}" alt="${esc(portrait.alt || `${card.name} 理想型立绘`)}" />
+        <span class="archetype-chip">${esc(portrait.archetype)}</span>
+      </div>
+      <div class="caption">
+        <b class="ideal-name">${esc(card.name)}</b>
+        <div class="ideal-meta"><span>${esc(card.mbti)}</span><span>${esc(card.presentation)}</span><span>${esc(relationship.chemistry)}</span></div>
+        <div class="dim">${esc(aha.title)} · ${esc(aha.titleSub)}</div>
+      </div>
+    </div>` : stage === 1 ? `
+    <div class="aha-stage profile-stage" style="--profile-primary:${primary};--profile-accent:${accent}">
+      <div class="profile-kicker">MATCH FILE / 02</div>
+      <div class="profile-title-row"><div><b class="ideal-name">${esc(card.name)}</b><div class="dim">${esc(card.archetype)} · ${esc(card.presentation)}</div></div><span class="mbti-badge">${esc(card.mbti)}</span></div>
+      <div class="profile-grid">
+        <div><span>出生日期</span><b>${esc(card.birthDate)}</b></div>
+        <div><span>星座</span><b>${esc(card.zodiac)}</b></div>
+        <div class="wide"><span>职业</span><b>${esc(card.occupation)}</b></div>
+        <div class="wide"><span>身份</span><b>${esc(card.identity)}</b></div>
+      </div>
+      <div class="keyword-row">${card.keywords.map((x) => `<span>${esc(x)}</span>`).join("")}</div>
+      <p class="profile-bio">${esc(card.bio)}</p>
+      <div class="fiction-note">角色档案由本局答案生成，人物信息均为虚构</div>
+    </div>` : `
+    <div class="aha-stage relationship-stage" style="--profile-primary:${primary};--profile-accent:${accent}">
+      <div class="profile-kicker">CHEMISTRY / 03</div>
+      <h2>${esc(relationship.heading)}</h2>
+      <div class="chemistry-tag">${esc(relationship.chemistry)}</div>
+      <div class="relationship-list">${relationship.details.map((d, i) => `<div class="detail-item"><span>${String(i + 1).padStart(2, "0")}</span><p>${esc(d)}</p></div>`).join("")}</div>
+    </div>`;
+
   $app.innerHTML = `
     ${header(s, `${esc(aha.protagonist.name)} 的理想型来了`)}
-    <div class="flip-scene">
-      <div class="flip-card ${ui.flip ? "flipped" : ""}" id="flipCard">
-        <div class="flip-face">
-          <div class="art-wrap" id="artWrap"><img id="artImg" src="${esc(aha.imageUrl)}" alt="理想型立绘" /></div>
-          <div class="caption">
-            <b class="neon">${esc(aha.idolName)}</b>
-            <div class="dim">${esc(aha.title)} · ${esc(aha.titleSub)}</div>
-            <div class="flip-hint">👆 点卡片翻转，看你和 TA 的相处细节</div>
-          </div>
-        </div>
-        <div class="flip-face back">
-          <h2 class="amber">你和 TA 的相处细节</h2>
-          ${aha.details.map((d) => `<div class="detail-item">${esc(d)}</div>`).join("")}
-          <div class="flip-hint">再点一下翻回去</div>
-        </div>
-      </div>
+    <div class="aha-stage-nav" role="tablist" aria-label="理想型报告阶段">
+      ${stages.map((label, i) => `<button class="${stage === i ? "active" : ""}" data-stage="${i}" role="tab" aria-selected="${stage === i}"><span>0${i + 1}</span>${label}</button>`).join("")}
     </div>
+    <div class="flip-scene" id="ahaStage" role="button" tabindex="0" aria-live="polite" aria-label="点击查看${stage < 2 ? stages[stage + 1] : stages[0]}">${stageBody}</div>
+    <button class="stage-next" id="stageNext">${stage < 2 ? `点击继续 · ${stages[stage + 1]}` : "回到理想型立绘"}<span>→</span></button>
     <div class="glass stack center light-panel">
       <div class="lamp-row">${lampRow}</div>
-      <div class="light-count">💗 爆灯 <b class="neon">${lt.burst}</b><span class="dim">/${lt.total}</span> · 🖤 灭灯 ${lt.off}</div>
+      <div class="light-count">爆灯 <b>${lt.burst}</b> · 灭灯 <b>${lt.off}</b><span class="dim"> · 已投 ${lt.voted ?? lt.burst + lt.off}/${lt.total}</span></div>
       ${canVote ? `
         <div class="row light-btns">
-          <button class="btn light-burst grow" id="burstBtn">💗 爆灯</button>
-          <button class="btn light-off grow" id="offBtn">🖤 灭灯</button>
+          <button class="btn light-burst grow ${mine === "burst" ? "selected" : ""}" id="burstBtn">${mine === "burst" ? "已爆灯" : "爆灯"}</button>
+          <button class="btn light-off grow ${mine === "off" ? "selected" : ""}" id="offBtn">${mine === "off" ? "已灭灯" : "灭灯"}</button>
         </div>
-        <div class="dim">为 TA 亮灯还是灭灯？按下不可反悔</div>
-      ` : lt.yours
-        ? `<div class="dim">你已${lt.yours === "burst" ? "为 TA 💗 爆灯" : "🖤 灭灯，铁石心肠"}</div>`
-        : s.current?.youAreProtagonist && !isFinal
+        <div class="dim">投票可改，最后一票计入分享海报</div>
+      ` : s.current?.youAreProtagonist && !isFinal
           ? `<div class="dim">全场正在为你的理想型亮灯…</div>`
-          : lt.burstNames.length
+          : lt.burstNames?.length
             ? `<div class="dim">爆灯的人：${lt.burstNames.map(esc).join("、")}</div>`
             : ""}
     </div>
     ${ui.posterUrl
-      ? `<img class="poster-img" src="${ui.posterUrl}" alt="海报" /><div class="dim center">长按图片保存 / 转发</div>`
-      : `<button class="btn ghost" id="posterBtn" ${ui.posterBusy ? "disabled" : ""}>${ui.posterBusy ? "海报合成中…" : "🖼️ 生成年报海报"}</button>`}
+      ? `<img class="poster-img" src="${ui.posterUrl}" alt="理想型年度报告海报" /><div class="dim center">长按图片保存 / 转发</div>`
+      : `<button class="btn ghost" id="posterBtn" ${ui.posterBusy ? "disabled" : ""}>${ui.posterBusy ? "海报合成中…" : "生成年报海报"}</button>`}
     ${!isFinal ? (me.isHost
-      ? `<button class="btn" id="nextBtn">${s.players.some((p) => !p.done) ? "🎋 下一位主角" : "🏁 收局看总榜"}</button>`
+      ? `<button class="btn" id="nextBtn">${s.players.some((p) => !p.done) ? "下一位主角" : "收局看总榜"}</button>`
       : `<div class="dim center">等房主抽下一位…</div>`) : ""}`;
   bindSound();
-  // 立绘 shimmer 占位：加载完成才淡入
-  const artImg = document.getElementById("artImg");
-  const artLoaded = () => document.getElementById("artWrap")?.classList.add("loaded");
-  if (artImg.complete && artImg.naturalWidth > 0) artLoaded();
-  else artImg.addEventListener("load", artLoaded);
-  document.getElementById("flipCard").addEventListener("click", () => {
-    ui.flip = !ui.flip;
-    document.getElementById("flipCard").classList.toggle("flipped", ui.flip);
+
+  const setStage = (next) => {
+    ui.ahaStage = Math.max(0, Math.min(2, next));
+    render();
+  };
+  document.querySelectorAll("[data-stage]").forEach((button) =>
+    button.addEventListener("click", () => setStage(Number(button.dataset.stage))));
+  document.getElementById("ahaStage").addEventListener("click", () => setStage(stage < 2 ? stage + 1 : 0));
+  document.getElementById("ahaStage").addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      setStage(stage < 2 ? stage + 1 : 0);
+    }
   });
+  document.getElementById("stageNext").addEventListener("click", () => setStage(stage < 2 ? stage + 1 : 0));
+
+  const artImg = document.getElementById("artImg");
+  const artWrap = document.getElementById("artWrap");
+  if (artImg) {
+    let triedFallback = false;
+    let fallbackTimer = null;
+    const artLoaded = () => {
+      clearTimeout(fallbackTimer);
+      artWrap?.classList.add("loaded");
+    };
+    const artFailed = () => {
+      if (!triedFallback && portrait.fallbackUrl && artImg.src !== new URL(portrait.fallbackUrl, location.href).href) {
+        triedFallback = true;
+        artImg.src = portrait.fallbackUrl;
+        return;
+      }
+      artWrap?.classList.add("failed");
+      artImg.remove();
+    };
+    if (portrait.fallbackUrl) {
+      fallbackTimer = setTimeout(() => {
+        if (artWrap?.classList.contains("loaded") || triedFallback) return;
+        triedFallback = true;
+        artImg.src = portrait.fallbackUrl;
+      }, 2200);
+    }
+    if (artImg.complete && artImg.naturalWidth > 0) artLoaded();
+    else if (artImg.complete) artFailed();
+    else {
+      artImg.addEventListener("load", artLoaded, { once: true });
+      artImg.addEventListener("error", artFailed);
+    }
+  }
   document.getElementById("posterBtn")?.addEventListener("click", async () => {
     ui.posterBusy = true;
     render();
     try {
-      ui.posterUrl = await renderPoster(aha, `${location.origin}/?room=${s.code}`);
+      ui.posterUrl = await renderPoster({ ...aha, profile }, `${location.origin}/?room=${s.code}`);
     } catch (e) {
       toast("海报生成失败：" + e.message);
     }
@@ -663,18 +757,21 @@ function renderAha(s, aha, isFinal) {
     render();
   });
   document.getElementById("nextBtn")?.addEventListener("click", () => send({ type: "next" }));
-  document.getElementById("burstBtn")?.addEventListener("click", () => {
+  document.getElementById("burstBtn")?.addEventListener("click", () => castLight("burst"));
+  document.getElementById("offBtn")?.addEventListener("click", () => castLight("off"));
+
+  function castLight(vote) {
     sound.unlock();
-    send({ type: "light", on: true });
-    playLightFx({ name: me.name, on: true }); // 本地即时反馈（服务端只广播给其他人）
-    if (PREVIEW) { aha.light = { ...lt, burst: lt.burst + 1, yours: "burst" }; render(); }
-  });
-  document.getElementById("offBtn")?.addEventListener("click", () => {
-    sound.unlock();
-    send({ type: "light", on: false });
-    playLightFx({ name: me.name, on: false });
-    if (PREVIEW) { aha.light = { ...lt, off: lt.off + 1, yours: "off" }; render(); }
-  });
+    send(lightVotePayload(vote));
+    playLightFx({ name: me.name, on: vote === "burst" });
+    if (PREVIEW) {
+      const previous = mine;
+      let burst = lt.burst - (previous === "burst" ? 1 : 0) + (vote === "burst" ? 1 : 0);
+      let off = lt.off - (previous === "off" ? 1 : 0) + (vote === "off" ? 1 : 0);
+      aha.light = { ...lt, burst, off, voted: burst + off, mine: vote, yours: vote, canVote: true };
+      render();
+    }
+  }
 }
 
 /* --- 收局 --- */
@@ -701,14 +798,11 @@ function renderFinished(s) {
   again.textContent = "🌙 散场，再开一桌";
   again.onclick = () => location.href = "/";
   $app.appendChild(again);
-  document.getElementById("prevAha").onclick = () => { renderFinished._idx = idx - 1; ui.posterUrl = null; ui.flip = false; render(); };
-  document.getElementById("nextAha").onclick = () => { renderFinished._idx = idx + 1; ui.posterUrl = null; ui.flip = false; render(); };
+  document.getElementById("prevAha").onclick = () => { renderFinished._idx = idx - 1; ui.posterUrl = null; ui.ahaStage = 0; render(); };
+  document.getElementById("nextAha").onclick = () => { renderFinished._idx = idx + 1; ui.posterUrl = null; ui.ahaStage = 0; render(); };
 }
 
 /* ---------- 非诚勿扰互动体系：弹幕 / 灯光特效 / 聊天抽屉（PRD §9） ---------- */
-
-const QUICK_REACTIONS = ["🍺", "😅", "💔", "🔥"];
-const CHAT_EMOJIS = ["👍", "😂", "😅", "🍺", "🔥", "💔", "👏", "🤯"];
 
 // 一次性挂载全局覆盖层（不随屏幕重渲染销毁）
 (function buildOverlays() {
@@ -734,20 +828,27 @@ const CHAT_EMOJIS = ["👍", "😂", "😅", "🍺", "🔥", "💔", "👏", "�
 
   // 弹幕发送（30 字/3 秒 服务端强制，本地也拦一道）
   const sendDm = (text) => {
-    text = text.trim().slice(0, 30);
-    if (!text) return;
+    const payload = danmakuPayload(text);
+    if (!payload) return;
     const now = Date.now();
     if (now - ui.lastDmSent < 3000) return toast("弹幕太密了，歇 3 秒再发");
     ui.lastDmSent = now;
     sound.unlock();
-    send({ type: "danmaku", text });
-    if (PREVIEW) spawnDanmaku({ name: ui.state?.you?.name || "我", emoji: "🍺", text });
+    send(payload);
+    if (PREVIEW) spawnDanmaku({ name: ui.state?.you?.name || "我", emoji: "🍺", text: payload.text });
+  };
+  const sendQuick = (emoji) => {
+    const payload = quickReactionPayload(emoji);
+    if (!payload) return;
+    sound.unlock();
+    send(payload);
+    if (PREVIEW) spawnDanmaku({ name: ui.state?.you?.name || "我", emoji: "🍺", text: emoji });
   };
   const dmIn = document.getElementById("dmIn");
   document.getElementById("dmSend").addEventListener("click", () => { sendDm(dmIn.value); dmIn.value = ""; });
   dmIn.addEventListener("keydown", (e) => { if (e.key === "Enter") { sendDm(dmIn.value); dmIn.value = ""; } });
   document.querySelectorAll(".dm-q").forEach((b) =>
-    b.addEventListener("click", () => sendDm(b.dataset.e)));
+    b.addEventListener("click", () => sendQuick(b.dataset.e)));
 
   // 聊天抽屉开合
   const setOpen = (open) => {
@@ -769,13 +870,13 @@ const CHAT_EMOJIS = ["👍", "😂", "😅", "🍺", "🔥", "💔", "👏", "�
 
   const sendChat = () => {
     const inEl = document.getElementById("chatIn");
-    const text = inEl.value.trim().slice(0, 120);
-    if (!text) return;
+    const payload = chatPayload(inEl.value);
+    if (!payload) return;
     inEl.value = "";
-    send({ type: "chat", text });
+    send(payload);
     if (PREVIEW && ui.state) {
       ui.state.chat = ui.state.chat || [];
-      ui.state.chat.push({ id: (ui.state.chat.at(-1)?.id || 0) + 1, name: ui.state.you.name, emoji: "🍷", text, reactions: {} });
+      ui.state.chat.push({ id: (ui.state.chat.at(-1)?.id || 0) + 1, name: ui.state.you.name, emoji: "🍷", text: payload.text, reactions: {} });
       renderChat();
     }
   };
@@ -786,12 +887,14 @@ const CHAT_EMOJIS = ["👍", "😂", "😅", "🍺", "🔥", "💔", "👏", "�
   document.getElementById("chatMsgs").addEventListener("click", (e) => {
     const chip = e.target.closest(".react-chip");
     if (chip) {
-      send({ type: "react", msgId: Number(chip.dataset.id), emoji: chip.dataset.e });
+      const payload = messageReactionPayload(Number(chip.dataset.id), chip.dataset.e);
+      if (payload) send(payload);
       return;
     }
     const pick = e.target.closest(".picker-e");
     if (pick) {
-      send({ type: "react", msgId: Number(pick.dataset.id), emoji: pick.dataset.e });
+      const payload = messageReactionPayload(Number(pick.dataset.id), pick.dataset.e);
+      if (payload) send(payload);
       ui.pickerFor = null;
       renderChat();
       return;
@@ -815,7 +918,7 @@ function updateBadge() {
 
 function renderChat() {
   const box = document.getElementById("chatMsgs");
-  const chat = ui.state?.chat || [];
+  const chat = socialModel(ui.state).chat;
   const myName = ui.state?.you?.name;
   const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
   box.innerHTML = chat.length ? chat.map((m) => `
@@ -823,11 +926,11 @@ function renderChat() {
       <div class="cm-head">${esc(m.emoji)} <b>${esc(m.name)}</b></div>
       <div class="cm-text">${esc(m.text)}</div>
       <div class="cm-reacts">
-        ${Object.entries(m.reactions || {}).map(([e, names]) => `
-          <button class="react-chip ${names.includes(myName) ? "mine" : ""}" data-id="${m.id}" data-e="${esc(e)}"
-            title="${esc(names.join("、"))}">${esc(e)} ${names.length}</button>`).join("")}
+        ${Object.entries(m.reactions || {}).map(([e, reaction]) => `
+          <button class="react-chip ${reaction.mine ? "mine" : ""}" data-id="${m.id}" data-e="${esc(e)}"
+            aria-pressed="${reaction.mine}">${esc(e)} ${reaction.count}</button>`).join("")}
       </div>
-      ${ui.pickerFor === m.id ? `<div class="emoji-picker">${CHAT_EMOJIS.map((e) =>
+      ${ui.pickerFor === m.id ? `<div class="emoji-picker">${MESSAGE_REACTIONS.map((e) =>
         `<button class="picker-e" data-id="${m.id}" data-e="${e}">${e}</button>`).join("")}</div>` : ""}
     </div>`).join("") : `<div class="dim center" style="padding:24px 0">还没人说话，开个头？</div>`;
   if (atBottom || ui.chatOpen) box.scrollTop = box.scrollHeight;
@@ -918,31 +1021,42 @@ function buildPreviewState(screen) {
   };
   const question = { id: "q1", text: "这是一个满分男，但他留着很长的小拇指指甲，说是用来开快递的，你没见他开过快递。", spice: 3 };
   const protagonist = { name: "赛百诺女士", emoji: "🥂" };
-  const mkAha = (p, seed) => ({
-    light: { burst: 3, off: 1, total: 4, yours: null, burstNames: ["嘉欣", "阿豪", "麦当劳"], offNames: ["这是一个超长昵称测试员"] },
-    protagonist: p,
-    imageUrl: mockArt(p.emoji),
-    idolName: seed === 2 ? "赛博暖男·麦师傅" : "钝感力冠军·豪哥",
-    title: seed === 2 ? "人间清醒代言人" : "全场最难猜的心",
-    titleSub: "均分 6.4 · 容忍度前 12%",
-    details: [
-      "TA 开快递永远用钥匙，你的小拇指指甲终于可以剪了。",
-      "凌晨两点你说想吃小龙虾，TA 回：好，穿外套。",
-      "你俩吵架冷战最长纪录 11 分钟，输给一条猫猫表情包。",
-      "TA 记得你所有前任的名字，只为了在酒桌上帮你骂。",
-    ],
-    stats: {
-      bestKnower: { name: "嘉欣", count: 3 },
-      veto: "留着很长的小拇指指甲，说是用来开快递的",
-      tolerancePct: 68,
-      avgScore: 6.4,
-      drinkBoard: [
-        { name: "麦当劳", drinks: 7 },
-        { name: "这是一个超长昵称测试员", drinks: 5 },
-        { name: "阿豪", drinks: 4 },
+  const mkAha = (p, seed) => {
+    const profile = buildIdealProfile({
+      records: [
+        { question: { id: "q-preview-1", tags: ["职场", "控制"] }, score: seed === 2 ? 9 : 3 },
+        { question: { id: "q-preview-2", tags: ["纯爱", "温柔"] }, score: 9 },
+        { question: { id: "q-preview-3", tags: ["冒险", "社牛"] }, score: 8 },
       ],
-    },
-  });
+      genderPreference: seed === 2 ? "n" : "m",
+      archetypeHint: seed === 2 ? "power-ceo" : "wild-charmer",
+      seed: `preview-${seed}`,
+    });
+    return {
+      id: `preview-${seed}`,
+      light: { burst: 3, off: 1, voted: 4, total: 4, mine: null, yours: null, canVote: true, burstNames: ["嘉欣", "阿豪", "麦当劳"], offNames: ["这是一个超长昵称测试员"] },
+      protagonist: p,
+      gender: seed === 2 ? "n" : "m",
+      profile,
+      imageUrl: profile.portrait.imageUrl || mockArt(p.emoji),
+      idolName: profile.matchCard.name,
+      title: seed === 2 ? "人间清醒代言人" : "全场最难猜的心",
+      titleSub: "均分 6.4 · 容忍度前 12%",
+      details: profile.relationship.details,
+      stats: {
+        bestKnower: { name: "嘉欣", count: 3 },
+        veto: "留着很长的小拇指指甲，说是用来开快递的",
+        tolerancePct: 68,
+        avgScore: 6.4,
+        lights: { burst: 3, off: 1, voted: 4, total: 4, burstPct: 75 },
+        drinkBoard: [
+          { name: "麦当劳", drinks: 7 },
+          { name: "这是一个超长昵称测试员", drinks: 5 },
+          { name: "阿豪", drinks: 4 },
+        ],
+      },
+    };
+  };
   switch (screen) {
     case "lobby":
       return { ...base, phase: "lobby" };
@@ -969,6 +1083,8 @@ function buildPreviewState(screen) {
           ],
         } } };
     case "aha":
+    case "profile":
+    case "chemistry":
     case "poster":
       return { ...base, phase: "aha", aha: mkAha(protagonist, 1),
         current: { youAreProtagonist: false, protagonist } };
@@ -986,6 +1102,7 @@ function bootPreview(screen) {
   ui.screen = "game";
   ui.state = st;
   ui.lastPhase = st.phase;
+  ui.ahaStage = screen === "profile" ? 1 : screen === "chemistry" ? 2 : 0;
   if (screen === "sticks") { ui.shakeMode = "tap"; ui.shakeCharge = 0.4; }
   render();
   if (screen === "poster") document.getElementById("posterBtn")?.click();

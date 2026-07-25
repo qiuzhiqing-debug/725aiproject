@@ -1,6 +1,8 @@
 // 满分男酒桌局 — Cloudflare Worker + Durable Object
 // Worker 路由 + RoomDO（房间状态机 + WebSocket 广播）
 
+import { buildIdealProfile } from "../public/ideal-profile.js";
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
@@ -43,47 +45,30 @@ function jsonRes(obj, status = 200) {
   });
 }
 
-/* ============ 玩梗生成素材 ============ */
-
-const TAG_VISUAL = {
-  卫生: "slightly messy but endearing look",
-  抠门: "holding a tiny coin purse",
-  恋爱脑: "heart-shaped sparkles in the eyes",
-  妈宝: "a phone with 99+ messages from mom",
-  猎奇: "mysterious eccentric aura, odd accessories",
-  网瘾: "gamer headphones around the neck",
-  酒鬼: "holding a glass of amber whiskey",
-  前任: "a faint nostalgic expression",
-  味道: "surrounded by faint cartoon smell lines drawn cutely",
-  谜之自信: "extremely confident smug smile",
-  社死: "awkward but lovable smile",
-  嘴臭: "sassy smirk",
-};
-
-const NAME_ADJ = {
-  卫生: "五天一洗",
-  抠门: "抠门界的",
-  恋爱脑: "恋爱脑之光",
-  妈宝: "妈宝限定版",
-  猎奇: "赛百诺系",
-  网瘾: "峡谷养成的",
-  酒鬼: "微醺永动机",
-  前任: "前任十级学者",
-  味道: "自带气场的",
-  谜之自信: "宇宙中心",
-  社死: "大型社死现场",
-  嘴臭: "嘴替本替",
-  _default: "清汤锅里捞的",
-};
-const NAME_M = ["嘉豪", "彦祖", "阿强", "小龙虾王子", "麦当劳骑士", "赛博男友"];
-const NAME_F = ["嘉欣", "貂蝉", "大女主", "小美", "霓虹女友", "酒馆之花"];
-
 const TITLES = [
   { min: 7.5, title: "海纳百川·活菩萨", sub: "什么缺陷到你这都是可爱" },
   { min: 5.5, title: "薛定谔的心动", sub: "你的分数没人猜得透" },
   { min: 3.5, title: "铁面判官", sub: "满分男在你面前瑟瑟发抖" },
   { min: 0, title: "六亲不认·火化大队长", sub: "今晚火化名额已满" },
 ];
+
+/* ============ 全场互动约束 ============ */
+
+const SOCIAL = Object.freeze({
+  chatMaxLength: 120,
+  danmakuMaxLength: 30,
+  chatHistoryLimit: 100,
+  recentEventLimit: 30,
+  chatCooldownMs: 800,
+  danmakuCooldownMs: 3000,
+  quickReactionCooldownMs: 700,
+  messageReactionCooldownMs: 300,
+  lightCooldownMs: 500,
+});
+
+// 服务端白名单是最终准绳，避免用任意长 Unicode 串刷爆状态。
+const MESSAGE_REACTIONS = Object.freeze(["😂", "🔥", "🍺", "💔", "👏", "🤯", "❤️", "👀"]);
+const QUICK_REACTIONS = Object.freeze(["🍺", "😂", "💔", "🔥", "👏", "🤯"]);
 
 /* ============ RoomDO ============ */
 
@@ -98,6 +83,12 @@ export class RoomDO {
       if (this.room) {
         if (!Array.isArray(this.room.chat)) this.room.chat = [];
         if (typeof this.room.chatSeq !== "number") this.room.chatSeq = 0;
+        if (!Array.isArray(this.room.socialFeed)) this.room.socialFeed = [];
+        if (typeof this.room.socialSeq !== "number") this.room.socialSeq = 0;
+        if (!Array.isArray(this.room.ahaHistory)) this.room.ahaHistory = [];
+        if (this.room.aha && !this.room.aha.protagonistToken && this.room.current?.protagonist) {
+          this.room.aha.protagonistToken = this.room.current.protagonist;
+        }
       }
     });
   }
@@ -150,8 +141,10 @@ export class RoomDO {
       lastProtagonist: null, // 上一任主角 token（下一轮由 TA 摇签）
       ahaHistory: [],
       aha: null,
-      chat: [], // 聊天室滚动记录（最近 100 条）{id,name,emoji,text,ts,reactions:{emoji:[names]}}
+      chat: [], // 最近 100 条；reactions 内部只存玩家 token，视图层只下发 count + mine
       chatSeq: 0,
+      socialFeed: [], // 最近 30 条弹幕/快捷反应，重连后仍可恢复现场气氛
+      socialSeq: 0,
     };
   }
 
@@ -162,6 +155,10 @@ export class RoomDO {
   /* ---- WS 生命周期（hibernation API）---- */
 
   async webSocketMessage(ws, raw) {
+    // 开局消息包含整副题库，因此保留 256KB 上限；具体社交文本另有严格字段限长。
+    if (typeof raw !== "string" || raw.length > 256 * 1024) {
+      return this.send(ws, { type: "error", code: "invalid_message", msg: "消息格式不合法" });
+    }
     let msg;
     try {
       msg = JSON.parse(raw);
@@ -272,26 +269,56 @@ export class RoomDO {
         r.phase === "finished"
           ? r.ahaHistory.map((a) => this.ahaView(a, token))
           : [],
-      chat: r.chat,
+      chat: r.chat.map((message) => this.chatView(message, token, me?.name)),
+      social: {
+        recent: r.socialFeed || [],
+        messageReactions: MESSAGE_REACTIONS,
+        quickReactions: QUICK_REACTIONS,
+      },
     };
   }
 
-  // aha 视图：不外泄 token→灯 的原始映射，折算成计数 + 你自己的灯
+  chatView(message, token, name) {
+    const reactions = {};
+    for (const [emoji, rawVoters] of Object.entries(message.reactions || {})) {
+      if (!MESSAGE_REACTIONS.includes(emoji) || !Array.isArray(rawVoters)) continue;
+      // 旧存档存过玩家名，新协议存 token；两种格式都能恢复。
+      const voters = [...new Set(rawVoters)];
+      if (!voters.length) continue;
+      reactions[emoji] = {
+        count: voters.length,
+        mine: voters.includes(token) || (!!name && voters.includes(name)),
+      };
+    }
+    return { ...message, reactions };
+  }
+
+  // aha 视图：不外泄 token→灯 的原始映射，只下发统计 + 本人的当前票。
   ahaView(aha, token) {
     if (!aha) return null;
-    const { lights, ...rest } = aha;
+    const { lights, protagonistToken, lightNames: _legacyLightNames, ...rest } = aha;
     const map = lights || {};
     const burst = Object.values(map).filter(Boolean).length;
     const off = Object.values(map).length - burst;
+    const vote = map[token] === undefined ? null : map[token] ? "burst" : "off";
+    const burstNames = [];
+    const offNames = [];
+    for (const [playerToken, on] of Object.entries(map)) {
+      const player = this.room.players.find((p) => p.token === playerToken);
+      if (player) (on ? burstNames : offNames).push(player.name);
+    }
     return {
       ...rest,
       light: {
         burst,
         off,
+        voted: burst + off,
         total: aha.lightTotal || 0,
-        yours: map[token] === undefined ? null : map[token] ? "burst" : "off",
-        burstNames: aha.lightNames ? aha.lightNames.burst : [],
-        offNames: aha.lightNames ? aha.lightNames.off : [],
+        mine: vote,
+        yours: vote, // 兼容早期前端字段
+        canVote: !!token && token !== protagonistToken,
+        burstNames: burstNames.length ? burstNames : _legacyLightNames?.burst || [],
+        offNames: offNames.length ? offNames : _legacyLightNames?.off || [],
       },
     };
   }
@@ -475,11 +502,11 @@ export class RoomDO {
       }
       /* ---- 非诚勿扰互动体系（PRD §9）---- */
       case "chat": {
-        // 聊天室：全程可用，轻限频防连点
-        const text = String(msg.text || "").trim().slice(0, 120);
+        // 聊天室：全程可用，服务端限长、去控制字符并限频。
+        const text = cleanUserText(msg.text, SOCIAL.chatMaxLength);
         if (!text) return;
         const now = Date.now();
-        if (me.lastChatAt && now - me.lastChatAt < 600) return;
+        if (!this.allowRate(ws, me, "lastChatAt", SOCIAL.chatCooldownMs, now)) return;
         me.lastChatAt = now;
         r.chat.push({
           id: ++r.chatSeq,
@@ -489,22 +516,29 @@ export class RoomDO {
           ts: now,
           reactions: {},
         });
-        if (r.chat.length > 100) r.chat.splice(0, r.chat.length - 100);
+        if (r.chat.length > SOCIAL.chatHistoryLimit)
+          r.chat.splice(0, r.chat.length - SOCIAL.chatHistoryLimit);
         break;
       }
       case "react": {
-        // 飞书式贴 emoji 回应：同人同 emoji 再点一次 = 取消
+        // 飞书式贴 emoji：内部存 token；同人同 emoji 再点一次 = 取消。
         const cm = r.chat.find((c) => c.id === Number(msg.msgId));
-        const em = String(msg.emoji || "").slice(0, 8).trim();
-        if (!cm || !em) return;
+        const em = String(msg.emoji || "").trim();
+        if (!cm || !MESSAGE_REACTIONS.includes(em))
+          return this.send(ws, { type: "error", code: "invalid_reaction", msg: "这个表情暂不支持" });
+        const now = Date.now();
+        if (!this.allowRate(ws, me, "lastMessageReactionAt", SOCIAL.messageReactionCooldownMs, now)) return;
+        me.lastMessageReactionAt = now;
         if (!cm.reactions) cm.reactions = {};
         const list = cm.reactions[em] || (cm.reactions[em] = []);
-        const i = list.indexOf(me.name);
+        // 兼容旧存档中的玩家名数组；命中后迁移/取消。
+        let i = list.indexOf(token);
+        if (i < 0) i = list.indexOf(me.name);
         if (i >= 0) {
           list.splice(i, 1);
           if (!list.length) delete cm.reactions[em];
         } else {
-          list.push(me.name);
+          list.push(token);
         }
         break;
       }
@@ -512,36 +546,64 @@ export class RoomDO {
         // 弹幕：aha 主战场，答题/开牌/收局同样开放；限长 30 字、限频 3s
         if (!["aha", "answering", "reveal", "finished"].includes(r.phase))
           return;
-        const text = String(msg.text || "").trim().slice(0, 30);
+        const text = cleanUserText(msg.text, SOCIAL.danmakuMaxLength);
         if (!text) return;
         const now = Date.now();
-        if (me.lastDanmakuAt && now - me.lastDanmakuAt < 3000)
-          return this.send(ws, { type: "error", msg: "弹幕太密了，歇 3 秒再发" });
+        if (!this.allowRate(ws, me, "lastDanmakuAt", SOCIAL.danmakuCooldownMs, now)) return;
         me.lastDanmakuAt = now;
+        const event = this.addSocialEvent("danmaku", me, { text }, now);
         for (const s of this.ctx.getWebSockets()) {
-          this.send(s, { type: "danmaku", name: me.name, emoji: me.emoji, text });
+          this.send(s, event);
         }
         await this.save(); // 落盘限频时间戳
+        this.broadcast(); // recent 同步进每位玩家 state，重连与当前视图一致
         return; // 弹幕不落聊天记录、不全量广播 state
       }
+      case "quick_reaction": {
+        const reaction = String(msg.emoji || msg.reaction || "").trim();
+        if (!QUICK_REACTIONS.includes(reaction))
+          return this.send(ws, { type: "error", code: "invalid_reaction", msg: "这个快捷反应暂不支持" });
+        const now = Date.now();
+        if (!this.allowRate(ws, me, "lastQuickReactionAt", SOCIAL.quickReactionCooldownMs, now)) return;
+        me.lastQuickReactionAt = now;
+        const event = this.addSocialEvent("quick_reaction", me, { reaction }, now);
+        for (const s of this.ctx.getWebSockets()) this.send(s, event);
+        await this.save();
+        this.broadcast();
+        return;
+      }
       case "light": {
-        // 爆灯/灭灯：aha 屏，主角以外每人一盏，一旦按下不可反悔（综艺规则）
+        // 爆灯/灭灯：每人只有一张当前票，但可在 aha 阶段改票。
         if (r.phase !== "aha" || !r.aha) return;
         if (r.current && r.current.protagonist === token) return;
-        if (!r.aha.lights) {
-          r.aha.lights = {};
-          r.aha.lightNames = { burst: [], off: [] };
-        }
-        if (r.aha.lights[token] !== undefined) return;
-        const on = !!msg.on;
+        const now = Date.now();
+        if (!this.allowRate(ws, me, "lastLightAt", SOCIAL.lightCooldownMs, now)) return;
+        me.lastLightAt = now;
+        if (!r.aha.lights) r.aha.lights = {};
+        const on = msg.vote === "burst" ? true : msg.vote === "off" ? false : !!msg.on;
+        const previous = r.aha.lights[token];
+        if (previous === on) return;
         r.aha.lights[token] = on;
-        r.aha.lightNames[on ? "burst" : "off"].push(me.name);
-        // 海报数据：写入 stats
         const burst = Object.values(r.aha.lights).filter(Boolean).length;
-        r.aha.stats.lights = { burst, total: r.aha.lightTotal };
+        const off = Object.values(r.aha.lights).length - burst;
+        const total = r.aha.lightTotal || 0;
+        r.aha.stats.lights = {
+          burst,
+          off,
+          voted: burst + off,
+          total,
+          burstPct: total ? Math.round((burst / total) * 100) : 0,
+        };
+        this.syncCurrentAhaHistory();
         for (const s of this.ctx.getWebSockets()) {
-          if (s !== ws) // 发起者本地已即时播放特效
-            this.send(s, { type: "light_fx", name: me.name, emoji: me.emoji, on });
+          this.send(s, {
+            type: "light_fx",
+            name: me.name,
+            emoji: me.emoji,
+            on,
+            vote: on ? "burst" : "off",
+            changed: previous !== undefined,
+          });
         }
         break;
       }
@@ -550,6 +612,44 @@ export class RoomDO {
     }
     await this.save();
     this.broadcast();
+  }
+
+  allowRate(ws, player, field, cooldownMs, now = Date.now()) {
+    const elapsed = now - (Number(player[field]) || 0);
+    if (elapsed >= cooldownMs) return true;
+    this.send(ws, {
+      type: "error",
+      code: "rate_limited",
+      msg: "手速太快了，稍等一下",
+      retryAfterMs: cooldownMs - elapsed,
+    });
+    return false;
+  }
+
+  addSocialEvent(type, player, payload, now = Date.now()) {
+    const event = {
+      type,
+      id: ++this.room.socialSeq,
+      name: player.name,
+      emoji: player.emoji,
+      ts: now,
+      ...payload,
+    };
+    this.room.socialFeed.push(event);
+    if (this.room.socialFeed.length > SOCIAL.recentEventLimit) {
+      this.room.socialFeed.splice(0, this.room.socialFeed.length - SOCIAL.recentEventLimit);
+    }
+    return event;
+  }
+
+  syncCurrentAhaHistory() {
+    const r = this.room;
+    if (!r.aha || !r.ahaHistory.length) return;
+    let index = r.ahaHistory.findIndex((item) => item.id && item.id === r.aha.id);
+    // 旧存档没有 id 时，当前结算只可能对应最后一项。
+    if (index < 0 && !r.ahaHistory[r.ahaHistory.length - 1]?.id)
+      index = r.ahaHistory.length - 1;
+    if (index >= 0) r.ahaHistory[index] = structuredClone(r.aha);
   }
 
   async onJoin(ws, msg) {
@@ -716,64 +816,12 @@ export class RoomDO {
     const avg =
       recs.reduce((s, x) => s + x.score, 0) / Math.max(1, recs.length);
 
-    // tags 聚合（按打分加权：高分=容忍此 tag）
-    const tagScore = {};
-    for (const rec of recs) {
-      for (const t of rec.question.tags || []) {
-        tagScore[t] = (tagScore[t] || 0) + rec.score;
-      }
-    }
-    const topTags = Object.entries(tagScore)
-      .sort((a, b) => b[1] - a[1])
-      .map(([t]) => t);
-
-    // 立绘 prompt（英文）
-    const gword =
-      cur.gender === "f" ? "woman" : cur.gender === "m" ? "man" : "androgynous person";
-    const visuals = topTags
-      .slice(0, 3)
-      .map((t) => TAG_VISUAL[t])
-      .filter(Boolean);
-    const prompt = [
-      `beautiful detailed anime illustration, waist-up portrait of a charming ${gword}`,
-      `sitting at a bright sunlit cafe terrace at golden hour, warm cream and peach tones, vivid pop-color accents, cheerful airy atmosphere`,
-      ...visuals,
-      `stylish, expressive face, cinematic glow, high quality, no text`,
-    ].join(", ");
-    const imageUrl =
-      "https://image.pollinations.ai/prompt/" +
-      encodeURIComponent(prompt) +
-      "?width=768&height=1024&nologo=true";
-
-    // 玩梗起名
-    const adj = NAME_ADJ[topTags[0]] || NAME_ADJ._default;
-    const pool =
-      cur.gender === "f" ? NAME_F : cur.gender === "m" ? NAME_M : NAME_M.concat(NAME_F);
-    const idolName = adj + pool[Math.floor(Math.random() * pool.length)];
-
-    // 相处细节（3-5 条，容忍/否决驱动）
-    const ta = "TA";
-    const details = [];
-    for (const t of tolerated.slice(0, 2)) {
-      details.push(
-        `${ta}${t.question.variant}。你给了 ${t.score} 分——恭喜，你们已经跳过恋爱最难的一关，直接进入互相纵容环节。`
-      );
-    }
-    for (const v of vetoed.slice(0, 2)) {
-      details.push(
-        `第一次约会 ${ta} 差点暴露「${v.question.variant}」这件事，被你 ${v.score} 分当场火化。${ta} 现在提起这事还要喝三杯压惊。`
-      );
-    }
-    if (topTags[0]) {
-      details.push(
-        `你们的日常：一半时间在为「${topTags[0]}」相关问题斗智斗勇，另一半时间在酒桌上跟朋友吹嘘对方多完美。`
-      );
-    }
-    while (details.length < 3) {
-      details.push(
-        `${ta} 唯一的缺点是完美得不像话，朋友都劝你先干为敬，冷静一下。`
-      );
-    }
+    // 乙游理想型档案：答案只进入确定性画像模块，不把玩家昵称或自由文本送去生图。
+    const profile = buildIdealProfile({
+      records: recs,
+      genderPreference: cur.gender,
+      seed: `${r.code}:${r.ahaHistory.length}:${recs.map((rec) => `${rec.question.id}:${rec.score}`).join("|")}`,
+    });
 
     // 称号 + 海报数据
     const title = TITLES.find((t) => avg >= t.min);
@@ -790,15 +838,17 @@ export class RoomDO {
       .sort((a, b) => b.drinks - a.drinks);
 
     r.aha = {
+      id: crypto.randomUUID(),
+      protagonistToken: hero.token,
       lights: {}, // token -> true(爆灯)/false(灭灯)，视图层折算不外泄
-      lightNames: { burst: [], off: [] },
       lightTotal: r.players.length - 1,
       protagonist: this.pub(hero),
       gender: cur.gender,
-      prompt,
-      imageUrl,
-      idolName,
-      details: details.slice(0, 5),
+      profile,
+      prompt: profile.portrait.prompt,
+      imageUrl: profile.portrait.imageUrl,
+      idolName: profile.matchCard.name,
+      details: profile.relationship.details,
       title: title.title,
       titleSub: title.sub,
       stats: {
@@ -809,10 +859,17 @@ export class RoomDO {
         tolerate: tolerated[0] ? tolerated[0].question.text : null,
         drinkBoard,
         rounds: recs.length,
-        lights: { burst: 0, total: r.players.length - 1 },
+        lights: {
+          burst: 0,
+          off: 0,
+          voted: 0,
+          total: r.players.length - 1,
+          burstPct: 0,
+        },
       },
     };
-    r.ahaHistory.push(r.aha);
+    // 历史项必须是快照，避免下一位主角或后续灯票污染前一轮结算。
+    r.ahaHistory.push(structuredClone(r.aha));
   }
 }
 
@@ -820,4 +877,11 @@ function clamp010(v) {
   const n = Math.round(Number(v));
   if (!Number.isFinite(n) || n < 0 || n > 10) return null;
   return n;
+}
+
+function cleanUserText(value, maxLength) {
+  const text = String(value ?? "")
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .trim();
+  return Array.from(text).slice(0, maxLength).join("").trim();
 }

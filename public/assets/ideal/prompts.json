@@ -1,0 +1,44 @@
+{
+  "version": "ideal-profile-v1",
+  "status": "prompts-ready-imagegen-unavailable",
+  "sharedConstraints": "Original adult character only. Premium original 2.5D anime key art. Vertical 2:3 full-body three-quarter portrait. Brilliant white high-key environment with electric-cobalt structure, crisp rim light, hard clean shadows and very high contrast. Face and both hands visible. Fully clothed. No text, logo, watermark, UI or frame. Avoid underage appearance, school uniforms, muddy pastels, beige-dominant palettes, purple gradients, celebrity likeness and copied franchise characters.",
+  "assets": [
+    {
+      "id": "power-ceo",
+      "filename": "power-ceo-v1.webp",
+      "mbti": "ENTJ",
+      "prompt": "Use case: stylized-concept. Asset type: premium mobile game character portrait card. Create an original East Asian otome-game-inspired commanding adult man, age 28 to 34, unmistakable power-CEO archetype: sharp clean facial features, controlled gaze, immaculate deep-navy power tailoring with an electric-blue accent, quiet authority. Bright architectural penthouse with white stone and electric-blue light panels. Premium original 2.5D anime character key art, refined painterly rendering, sophisticated fashion editorial finish. Vertical 2:3 full-body three-quarter hero pose, face and both hands visible. Brilliant high-key daylight, crisp rim light, hard clean shadows, very high visual contrast. One adult character only, fully clothed, no text, logo, watermark, frame or UI. Avoid underage appearance, muddy pastel wash, beige dominance, purple gradient, generic anime face, celebrity likeness and copied game characters."
+    },
+    {
+      "id": "sunny-puppy",
+      "filename": "sunny-puppy-v1.webp",
+      "mbti": "ENFP",
+      "prompt": "Use case: stylized-concept. Asset type: premium mobile game character portrait card. Create an original East Asian otome-game-inspired adult man, age 24 to 29, unmistakable sunny-puppy archetype: soft layered hair, open bright eyes, unguarded smile, athletic youthful energy without looking underage. Bright tangerine statement jacket with clean cyan details. Sunlit white studio with cobalt-blue blocks and a vivid citrus accent. Premium original 2.5D anime key art, refined painterly fashion finish. Vertical 2:3 full-body three-quarter hero pose, face and both hands visible. Brilliant high-key daylight, crisp rim light, hard clean shadows, very high contrast. Fully clothed, no school uniform, text, logo, watermark, frame or UI. Avoid juvenile proportions, muddy pastels, beige dominance, purple gradients, celebrity likeness and copied characters."
+    },
+    {
+      "id": "steady-guardian",
+      "filename": "steady-guardian-v1.webp",
+      "mbti": "ISFJ",
+      "prompt": "Use case: stylized-concept. Asset type: premium mobile game character portrait card. Create an original East Asian otome-game-inspired adult woman, age 29 to 34, unmistakable mature guardian archetype: composed features, calm protective gaze, understated confidence, elegant long coat and impeccable cuffs. Polished emerald layers with one precise coral-red accent. High-key white hotel lobby with cobalt glass and daylight. Premium original 2.5D anime key art with sophisticated editorial rendering. Vertical 2:3 full-body three-quarter hero pose, face and both hands visible. Brilliant high-key light, crisp rim, hard clean shadows and very high contrast. Fully clothed, no text, logo, watermark, frame or UI. Avoid muddy pastels, beige dominance, purple gradients, celebrity likeness and copied franchise characters."
+    },
+    {
+      "id": "frost-scholar",
+      "filename": "frost-scholar-v1.webp",
+      "mbti": "INTJ",
+      "prompt": "Use case: stylized-concept. Asset type: premium mobile game character portrait card. Create an original East Asian otome-game-inspired androgynous adult, age 25 to 32, unmistakable frost-scholar archetype: refined cool features, focused distant gaze, subtle rimless glasses, precise posture. Architectural cobalt suit over a pure white high-neck layer with a cyan accent. Luminous white research library with electric-blue translucent shelves. Premium original 2.5D anime key art and refined painterly editorial rendering. Vertical 2:3 full-body three-quarter hero pose, face and both hands visible. Brilliant high-key daylight, crisp rim light, hard shadows, very high contrast. Fully clothed, no text, logo, watermark, frame or UI. Avoid school uniform, underage appearance, muddy pastels, beige dominance, purple gradients, celebrity likeness and copied characters."
+    },
+    {
+      "id": "wild-charmer",
+      "filename": "wild-charmer-v1.webp",
+      "mbti": "ESTP",
+      "prompt": "Use case: stylized-concept. Asset type: premium mobile game character portrait card. Create an original East Asian otome-game-inspired adult woman, age 25 to 32, unmistakable wild-charmer archetype: tousled hair, dangerous half-smile, relaxed confident posture, rebellious edge with a trustworthy gaze. Bold signal-red jacket with a saturated cobalt-blue structural layer. Bright white rooftop at noon with cobalt signage and one neon-red plane. Premium original 2.5D anime key art with editorial fashion rendering. Vertical 2:3 full-body three-quarter hero pose, face and both hands visible. Brilliant hard daylight, crisp rim, clean shadows, very high contrast. Tasteful and fully clothed, no text, logo, watermark, frame or UI. Avoid sexualized posing, muddy pastels, beige dominance, purple gradients, celebrity likeness and copied franchise characters."
+    },
+    {
+      "id": "gentle-artist",
+      "filename": "gentle-artist-v1.webp",
+      "mbti": "INFP",
+      "prompt": "Use case: stylized-concept. Asset type: premium mobile game character portrait card. Create an original East Asian otome-game-inspired androgynous adult, age 25 to 33, unmistakable gentle-artist archetype: expressive eyes, elegant hands, softly textured hair, fluid fashion silhouette, quietly magnetic presence. Soft coral tailoring with a vivid cobalt-blue inner layer. Brilliant white gallery with cobalt sculptures and coral accent panels. Premium original 2.5D anime key art with refined painterly editorial finish. Vertical 2:3 full-body three-quarter hero pose, face and both hands visible. Brilliant high-key daylight, crisp rim light, hard clean shadows, very high contrast. Fully clothed, no text, logo, watermark, frame or UI. Avoid muddy pastel wash, beige dominance, purple gradients, celebrity likeness and copied game characters."
+    }
+  ]
+}
+
