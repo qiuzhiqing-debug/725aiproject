@@ -78,7 +78,12 @@ const SOCIAL = Object.freeze({
 
 // 服务端白名单是最终准绳，避免用任意长 Unicode 串刷爆状态。
 const MESSAGE_REACTIONS = Object.freeze(["😂", "🔥", "🍺", "💔", "👏", "🤯", "❤️", "👀"]);
-const QUICK_REACTIONS = Object.freeze(["🍺", "😂", "💔", "🔥", "👏", "🤯"]);
+const QUICK_REACTIONS = Object.freeze([
+  "🍺", "😂", "💔", "🔥", "👏", "🤯", "❤️", "👀",
+  "😍", "🥹", "😭", "😅", "😏", "🙄", "🤡", "💀",
+  "🫠", "🫣", "🤨", "🥳", "🫡", "😈", "🤝", "👍",
+  "👎", "✨", "💅", "🍿", "🚨", "💯", "🥂", "🧊",
+]);
 
 // 局终即焚：房间数据最长保留 12 小时（PRD §2）
 const ROOM_TTL_MS = 12 * 3600 * 1000;
@@ -1030,7 +1035,6 @@ export class RoomDO {
       profile,
       prompt: profile.portrait.prompt,
       imageUrl: profile.portrait.imageUrl,
-      idolName: profile.matchCard.name,
       details: profile.relationship.details,
       title: title.title,
       titleSub: title.sub,

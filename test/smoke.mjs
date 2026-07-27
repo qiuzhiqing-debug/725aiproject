@@ -204,7 +204,7 @@ async function main() {
   ok(!!aha, "3 轮打完 → aha 结算");
   ok(typeof aha.prompt === "string" && aha.prompt.includes("man"), "aha.prompt 立绘 prompt 已生成");
   ok(Array.isArray(aha.details) && aha.details.length >= 3, `相处细节 ${aha.details.length} 条（≥3）`);
-  ok(aha.idolName && aha.title, `理想型：${aha.idolName} / 称号：${aha.title}`);
+  ok(aha.profile?.matchCard?.archetype && aha.title, `理想型：${aha.profile.matchCard.archetype} / 称号：${aha.title}`);
   ok(aha.profile?.stages?.map((stage) => stage.id).join(",") === "portrait,profile,relationship",
     "理想型三段式数据：立绘 → 相亲档案 → 相处细节");
   ok(/^[EI][NS][TF][JP]$/.test(aha.profile?.matchCard?.mbti || "") && aha.profile?.matchCard?.occupation,
@@ -314,7 +314,8 @@ async function main() {
   // 房主推进 → 下一位主角（picking），摇签人应为上一任主角
   await waitUntil(() => all.every((player) =>
     player.state?.players?.find((p) => p.name === hero.name)?.connected === true));
-  A.send({ type: "next" });
+  const currentHost = all.find((player) => player.state?.you?.isHost);
+  currentHost.send({ type: "next" });
   await Promise.all(all.map((player) => player.waitPhase("picking", 10000)));
   const shaker2 = all.find((p) => p.state.current.youAreShaker);
   ok(shaker2 === hero, `第二轮摇签人 = 上一任主角 ${hero.name}`);

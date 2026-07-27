@@ -794,7 +794,7 @@ function resolveAhaProfile(aha) {
   return buildIdealProfileFn({
     records: [],
     genderPreference: aha.gender,
-    seed: aha.id || `${aha.idolName || "ideal"}:${aha.stats?.avgScore || 0}`,
+    seed: aha.id || `ideal:${aha.stats?.avgScore || 0}`,
   });
 }
 
@@ -830,19 +830,19 @@ function renderAha(s, aha, isFinal) {
   const stageBody = stage === 0 ? `
     <div class="aha-stage portrait-stage" style="--profile-primary:${primary};--profile-accent:${accent}">
       <div class="art-wrap" id="artWrap">
-        <div class="art-fallback"><b>${esc(card.name)}</b><span>${esc(portrait.archetype)}</span></div>
-        <img id="artImg" src="${esc(portrait.imageUrl || aha.imageUrl)}" alt="${esc(portrait.alt || `${card.name} 理想型立绘`)}" />
+        <div class="art-fallback"><b>${esc(portrait.archetype)}</b><span>${esc(card.presentation)}</span></div>
+        <img id="artImg" src="${esc(portrait.imageUrl || aha.imageUrl)}" alt="${esc(portrait.alt || `${portrait.archetype}理想型立绘`)}" />
         <span class="archetype-chip">${esc(portrait.archetype)}</span>
       </div>
       <div class="caption">
-        <b class="ideal-name">${esc(card.name)}</b>
+        <b class="ideal-name">${esc(card.archetype)}</b>
         <div class="ideal-meta"><span>${esc(card.mbti)}</span><span>${esc(card.presentation)}</span><span>${esc(relationship.chemistry)}</span></div>
         <div class="dim">${esc(aha.title)} · ${esc(aha.titleSub)}</div>
       </div>
     </div>` : stage === 1 ? `
     <div class="aha-stage profile-stage" style="--profile-primary:${primary};--profile-accent:${accent}">
       <div class="profile-kicker">MATCH FILE / 02</div>
-      <div class="profile-title-row"><div><b class="ideal-name">${esc(card.name)}</b><div class="dim">${esc(card.archetype)} · ${esc(card.presentation)}</div></div><span class="mbti-badge">${esc(card.mbti)}</span></div>
+      <div class="profile-title-row"><div><b class="ideal-name">理想型档案</b><div class="dim">${esc(card.archetype)} · ${esc(card.presentation)}</div></div><span class="mbti-badge">${esc(card.mbti)}</span></div>
       <div class="profile-grid">
         <div><span>出生日期</span><b>${esc(card.birthDate)}</b></div>
         <div><span>星座</span><b>${esc(card.zodiac)}</b></div>
@@ -1002,8 +1002,11 @@ function renderFinished(s) {
   const wrap = document.createElement("div");
   wrap.innerHTML = `
     <div id="dmLayer" class="dm-layer" aria-hidden="true"></div>
+    <div id="dmEmojiPanel" class="dm-emoji-panel hidden" aria-label="选择现场反应">
+      ${QUICK_REACTIONS.map((e) => `<button class="dm-e" data-e="${e}" aria-label="发送 ${e}">${e}</button>`).join("")}
+    </div>
     <div id="dmBar" class="dm-bar hidden">
-      <div class="dm-quick">${QUICK_REACTIONS.map((e) => `<button class="dm-q" data-e="${e}">${e}</button>`).join("")}</div>
+      <button id="dmEmojiToggle" class="dm-emoji-toggle" aria-expanded="false" aria-controls="dmEmojiPanel" aria-label="打开表情面板">☺</button>
       <input id="dmIn" type="text" maxlength="30" placeholder="发条弹幕…" />
       <button class="btn small dm-send" id="dmSend">发</button>
     </div>
@@ -1040,8 +1043,32 @@ function renderFinished(s) {
   const dmIn = document.getElementById("dmIn");
   document.getElementById("dmSend").addEventListener("click", () => { sendDm(dmIn.value); dmIn.value = ""; });
   dmIn.addEventListener("keydown", (e) => { if (e.key === "Enter") { sendDm(dmIn.value); dmIn.value = ""; } });
-  document.querySelectorAll(".dm-q").forEach((b) =>
-    b.addEventListener("click", () => sendQuick(b.dataset.e)));
+  const dmEmojiPanel = document.getElementById("dmEmojiPanel");
+  const dmEmojiToggle = document.getElementById("dmEmojiToggle");
+  const setEmojiPanelOpen = (open) => {
+    dmEmojiPanel.classList.toggle("hidden", !open);
+    dmEmojiToggle.setAttribute("aria-expanded", String(open));
+    dmEmojiToggle.classList.toggle("open", open);
+    document.body.classList.toggle("dm-emoji-open", open);
+  };
+  dmEmojiToggle.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setEmojiPanelOpen(dmEmojiPanel.classList.contains("hidden"));
+  });
+  dmEmojiPanel.addEventListener("click", (event) => {
+    const button = event.target.closest(".dm-e");
+    if (!button) return;
+    sendQuick(button.dataset.e);
+    setEmojiPanelOpen(false);
+  });
+  document.addEventListener("click", (event) => {
+    if (!dmEmojiPanel.classList.contains("hidden") && !dmEmojiPanel.contains(event.target) && event.target !== dmEmojiToggle) {
+      setEmojiPanelOpen(false);
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") setEmojiPanelOpen(false);
+  });
 
   // 聊天抽屉开合
   const setOpen = (open) => {
@@ -1171,6 +1198,11 @@ function updateOverlays() {
   document.getElementById("chatFab")?.classList.toggle("hidden", !inGame);
   const barOn = inGame && ["answering", "reveal", "drinking", "aha", "finished"].includes(s?.phase);
   document.getElementById("dmBar")?.classList.toggle("hidden", !barOn);
+  if (!barOn) {
+    document.getElementById("dmEmojiPanel")?.classList.add("hidden");
+    document.getElementById("dmEmojiToggle")?.setAttribute("aria-expanded", "false");
+    document.body.classList.remove("dm-emoji-open");
+  }
   document.body.classList.toggle("has-dmbar", barOn);
   if (inGame) {
     if (ui.chatOpen) renderChat();
@@ -1239,7 +1271,6 @@ function buildPreviewState(screen) {
       gender: seed === 2 ? "n" : "m",
       profile,
       imageUrl: profile.portrait.imageUrl || mockArt(p.emoji),
-      idolName: profile.matchCard.name,
       title: seed === 2 ? "人间清醒代言人" : "全场最难猜的心",
       titleSub: "均分 6.4 · 容忍度前 12%",
       details: profile.relationship.details,

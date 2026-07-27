@@ -2,7 +2,12 @@
 // 本文件不操作 DOM，可被任意 UI 层直接 import，也方便独立测试。
 
 export const MESSAGE_REACTIONS = Object.freeze(["😂", "🔥", "🍺", "💔", "👏", "🤯", "❤️", "👀"]);
-export const QUICK_REACTIONS = Object.freeze(["🍺", "😂", "💔", "🔥", "👏", "🤯"]);
+export const QUICK_REACTIONS = Object.freeze([
+  "🍺", "😂", "💔", "🔥", "👏", "🤯", "❤️", "👀",
+  "😍", "🥹", "😭", "😅", "😏", "🙄", "🤡", "💀",
+  "🫠", "🫣", "🤨", "🥳", "🫡", "😈", "🤝", "👍",
+  "👎", "✨", "💅", "🍿", "🚨", "💯", "🥂", "🧊",
+]);
 export const SOCIAL_LIMITS = Object.freeze({
   chat: 120,
   danmaku: 30,

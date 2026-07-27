@@ -135,9 +135,9 @@ export const MBTI_STYLES = Object.freeze({
 });
 
 const PRESENTATIONS = Object.freeze({
-  masc: { label: "男性呈现", subject: "an adult man", names: ["沈砚", "周屿", "陆时序", "裴知白", "林越", "许铎", "程述", "江临"] },
-  femme: { label: "女性呈现", subject: "an adult woman", names: ["许昼", "林栀", "程雾", "苏弥", "周遥", "沈澄", "陆弦", "江岚"] },
-  androgynous: { label: "中性呈现", subject: "an androgynous adult", names: ["简川", "闻青", "时安", "顾野", "予川", "迟光", "云舟", "景和"] },
+  masc: { label: "男性呈现", subject: "an adult man" },
+  femme: { label: "女性呈现", subject: "an adult woman" },
+  androgynous: { label: "中性呈现", subject: "an androgynous adult" },
 });
 
 const PORTRAIT_FALLBACKS = Object.freeze({
@@ -531,15 +531,13 @@ export function buildIdealProfile(input = {}) {
   const presentation = presentationFor(requestedGender, seedText);
   const traits = deriveTraits(records);
   const birthday = birthdayFor(rng);
-  const name = pick(presentation.names, rng);
   const portraitPrompt = buildPortraitPrompt({ archetype, presentation, mbti: style });
   const relationship = Object.freeze({
-    heading: `你和 ${name} 的相处细节`,
+    heading: "你们的相处细节",
     details: Object.freeze(relationshipDetails(archetype, mbti, traits, rng)),
     chemistry: `${style.mood} × ${archetype.shortLabel}`,
   });
   const matchCard = Object.freeze({
-    name,
     mbti,
     birthDate: birthday,
     zodiac: zodiacFor(birthday),
@@ -566,7 +564,7 @@ export function buildIdealProfile(input = {}) {
     imageUrl: buildRemotePortraitUrl(portraitPrompt, { seed }),
     fallbackUrl: PORTRAIT_FALLBACKS[presentation.id],
     source: "pollinations-remote-fallback",
-    alt: `${name}，${archetype.shortLabel}理想型立绘，${mbti} 配色`,
+    alt: `${archetype.shortLabel}理想型立绘，${mbti} 配色，${presentation.label}`,
   });
   const stages = Object.freeze([
     Object.freeze({ id: "portrait", step: 1, label: "理想型亮相", data: portrait }),

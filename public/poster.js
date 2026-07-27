@@ -153,14 +153,15 @@ export async function renderPoster(aha, siteUrl) {
   ctx.fillStyle = C.blue;
   ctx.fillText(heroLine, W / 2, 176);
 
-  /* ---- 理想型名字（叠在立绘下缘）+ 酒桌称号大字 ---- */
+  /* ---- 理想型类型（叠在立绘下缘）+ 酒桌称号大字 ---- */
   let y = IMG_H - 46;
   ctx.font = font("900", 58);
   ctx.lineWidth = 10;
   ctx.strokeStyle = C.white;
-  ctx.strokeText(fitText(ctx, aha.idolName, 940), W / 2, y);
+  const archetypeLabel = matchCard.archetype || portrait.archetype || "理想型档案";
+  ctx.strokeText(fitText(ctx, archetypeLabel, 940), W / 2, y);
   ctx.fillStyle = C.ink;
-  ctx.fillText(fitText(ctx, aha.idolName, 940), W / 2, y);
+  ctx.fillText(fitText(ctx, archetypeLabel, 940), W / 2, y);
 
   // 酒桌称号：电光蓝高对比横幅
   y = IMG_H + 26;
