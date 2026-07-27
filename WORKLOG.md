@@ -37,3 +37,28 @@
 - 永久地址多人端到端冒烟 57/57 通过。针对公网延迟，将 smoke 中固定毫秒等待改为有条件的状态等待，覆盖出签、聊天回应、灯票特效与断线重连，避免把网络抖动误判为产品失败。
 - 正式地址双视口证据：`qa/production-home-390.png`（innerWidth/scrollWidth 390/390）与 `qa/production-home-1400.png`（1400/1400），脚本错误均为 0，人工复核通过。
 - 本机代理对新域名使用 `198.18.*` Fake-IP，刚部署时曾造成仅本机的 TLS 假失败；使用公共 DoH 查得真实 Cloudflare 边缘地址后验证 HTTPS 200。代理映射刷新后，普通网络路径再次完成 57/57 与标准双视口截图；临时 QA 脚本已删除，未改系统网络设置。
+
+## 2026-07-28 凌晨（Fable 接管：V2 红弦版）
+
+### 已完成（授权项全部前置，Kim 可睡）
+- ✅ 私密仓：https://github.com/kimniniup-creator/ideal-type-loading（原 725aiproject 不动，remote 保留为 old-shared）
+- ✅ 新 Worker：https://ideal-type-loading.kimnin-iup.workers.dev（旧网址不动；配置文件 wrangler.new.jsonc）
+- ✅ LLM secrets 配到新 Worker（LLM_API_KEY/LLM_BASE_URL）→ 酒保锐评/画像文案后端可调
+- ✅ KV namespace USERS（id b9d212d3…）创建并绑定 → 用户档案/主页/展示柜存储
+- ✅ 生图验证：pollinations + referrer 参数 200/1s 免费；裸调 429/524。必须带 referrer
+- ✅ 酒吧玩耍系统评估：只借概念不合并。值得搬：问答→人格→专属鸡尾酒的数据结构、平票末题回溯计分、夜场情境题思路。酒图是店家实拍菜单（带价格品牌）不可用。商务留口子：映射做成可配置 JSON
+- ✅ PRD-V2.md 落盘（含商业化前版权必删清单：红弦俱乐部/超天酱等全部要清）
+- ❌ Vercel 不用：多人房间是 WebSocket+DO 有状态长连接，Vercel serverless 不支持
+
+### V2 分工（文件所有权制）
+| 线程 | 文件 | 任务 |
+|---|---|---|
+| Q 题库 | questions.js, qa/questions-qa.mjs | 5 模组×取向池×锅底，3局10轮无重复底线 |
+| B 后端 | src/worker.js, test/smoke.mjs | KV 档案/酒保 LLM/强制下一轮/离场退出/国王游戏 |
+| L 视觉 | theme.css, lobby/cocktail/bartender.js, assets-v2/ | 红弦风/大厅/调酒动画/酒保立绘/Logo/签筒 |
+| F 整合 | app.js, index.html, style.css, fx.js | 整合+修 bug（锅底比例/房主转圈/emoji 面板） |
+| P 主页 | profile.js, poster.js, ideal-profile.js | 结果页/海报（年报→海报）/用户主页/展示柜 |
+
+### 未决问题（Kim 醒来看）
+- 酒保名字暂定「老 K」浪子人设，可改
+- 女同局/男同局：做成开桌时低调的「口味定制」选项，待确认
