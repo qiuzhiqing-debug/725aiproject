@@ -643,10 +643,11 @@ select option {
   max-width: 300px;
   height: 14px;
   overflow: hidden;
-  border: var(--stroke-thin) solid var(--line-neon);
+  border: var(--stroke-thin) solid var(--neon-pink);
   border-radius: var(--radius-pill);
   background: var(--bar-bg-deep);
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 0 14px var(--glow-pink-40), inset 0 2px 6px rgba(0, 0, 0, 0.55);
+  animation: trackBreath 1.8s ease-in-out infinite;
 }
 
 .progress-fill {
@@ -655,6 +656,18 @@ select option {
   background: linear-gradient(90deg, var(--neon-pink), var(--neon-cyan));
   box-shadow: 0 0 10px var(--glow-pink-40);
   transition: width 0.15s ease;
+}
+
+/* 摇签进度播报：跟调酒页一个气质的发光文案，而不是黑底播报条 */
+.stick-stage .progress {
+  color: var(--neon-cyan-soft);
+  text-shadow: var(--neon-text-cyan);
+  font-weight: 700;
+}
+
+@keyframes trackBreath {
+  0%, 100% { box-shadow: 0 0 10px var(--glow-pink-40), inset 0 2px 6px rgba(0, 0, 0, 0.55); }
+  50% { box-shadow: 0 0 20px var(--glow-pink-40), inset 0 2px 6px rgba(0, 0, 0, 0.55); }
 }
 
 .score-val {
@@ -2496,6 +2509,16 @@ body:not(.has-dmbar) .chat-fab {
   .dm-quick .dm-q:nth-child(n + 4) { display: none; }
 
   .chat-fab { right: 10px; }
+
+  /* 悬浮球净空：小屏下聊天球悬在 bottom 84px，一屏排满时会压住
+     aha 标语 / 国王第三道旨意等末尾内容 → 给内容底部留出球的高度 */
+  body.has-dmbar .app {
+    padding-bottom: calc(158px + env(safe-area-inset-bottom));
+  }
+
+  body:not(.has-dmbar) .app {
+    padding-bottom: calc(90px + env(safe-area-inset-bottom));
+  }
 
   .aha-stage-nav button {
     min-height: 56px;

@@ -34,6 +34,14 @@ const DRINK_OPTIONS = [
   { id: "soft", label: "无酒精", emoji: "🫧" },
 ];
 
+// 「锅底」是题库数据键名（questions.js，不许改）；显示层映射成酒吧语系（世界观统一）
+const DECK_DISPLAY = {
+  "清汤锅底": "清爽款 · 温和不呛",
+  "番茄锅底": "微醺款 · 酸甜带劲",
+  "重口锅底": "上头款 · 后劲很大",
+};
+const deckLabel = (name) => DECK_DISPLAY[name] || name || "";
+
 // 调酒身份（/v2/cocktail.html 存的 ideal_cocktail）：跟人走，不让用户重选
 function readCocktail() {
   try {
@@ -321,7 +329,7 @@ function onMessage(msg) {
         if (msg.state.phase === "aha") sound.riff(); // 理想型入场 riff
         if (msg.state.phase === "drinking") sound.chug();
         ui.ahaStage = 0;
-        ui.ahaSaved = false;
+        // 档案写入判重不在这里重置：saved 状态按 aha.id 持久化（见 savedAhaKeys）
         ui.ahaArtUrl = null; // 立绘确认可用后才写展示柜
         clearTimeout(ui.ahaSaveTimer);
         ui.ahaSaveTimer = null;
@@ -458,9 +466,11 @@ function renderHome() {
       <button class="btn" id="createBtn">开一桌，一个人喝</button>
     </div>` : deepJoin ? `
     <div class="glass stack center">
-      <div class="dim">朋友把你带到这桌了。坐下就开始。</div>
+      <div class="dim">${ui.table
+        ? `${esc(ui.table)} 号桌，位子给你留着。坐下就开始。`
+        : "朋友把你带到这桌了。坐下就开始。"}</div>
       <button class="btn" id="joinBtn">${joinLabel}</button>
-      <button class="link-btn" id="createBtn">这桌不合适？另开一桌</button>
+      ${ui.table ? "" : `<button class="link-btn" id="createBtn">这桌不合适？另开一桌</button>`}
     </div>` : `
     <div class="glass stack">
       <button class="btn" id="createBtn">开一桌</button>
@@ -546,16 +556,16 @@ function renderLobby(s) {
         </select>
       </div>
       <div class="row">
-        <label class="dim grow">锅底</label>
+        <label class="dim grow">今晚的酒劲</label>
         <select id="deckSel" ${decks ? "" : "disabled"}>${decks
           ? Object.entries(decks).map(([k, d]) =>
-              `<option value="${k}" ${k === s.settings.deck ? "selected" : ""}>${d.name}</option>`).join("")
-          : `<option>锅底还在灶上…</option>`}
+              `<option value="${k}" ${k === s.settings.deck ? "selected" : ""}>${esc(deckLabel(d.name))}</option>`).join("")
+          : `<option>酒单还在老K手里…</option>`}
         </select>
       </div>
       <button class="btn" id="startBtn" ${canStart ? "" : "disabled"}>${soloTable ? "开局，一个人喝" : "开局"}</button>
       ${!canStart && decks && !ui.solo ? `<div class="dim center">凑够 2 个人，酒才有味道。</div>` : ""}
-    </div>` : `<div class="glass center dim">等房主开局。锅底：${esc(s.settings.deckName)}</div>`}`;
+    </div>` : `<div class="glass center dim">等房主开局。今晚的酒劲：${esc(deckLabel(s.settings.deckName))}</div>`}`;
   const qrCanvas = document.getElementById("qrCv");
   loadQr().then(({ drawQR }) => {
     if (qrCanvas?.isConnected) {
@@ -571,7 +581,7 @@ function renderLobby(s) {
     loadQuestions().then(({ DECKS }) => {
       renderLobby._decks = DECKS;
       if (ui.state?.phase === "lobby" && ui.state?.code === s.code) render();
-    }).catch(() => toast("题库加载失败，请刷新重试"));
+    }).catch(() => toast("题单半路洒了。刷新一下，我再拿一份。"));
   }
   if (me.isHost && decks) {
     const roundsSel = document.getElementById("roundsSel");
@@ -596,6 +606,14 @@ function renderLobby(s) {
 }
 
 /* --- 抽酒签 --- */
+// 摇签过程播报：进度条配文案，老K在旁边看着
+function stickChargeText(pct) {
+  if (pct <= 0) return "签筒在你手里，先晃醒它";
+  if (pct < 40) return `签筒醒了 · ${pct}%`;
+  if (pct < 80) return `签在筒里打架 · ${pct}%`;
+  return `有一支要跳出来了 · ${pct}%`;
+}
+
 function renderPicking(s) {
   const cur = s.current;
   const iShake = cur.youAreShaker;
@@ -609,7 +627,7 @@ function renderPicking(s) {
         <div class="stick-out">今晚主角：${esc(cur.protagonist.emoji)} ${esc(cur.protagonist.name)}</div>
         ${iShake ? `<button class="btn" id="doneBtn">就是 TA，上桌</button>` : `<div class="dim">等 ${esc(cur.shaker)} 确认。</div>`}
       ` : iShake ? `
-        <div class="progress" id="chargeBar">摇动进度 ${Math.round(ui.shakeCharge * 100)}%</div>
+        <div class="progress" id="chargeBar">${stickChargeText(Math.round(ui.shakeCharge * 100))}</div>
         <div class="progress-track"><div class="progress-fill" id="chargeFill" style="width:${Math.round(ui.shakeCharge * 100)}%"></div></div>
         ${ui.shakeMode === null ? `<button class="btn" id="shakeBtn">摇一摇，抽签</button>` : ""}
         ${ui.shakeMode === "motion" ? `<div class="dim center">使劲摇。签筒响了，人就快出来了。</div>` : ""}
@@ -670,7 +688,7 @@ function renderPicking(s) {
   function updateChargeBar() {
     const pct = Math.round(ui.shakeCharge * 100);
     const el = document.getElementById("chargeBar");
-    if (el) el.textContent = `摇动进度 ${pct}%`;
+    if (el) el.textContent = stickChargeText(pct);
     const fill = document.getElementById("chargeFill");
     if (fill) fill.style.width = pct + "%";
   }
@@ -733,7 +751,7 @@ function renderAnswering(s) {
   const me = cur.youAreProtagonist;
   const waiting = cur.submitted.guessers;
   $app.innerHTML = `
-    ${header(s, `${esc(cur.protagonist.name)} 的第 ${cur.roundIndex}/${cur.totalRounds} 轮`)}
+    ${header(s, `${esc(cur.protagonist.name)}的第 ${cur.roundIndex}/${cur.totalRounds} 轮`)}
     <div class="glass question-card">
       ${esc(cur.question.text)}
       <div class="spice">${"🌶️".repeat(spiceLevel(cur.question.spice))}</div>
@@ -776,8 +794,9 @@ function renderReveal(s) {
   const cur = s.current;
   const rv = cur.reveal;
   const me = s.you;
+  const solo = !!s.solo;
   const myRes = rv.results.find((x) => x.name === me.name);
-  const canAssign = myRes?.exact && !myRes.assigned && !ui.assigned;
+  const canAssign = !solo && myRes?.exact && !myRes.assigned && !ui.assigned;
 
   // 悬念节奏（只在首次进入本轮开牌时播）：先各人猜分逐个亮 → 主角真分砸出 → 罚酒判定逐条弹
   const revealKey = `${cur.roundIndex}-${esc(cur.protagonist?.name || "")}-${rv.score}`;
@@ -797,25 +816,25 @@ function renderReveal(s) {
       <div class="big-score ${fresh ? "seq-score" : ""}" ${fresh ? `style="--d:${scoreDelay.toFixed(2)}s"` : ""}>${rv.score}<span class="unit">分</span></div>
       ${rv.comment ? `<div class="detail-item">主角补刀：${esc(rv.comment)}</div>` : ""}
     </div>
-    <div class="glass stack">
+    ${solo ? "" : `<div class="glass stack">
       ${rv.results.map((x, i) => `
         <div class="reveal-row ${fresh ? "seq" : (x.drink ? "drink" : "") + " " + (x.exact ? "exact" : "")}" data-i="${i}" ${rowD(i)}>
           <span>${esc(x.emoji)}</span><b>${esc(x.name)}</b>
           ${x.exact ? `<span class="badge exact ${fresh ? "seq-pop" : ""}" ${badgeD(i)}>懂TA+1</span>` : ""}
           ${x.drink ? `<span class="badge drink ${fresh ? "seq-pop" : ""}" ${badgeD(i)}>罚酒</span>` : ""}
-          ${x.assigned ? `<span class="dim">指定 ${esc(x.assigned)} 喝</span>` : ""}
+          ${x.assigned ? `<span class="dim">点了 ${esc(x.assigned)} 喝</span>` : ""}
           <span class="g">${x.guess}</span>
         </div>`).join("")}
-    </div>
+    </div>`}
     ${canAssign ? `
     <div class="glass stack">
-      <div class="dim">分毫不差。这杯你有权转赠，指一个人替你喝：</div>
+      <div class="dim">猜得分毫不差。奖励到账：点一个人，这杯TA喝。</div>
       <div class="row" style="flex-wrap:wrap">
         ${s.players.filter((p) => p.name !== me.name).map((p) =>
           `<button class="btn ghost small assignBtn" data-n="${esc(p.name)}">${esc(p.emoji)}${esc(p.name)}</button>`).join("")}
       </div>
     </div>` : ""}
-    ${cur.youAreProtagonist && !ui.commentSent && !rv.comment ? `
+    ${!solo && cur.youAreProtagonist && !ui.commentSent && !rv.comment ? `
     <div class="glass row">
       <input type="text" id="cmtIn" maxlength="100" placeholder="补刀一句（可选）" class="grow" value="${esc(ui.commentDraft)}" />
       <button class="btn ghost small" id="cmtBtn">发</button>
@@ -897,6 +916,8 @@ function renderKing(s) {
   const kingP = k.king || { name: "？", emoji: "🍺" };
   const iAmKing = !!k.youAreKing;
   const order = k.order;
+  // 事实关系别搞错：被读心的是主角，国王是从命中的猜分人里抽的手最准的那个
+  const heroName = s.current?.protagonist?.name || "";
   $app.innerHTML = `
     ${header(s, "国王时刻")}
     <div class="glass king-stage">
@@ -909,7 +930,7 @@ function renderKing(s) {
             <div class="kc-crown"></div>
             <div class="kc-king-emoji">${esc(kingP.emoji || "🍺")}</div>
             <div class="kc-king-name">${esc(kingP.name)}</div>
-            <div class="kc-sub">全桌读心命中 · 今晚由 TA 下旨</div>
+            <div class="kc-sub">全桌猜穿主角 · 手最准的下旨</div>
           </div>
         </div>
       </div>
@@ -929,7 +950,7 @@ function renderKing(s) {
           <button class="btn ghost small" id="customBtn">下旨</button>
         </div>
       ` : `
-        <div class="dim center">整桌人把 ${esc(kingP.name)} 的心思猜了个正着。王冠归 TA，圣旨在写，谁都跑不掉。</div>
+        <div class="dim center">全桌把${heroName ? ` ${esc(heroName)} ` : "主角"}的心思摸得一清二楚。王冠落在手最准的 ${esc(kingP.name)} 头上，圣旨在写，谁都跑不掉。</div>
       `}
     </div>`;
   bindSound();
@@ -947,13 +968,32 @@ function renderKing(s) {
 }
 
 /* --- Aha 结算卡：立绘 → 相亲档案 → 相处细节 --- */
+
+// 档案契约完整性：三大块之外，第 2/3 页硬消费的字段也必须在
+// （老房间/旧 worker 存的 profile 可能是缺字段的旧契约 → 本地重建补全）
+function isCompleteProfile(p) {
+  return !!(p?.portrait && p?.matchCard && p?.relationship
+    && Array.isArray(p.matchCard.keywords) && p.matchCard.birthDate
+    && Array.isArray(p.relationship.details) && p.relationship.heading);
+}
+
 function resolveAhaProfile(aha) {
-  if (aha.profile?.portrait && aha.profile?.matchCard && aha.profile?.relationship) return aha.profile;
-  return buildIdealProfileFn({
+  if (isCompleteProfile(aha.profile)) return aha.profile;
+  if (!buildIdealProfileFn) return aha.profile || {};
+  const rebuilt = buildIdealProfileFn({
     records: [],
     genderPreference: aha.gender,
     seed: aha.id || `ideal:${aha.stats?.avgScore || 0}`,
   });
+  // 服务端已有的字段优先（真实答题数据算出来的），本地重建只补缺
+  const src = aha.profile || {};
+  return {
+    ...rebuilt,
+    ...src,
+    portrait: { ...rebuilt.portrait, ...(src.portrait || {}) },
+    matchCard: { ...rebuilt.matchCard, ...(src.matchCard || {}) },
+    relationship: { ...rebuilt.relationship, ...(src.relationship || {}) },
+  };
 }
 
 function safeProfileColor(value, fallback) {
@@ -963,13 +1003,33 @@ function safeProfileColor(value, fallback) {
 // 主角本人第一次看到自己的 aha 档案时，静默写入 KV 用户记录。
 // 展示柜修复：等立绘真实加载成功后再写（confirmedUrl=实际加载成功的 URL），
 // 避免展示柜里存一堆打不开的图；立绘 10s 还没消息就按默认 URL 兜底写入。
+// 判重修复（P0-2）：saved 标志按 aha.id 持久化（localStorage），不随 phase 切换/刷新重置，
+// finished 阶段复用 renderAha 回看时不会再写第二条。
+const AHA_SAVED_LS = "mfn_aha_saved";
+const savedAhaKeys = (() => {
+  try { return new Set(JSON.parse(localStorage.getItem(AHA_SAVED_LS) || "[]")); }
+  catch { return new Set(); }
+})();
+function persistSavedAhaKeys() {
+  try { localStorage.setItem(AHA_SAVED_LS, JSON.stringify([...savedAhaKeys].slice(-50))); } catch {}
+}
+function ahaSaveKey(s, aha) {
+  return aha?.id || `${s?.code || ""}:${aha?.protagonist?.name || ""}`;
+}
+function ahaAlreadySaved(s, aha) {
+  return savedAhaKeys.has(ahaSaveKey(s, aha));
+}
+
 async function maybeSaveAhaProfile(s, aha, profile, confirmedUrl) {
-  if (ui.ahaSaved) return;
-  if (!s.current?.youAreProtagonist) return;
+  const key = ahaSaveKey(s, aha);
+  if (savedAhaKeys.has(key)) return;
+  // 只写「自己的」档案：finished 回看别人的 aha 时 current.youAreProtagonist 可能仍是 true
+  if (!aha?.protagonist?.name || aha.protagonist.name !== s.you?.name) return;
   const userId = localStorage.getItem("ideal_userId");
   const token  = localStorage.getItem("ideal_token");
   if (!userId || !token) return;
-  ui.ahaSaved = true; // 乐观锁，防止重复提交
+  savedAhaKeys.add(key); // 乐观锁，防止重复提交
+  persistSavedAhaKeys();
   try {
     const portrait = profile.portrait || {};
     const card     = profile.matchCard || {};
@@ -989,41 +1049,47 @@ async function maybeSaveAhaProfile(s, aha, profile, confirmedUrl) {
           occupation: card.occupation || "",
           avgScore: aha.stats?.avgScore ?? 0,
           imageUrl: confirmedUrl || portrait.imageUrl || aha.imageUrl || "",
-          summary: rel.coreText || "",
+          summary: rel.coreText || profile.coreText || "",
         },
       }),
     });
   } catch {
-    ui.ahaSaved = false; // 失败允许下次重试
+    savedAhaKeys.delete(key); // 失败允许下次重试
+    persistSavedAhaKeys();
   }
 }
 
 function renderAha(s, aha, isFinal) {
   const me = s.you;
-  if (!(aha.profile?.portrait && aha.profile?.matchCard && aha.profile?.relationship) && !buildIdealProfileFn) {
-    $app.innerHTML = `${header(s, "理想型加载中")}<div class="boot glass">正在生成理想型档案…</div>`;
+  aha = aha || {};
+  if (!isCompleteProfile(aha.profile) && !buildIdealProfileFn) {
+    $app.innerHTML = `${header(s, "理想型加载中")}<div class="boot glass">档案在路上。TA在里面挑今晚穿什么。</div>`;
     bindSound();
     loadIdealProfile().then(({ buildIdealProfile }) => {
       buildIdealProfileFn = buildIdealProfile;
       if (["aha", "finished"].includes(ui.state?.phase)) render();
-    }).catch(() => toast("理想型档案加载失败，请刷新重试"));
+    }).catch(() => toast("档案没送到。刷新一下，我再去催一遍。"));
     return;
   }
-  const profile = resolveAhaProfile(aha);
+  const profile = resolveAhaProfile(aha) || {};
+  // 契约防御（P0-1）：任何字段缺失都不许抛异常，缺哪块就跳过哪块
+  const card = profile.matchCard || {};
+  const portrait = profile.portrait || {};
+  const relationship = profile.relationship || {};
+  const keywords = Array.isArray(card.keywords) ? card.keywords : [];
+  const details = Array.isArray(relationship.details) ? relationship.details : [];
+  const solo = !!s.solo;
   // 展示柜写入时机：立绘确认加载成功（ui.ahaArtUrl 有值）后带确认 URL 写；
   // 若图迟迟不来，10s 兜底按默认 URL 写（异步生成场景不丢记录）。
   if (ui.ahaArtUrl != null) {
     maybeSaveAhaProfile(s, aha, profile, ui.ahaArtUrl); // 静默写 KV，不等 await
-  } else if (!ui.ahaSaveTimer && !ui.ahaSaved && s.current?.youAreProtagonist) {
+  } else if (!ui.ahaSaveTimer && !ahaAlreadySaved(s, aha) && aha.protagonist?.name === s.you?.name) {
     ui.ahaSaveTimer = setTimeout(() => {
-      if (!ui.ahaSaved && ["aha", "finished"].includes(ui.state?.phase)) {
+      if (!ahaAlreadySaved(s, aha) && ["aha", "finished"].includes(ui.state?.phase)) {
         maybeSaveAhaProfile(s, aha, profile, "");
       }
     }, 10000);
   }
-  const card = profile.matchCard;
-  const portrait = profile.portrait;
-  const relationship = profile.relationship;
   const primary = safeProfileColor(portrait.palette?.primary, "#ff2d78");
   const accent = safeProfileColor(portrait.palette?.accent, "#2de2ff");
   const stages = ["理想型亮相", "相亲人物档案", "相处细节"];
@@ -1031,51 +1097,56 @@ function renderAha(s, aha, isFinal) {
   const lt = aha.light || { burst: 0, off: 0, voted: 0, total: 0, mine: null, burstNames: [], offNames: [] };
   const mine = lt.mine ?? lt.yours ?? null;
   const canVote = !isFinal && s.phase === "aha" && (lt.canVote ?? !s.current?.youAreProtagonist);
-  const lampRow = Array.from({ length: Math.max(lt.total, lt.burst + lt.off) }, (_, i) =>
+  const lampRow = Array.from({ length: Math.max(lt.total || 0, (lt.burst || 0) + (lt.off || 0)) }, (_, i) =>
     `<span class="lamp ${i < lt.burst ? "on" : i < lt.burst + lt.off ? "dead" : "pending"}"></span>`
   ).join("");
+  const chipText = portrait.archetype || card.archetype || "";
+  const titleLine = [aha.title, aha.titleSub].filter(Boolean).map(esc).join(" · ");
+  const gridCells = [
+    ["出生日期", card.birthDate], ["星座", card.zodiac],
+    ["职业", card.occupation, "wide"], ["身份", card.identity, "wide"],
+  ].filter((cell) => cell[1]);
   const stageBody = stage === 0 ? `
     <div class="aha-stage portrait-stage" style="--profile-primary:${primary};--profile-accent:${accent}">
       <div class="art-wrap" id="artWrap">
-        <div class="art-fallback"><b>${esc(portrait.archetype)}</b><span>${esc(card.presentation)}</span></div>
-        <img id="artImg" src="${esc(portrait.imageUrl || aha.imageUrl)}" alt="${esc(portrait.alt || `${portrait.archetype}理想型立绘`)}" />
-        <span class="archetype-chip">${esc(portrait.archetype)}</span>
+        <div class="art-fallback"><b>${esc(chipText)}</b><span>${esc(card.presentation || "")}</span></div>
+        <img id="artImg" src="${esc(portrait.imageUrl || aha.imageUrl || "")}" alt="${esc(portrait.alt || (chipText ? `${chipText}理想型立绘` : "理想型立绘"))}" />
+        ${chipText ? `<span class="archetype-chip">${esc(chipText)}</span>` : ""}
       </div>
       <div class="caption">
-        <b class="ideal-name">${esc(card.archetype)}</b>
+        <b class="ideal-name">${esc(card.archetype || "理想型档案")}</b>
         <div class="ideal-meta">${[card.mbti, card.presentation, relationship.chemistry]
           .filter(Boolean).map((m) => `<span>${esc(m)}</span>`).join("")}</div>
-        <div class="dim">${esc(aha.title)} · ${esc(aha.titleSub)}</div>
+        ${titleLine ? `<div class="dim">${titleLine}</div>` : ""}
       </div>
     </div>` : stage === 1 ? `
     <div class="aha-stage profile-stage" style="--profile-primary:${primary};--profile-accent:${accent}">
       <div class="profile-kicker">MATCH FILE / 02</div>
-      <div class="profile-title-row"><div><b class="ideal-name">理想型档案</b><div class="dim">${esc(card.archetype)} · ${esc(card.presentation)}</div></div><span class="mbti-badge">${esc(card.mbti)}</span></div>
-      <div class="profile-grid">
-        <div><span>出生日期</span><b>${esc(card.birthDate)}</b></div>
-        <div><span>星座</span><b>${esc(card.zodiac)}</b></div>
-        <div class="wide"><span>职业</span><b>${esc(card.occupation)}</b></div>
-        <div class="wide"><span>身份</span><b>${esc(card.identity)}</b></div>
-      </div>
-      <div class="keyword-row">${card.keywords.map((x) => `<span>${esc(x)}</span>`).join("")}</div>
-      <p class="profile-bio">${esc(card.bio)}</p>
+      <div class="profile-title-row"><div><b class="ideal-name">理想型档案</b><div class="dim">${[card.archetype, card.presentation].filter(Boolean).map(esc).join(" · ")}</div></div>${card.mbti ? `<span class="mbti-badge">${esc(card.mbti)}</span>` : ""}</div>
+      ${gridCells.length ? `<div class="profile-grid">
+        ${gridCells.map(([label, value, wide]) => `<div${wide ? ` class="wide"` : ""}><span>${label}</span><b>${esc(value)}</b></div>`).join("")}
+      </div>` : ""}
+      ${keywords.length ? `<div class="keyword-row">${keywords.map((x) => `<span>${esc(x)}</span>`).join("")}</div>` : ""}
+      ${card.bio ? `<p class="profile-bio">${esc(card.bio)}</p>` : ""}
       <div class="fiction-note">角色档案由本局答案生成，人物信息均为虚构</div>
     </div>` : `
     <div class="aha-stage relationship-stage" style="--profile-primary:${primary};--profile-accent:${accent}">
       <div class="profile-kicker">CHEMISTRY / 03</div>
-      <h2>${esc(relationship.heading)}</h2>
-      <div class="chemistry-tag">${esc(relationship.chemistry)}</div>
-      <div class="relationship-list">${relationship.details.map((d, i) => `<div class="detail-item"><span>${String(i + 1).padStart(2, "0")}</span><p>${esc(d)}</p></div>`).join("")}</div>
+      <h2>${esc(relationship.heading || "相处说明书")}</h2>
+      ${relationship.chemistry ? `<div class="chemistry-tag">${esc(relationship.chemistry)}</div>` : ""}
+      ${details.length
+        ? `<div class="relationship-list">${details.map((d, i) => `<div class="detail-item"><span>${String(i + 1).padStart(2, "0")}</span><p>${esc(d)}</p></div>`).join("")}</div>`
+        : `<div class="dim">细节还在杯底沉淀，先看前两页。</div>`}
     </div>`;
 
   $app.innerHTML = `
-    ${header(s, `${esc(aha.protagonist.name)} 的理想型来了`)}
+    ${header(s, `${esc(aha.protagonist?.name || "")} 的理想型来了`)}
     <div class="aha-stage-nav" role="tablist" aria-label="理想型报告阶段">
       ${stages.map((label, i) => `<button class="${stage === i ? "active" : ""}" data-stage="${i}" role="tab" aria-selected="${stage === i}"><span>0${i + 1}</span>${label}</button>`).join("")}
     </div>
     <div class="flip-scene" id="ahaStage" role="button" tabindex="0" aria-live="polite" aria-label="点击查看${stage < 2 ? stages[stage + 1] : stages[0]}">${stageBody}</div>
     <button class="stage-next" id="stageNext">${stage < 2 ? `点击继续 · ${stages[stage + 1]}` : "回到理想型立绘"}<span>→</span></button>
-    <div class="glass stack center light-panel">
+    ${solo ? "" : `<div class="glass stack center light-panel">
       <div class="lamp-row">${lampRow}</div>
       <div class="light-count">爆灯 <b>${lt.burst}</b> · 灭灯 <b>${lt.off}</b><span class="dim"> · 已投 ${lt.voted ?? lt.burst + lt.off}/${lt.total}</span></div>
       ${canVote ? `
@@ -1089,7 +1160,7 @@ function renderAha(s, aha, isFinal) {
           : lt.burstNames?.length
             ? `<div class="dim">爆灯的人：${lt.burstNames.map(esc).join("、")}</div>`
             : ""}
-    </div>
+    </div>`}
     ${ui.posterUrl
       ? `<img class="poster-img" src="${ui.posterUrl}" alt="理想型海报" /><div class="dim center">长按保存。扫码的人直接进这桌。</div>`
       : `<button class="btn ghost" id="posterBtn" ${ui.posterBusy ? "disabled" : ""}>${ui.posterBusy ? "海报在暗房里洗…" : "生成海报"}</button>`}

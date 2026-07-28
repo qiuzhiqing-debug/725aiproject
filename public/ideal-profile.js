@@ -377,6 +377,93 @@ const MBTI_MAP = [
   (s) => (s.control + s.boundary > s.play + s.absurd ? "J" : "P"),
 ];
 
+/* ================================================================
+ * 档案页契约字段池（renderAha 三页 + poster 消费）
+ * keywords/birthDate/zodiac/identity/bio/presentation/
+ * relationship.heading/chemistry/portrait.palette 全部确定性生成。
+ * ================================================================ */
+
+// 每维每档一个关键词（相亲档案第 2 页 keyword-row）
+const DIM_KEYWORDS = Object.freeze({
+  boundary: { high: "边界感在线", mid: "看场合放松", low: "百无禁忌" },
+  warmth: { high: "情绪价值满格", mid: "外冷内热", low: "嘴硬心软" },
+  money: { high: "精打细算", mid: "选择性大方", low: "月底吃土" },
+  play: { high: "没有淡季", mid: "定期发疯", low: "岁月静好" },
+  control: { high: "全都安排上", mid: "关键时刻出手", low: "彻底放养" },
+  romance: { high: "浪漫超标", mid: "限量浪漫", low: "闷声惊喜" },
+  absurd: { high: "抽象对频", mid: "认真查梗", low: "人形翻译器" },
+  meme: { high: "5G冲浪", mid: "梗慢半拍", low: "赛博纯真" },
+});
+
+// 身份（生活状态一行）：按模组给池，seed 确定性抽取
+const IDENTITY_POOL = Object.freeze({
+  lover: [
+    "独居 · 养了一只不太理人的猫",
+    "刚搬到离你三站地铁的地方",
+    "家里永远备着两副碗筷",
+    "朝九晚不定，周末必空出一天",
+    "阳台种着一排叫不上名字的绿植",
+  ],
+  boss: [
+    "你的直属上司 · 办公室离你工位最近",
+    "全公司最早到、也最早赶你下班的人",
+    "会议永远压在半小时内的那位",
+  ],
+  agent: [
+    "常驻你终端的AI搭子 · 全年无休",
+    "凌晨三点也在线的那个进程",
+    "你提示词历史的唯一读者",
+  ],
+  roommate: [
+    "隔壁房间的合租人 · 作息成谜",
+    "冰箱第二层的共同管理员",
+    "水电费从没让你操过心的人",
+  ],
+  teacher: [
+    "教务系统查无此人的班主任",
+    "办公室永远给你留一把椅子的人",
+    "走廊尽头等你问问题的人",
+  ],
+});
+
+// 呈现（与旧契约对齐：男性/女性/中性呈现）
+const PRESENTATIONS = Object.freeze({
+  m: "男性呈现", masc: "男性呈现",
+  f: "女性呈现", femme: "女性呈现",
+  n: "中性呈现", androgynous: "中性呈现", any: "中性呈现",
+});
+
+// 立绘配色对（primary/accent），全部霓虹系，seed 确定性抽取
+const PALETTES = Object.freeze([
+  { primary: "#ff2d78", accent: "#2de2ff" },
+  { primary: "#b46bff", accent: "#ffd24a" },
+  { primary: "#2de2ff", accent: "#ff7a45" },
+  { primary: "#ff5c8a", accent: "#7cf0c8" },
+  { primary: "#ffd24a", accent: "#ff2d78" },
+  { primary: "#7c5cff", accent: "#2de2ff" },
+]);
+
+// 星座边界表：v = 月*100+日，<= 该值即为该星座
+const ZODIAC_SIGNS = Object.freeze([
+  ["摩羯座", 119], ["水瓶座", 218], ["双鱼座", 320], ["白羊座", 419],
+  ["金牛座", 520], ["双子座", 621], ["巨蟹座", 722], ["狮子座", 822],
+  ["处女座", 922], ["天秤座", 1023], ["天蝎座", 1122], ["射手座", 1221],
+  ["摩羯座", 1231],
+]);
+function zodiacOf(month, day) {
+  const v = month * 100 + day;
+  for (const [name, until] of ZODIAC_SIGNS) if (v <= until) return name;
+  return "摩羯座";
+}
+
+// 相处化学反应标题（按平均分档位）
+function chemistryHeading(avg) {
+  if (avg >= 8) return "一拍即合，第一杯还没见底你们就熟了";
+  if (avg >= 6.5) return "慢热型化学反应，后劲全在第三杯之后";
+  if (avg >= 4.5) return "互相试探的路数，火花藏在没说出口的那句里";
+  return "欢喜冤家的路子，吵着吵着人就近了";
+}
+
 const OCCUPATIONS = Object.freeze({
   boundary: ["独立设计师", "律师", "档案管理员", "数据分析师"],
   warmth: ["儿科医生", "心理咨询师", "咖啡师", "社工"],
@@ -423,7 +510,9 @@ const GENDER_TAGS = Object.freeze({
 });
 
 export function buildIdealProfile({ records, genderPreference, seed }) {
-  const scores = computeDimensions(records);
+  seed = String(seed ?? "ideal-default");
+  const recList = Array.isArray(records) ? records : [];
+  const scores = computeDimensions(recList);
   const ranked = DIM_KEYS.map((k) => ({ key: k, score: scores[k] }))
     .sort((a, b) => Math.abs(b.score) - Math.abs(a.score));
 
@@ -439,8 +528,8 @@ export function buildIdealProfile({ records, genderPreference, seed }) {
   const occupList = OCCUPATIONS[top2.key] || OCCUPATIONS.play;
   const occupation = seedPick(occupList, seed + "occ");
 
-  const module = records?.[0]?.question?.module || "lover";
-  const details = pickDetails(scores, genderPreference, seed, records, module);
+  const module = recList[0]?.question?.module || "lover";
+  const details = pickDetails(scores, genderPreference, seed, recList, module);
 
   const gTag = GENDER_TAGS[genderPreference] || GENDER_TAGS.any;
   const dimDesc = `${DIMENSION_LABELS[top1.key] || "charm"}-focused, ${DIMENSION_LABELS[top2.key] || "playful"}`;
@@ -448,6 +537,8 @@ export function buildIdealProfile({ records, genderPreference, seed }) {
 
   const encodedPrompt = encodeURIComponent(prompt);
   const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&seed=${hashStr(seed) % 99999}&referrer=idealtype&nologo=true`;
+  // 兜底立绘：更短的 prompt + 不同 seed，主图挂了再试一次
+  const fallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(`pixel art portrait of a ${gTag}, neon bar, 8-bit style`)}?width=512&height=512&seed=${(hashStr(seed + "fb") % 99999)}&referrer=idealtype&nologo=true`;
 
   const modProf = MODULE_PROFILES[module] || MODULE_PROFILES.lover;
   const introTemplate = seedPick(modProf.intros, seed + "intro");
@@ -463,15 +554,55 @@ export function buildIdealProfile({ records, genderPreference, seed }) {
   }));
   const coreText = [intro, ...topThreeTiers.map((t) => t.text), outro].filter(Boolean).join("\n\n");
 
+  /* ---- 相亲档案字段（第 2 页契约） ---- */
+  // 关键词：最突出的 4 个维度各出一个
+  const keywords = ranked.slice(0, 4)
+    .map(({ key, score }) => DIM_KEYWORDS[key]?.[dimTier(score)])
+    .filter(Boolean);
+  // 出生日期/星座：seed 确定性推（1992-2001 年段）
+  const bYear = 1992 + (hashStr(seed + "yy") % 10);
+  const bMonth = 1 + (hashStr(seed + "mm") % 12);
+  const bDay = 1 + (hashStr(seed + "dd") % 28);
+  const birthDate = `${bYear}-${String(bMonth).padStart(2, "0")}-${String(bDay).padStart(2, "0")}`;
+  const zodiac = zodiacOf(bMonth, bDay);
+  const identity = seedPick(IDENTITY_POOL[module] || IDENTITY_POOL.lover, seed + "idn");
+  const presentation = PRESENTATIONS[genderPreference] || "中性呈现";
+  // 小传：两条最突出维度的核心画像拼成
+  const bio = topThreeTiers.slice(0, 2).map((t) => t.text).filter(Boolean).join(" ")
+    || "TA的档案还压在杯垫底下，见面聊。";
+
+  /* ---- 相处化学反应（第 3 页契约） ---- */
+  const avgScore = recList.length
+    ? recList.reduce((sum, r) => sum + (Number(r.score) || 0), 0) / recList.length
+    : 5.5 + (hashStr(seed + "avg") % 25) / 10; // 无答题记录时 5.5-7.9 兜底
+  const chemPct = Math.max(40, Math.min(99, Math.round(avgScore * 10)));
+  const chemistry = `契合度 ${chemPct}%`;
+  const heading = chemistryHeading(avgScore);
+
+  const palette = seedPick(PALETTES, seed + "pal");
+
+  const portrait = {
+    prompt, imageUrl, fallbackUrl,
+    archetype,
+    alt: `${archetype}的像素立绘`,
+    palette: { primary: palette.primary, accent: palette.accent },
+  };
+  const matchCard = {
+    archetype, mbti, occupation,
+    presentation, birthDate, zodiac, identity, bio, keywords,
+    fictional: true,
+  };
+  const relationship = { details, heading, chemistry, coreText };
+
   return {
-    portrait: { prompt, imageUrl },
-    matchCard: { archetype, mbti, occupation },
-    relationship: { details },
+    portrait,
+    matchCard,
+    relationship,
     coreText,
     stages: [
-      { id: "portrait", title: "理想型立绘", data: { prompt, imageUrl } },
-      { id: "profile", title: "相亲档案", data: { archetype, mbti, occupation } },
-      { id: "relationship", title: "相处细节", data: { details } },
+      { id: "portrait", title: "理想型立绘", data: { prompt, imageUrl, archetype, palette } },
+      { id: "profile", title: "相亲档案", data: { archetype, mbti, occupation, presentation, birthDate, zodiac, identity, keywords } },
+      { id: "relationship", title: "相处细节", data: { details, heading, chemistry } },
     ],
   };
 }
