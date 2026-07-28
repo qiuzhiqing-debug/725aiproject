@@ -62,3 +62,16 @@
 ### 未决问题（Kim 醒来看）
 - 酒保名字暂定「老 K」浪子人设，可改
 - 女同局/男同局：做成开桌时低调的「口味定制」选项，待确认
+
+## 2026-07-28（续：后端 101/101 全绿）
+
+### 已修复
+- ✅ `buildIdealProfile` 实现完成（public/ideal-profile.js §五）：8 维度打分器 + PERSONA_ADJ/NOUN 原型组合 + 确定性 MBTI 推理 + DETAIL_POOL 细节抽取 + pollinations 生图 URL（带 referrer=idealtype）
+- ✅ 修复 bug：`buildIdealProfile` 的 `GENDER_TAGS` 只识别 `"masc"`/`"femme"` 而 `cur.gender` 实际是 `"m"`/`"f"` → 加入短格式 key 映射
+- ✅ 修复 bug：`webSocketClose` 在房主临时断线时立即移交房主权，导致 `finish_game` 被 `!me.isHost` 拦截 → 改为仅在 90s away 后或主动 leave 时移交，ensureRoleIntegrity 负责兜底
+- ✅ `node test/smoke.mjs` → 101/101 全绿（含 V2 用户档案 KV、酒保端点、取向池隔离、国王游戏、force_next、离场/房主移交全部测到）
+- ✅ `node qa/questions-qa.mjs` → 701 道题 0 处不达标
+
+### 当前状态（Git 待 push）
+- 后端线程交付完成，待整合进前端 app.js/index.html
+- 下一步：视觉整合（v2/ 页面接入）+ 结果页/海报/用户主页

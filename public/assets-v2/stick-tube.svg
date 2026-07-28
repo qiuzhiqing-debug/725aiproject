@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 180" role="img" aria-label="霓虹摇酒壶签筒">
+  <!-- pixel-bar 签筒 V2：竹筒 → 霓虹金属摇酒壶（shaker）。摇签 = 摇酒壶。
+       配套结构见 theme-v2.css 第 10 节 .shaker-* —— 本 SVG 是 .shaker-body，
+       必须叠在签(.shaker-slot)之上（z-index:2），壶口盖住签根即不穿模。 -->
+  <defs>
+    <linearGradient id="steel" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2b2140"/>
+      <stop offset="0.18" stop-color="#6f6494"/>
+      <stop offset="0.38" stop-color="#cfc6ea"/>
+      <stop offset="0.5" stop-color="#f2edff"/>
+      <stop offset="0.62" stop-color="#b0a5d6"/>
+      <stop offset="0.85" stop-color="#4a3d6e"/>
+      <stop offset="1" stop-color="#241536"/>
+    </linearGradient>
+    <linearGradient id="steelDark" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#1c1430"/>
+      <stop offset="0.4" stop-color="#8d81b8"/>
+      <stop offset="0.55" stop-color="#c8bfe8"/>
+      <stop offset="0.8" stop-color="#372a54"/>
+      <stop offset="1" stop-color="#170f26"/>
+    </linearGradient>
+    <filter id="neonBlur" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="3"/>
+    </filter>
+  </defs>
+
+  <!-- 壶身主体（下宽上收的经典 shaker 轮廓，像素直线段） -->
+  <path d="M 30 34 L 120 34 L 126 60 L 126 148 Q 126 162 108 166 L 42 166 Q 24 162 24 148 L 24 60 Z"
+        fill="url(#steel)" stroke="#120a1c" stroke-width="3"/>
+  <!-- 壶肩接缝 -->
+  <rect x="24" y="58" width="102" height="6" fill="url(#steelDark)" stroke="#120a1c" stroke-width="2"/>
+  <!-- 壶口盖圈（签从这里露出，盖圈在视觉上压住签根） -->
+  <path d="M 36 18 L 114 18 L 120 36 L 30 36 Z"
+        fill="url(#steelDark)" stroke="#120a1c" stroke-width="3"/>
+  <rect x="42" y="10" width="66" height="12" rx="3" fill="url(#steel)" stroke="#120a1c" stroke-width="3"/>
+
+  <!-- 像素高光条 -->
+  <rect x="52" y="68" width="8" height="84" fill="#f6f2ff" opacity="0.65"/>
+  <rect x="64" y="76" width="4" height="64" fill="#f6f2ff" opacity="0.35"/>
+
+  <!-- 霓虹装饰：壶身上的霓虹字与管灯 -->
+  <g>
+    <rect x="36" y="92" width="78" height="30" rx="5" fill="#160c22" stroke="#ff2d78" stroke-width="2.5" opacity="0.6" filter="url(#neonBlur)"/>
+    <rect x="36" y="92" width="78" height="30" rx="5" fill="#160c22" stroke="#ff6ea8" stroke-width="1.5"/>
+    <text x="75" y="114" text-anchor="middle" font-size="17"
+          font-family="'Fusion Pixel 12px Proportional SC','Zpix','PingFang SC',monospace"
+          fill="#ffd7e6" stroke="#ff2d78" stroke-width="0.5">摇一摇</text>
+  </g>
+  <!-- 底部青色霓虹环 -->
+  <path d="M 28 150 Q 28 158 44 162 L 106 162 Q 122 158 122 150"
+        fill="none" stroke="#2de2ff" stroke-width="4" opacity="0.5" filter="url(#neonBlur)"/>
+  <path d="M 28 150 Q 28 158 44 162 L 106 162 Q 122 158 122 150"
+        fill="none" stroke="#9ff3ff" stroke-width="2"/>
+</svg>

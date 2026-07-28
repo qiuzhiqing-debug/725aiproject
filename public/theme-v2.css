@@ -1,0 +1,335 @@
+/* ==========================================================================
+   理想型·加载中 V2 · 视觉真源 theme-v2.css （pixel-bar / neon 风）
+   --------------------------------------------------------------------------
+   气质：像素赛博酒吧 —— 暗底（深紫黑）、霓虹紫红青点缀、像素标题字、
+   扫描线/噪点质感、温暖吧台灯光；保留体育 bar 的热闹基因
+   （欢呼弹幕 / 爆灯闪光 / 像素 disco ball）。
+
+   规则（沿用 V1 约定）：
+   1. 业务 CSS 不允许出现字面色值，一律 var(--...) 引用本文件。
+   2. Canvas/JS 侧用 getComputedStyle 读取同名变量。
+   3. 变量名是「角色」不是「颜色名」。
+
+   分组目录：
+     1) 暗底舞台色
+     2) 霓虹三原色（紫红 / 青 / 琥珀吧台灯）
+     3) 文字与描边
+     4) 面板与玻璃
+     5) 字体栈（像素标题字 + 正文）
+     6) 圆角 / 描边 / 阴影
+     7) 霓虹 glow 混入类（.neon-*）
+     8) 质感层（扫描线 / 噪点 / CRT 暗角）
+     9) 像素 disco ball
+    10) 摇酒壶签筒（shaker）组件类 —— 修签穿模 bug 的标准结构
+   ========================================================================== */
+
+/* 像素中文字体：缝合像素 12px（SIL OFL 开源，简中全覆盖）
+   注：@fontsource 按 unicode-range 切片，只加载用到的字形分片，体积可控 */
+@import url("https://cdn.jsdelivr.net/npm/@fontsource/fusion-pixel-12px-proportional-sc@5.3.0/index.min.css");
+@import url("https://cdn.jsdelivr.net/npm/@fontsource/fusion-pixel-12px-proportional-sc@5.3.0/chinese-simplified.min.css");
+
+:root {
+  /* ---------- 1) 暗底舞台色（深紫黑系） ---------- */
+  --bar-bg: #1a1026;            /* 全局底：深紫黑 */
+  --bar-bg-deep: #120a1c;       /* 更深一层：天花板 / 页面边缘 */
+  --bar-bg-raise: #241536;      /* 抬升面：卡片 / 吧台立面 */
+  --bar-bg-wall: #2c1a42;       /* 酒瓶架背墙 */
+  --bar-floor: #150d21;         /* 地板 */
+  --bar-counter: #3a2117;       /* 吧台木色（暖） */
+  --bar-counter-top: #5c3423;   /* 吧台台面高光木色 */
+
+  /* ---------- 2) 霓虹三原色 ---------- */
+  --neon-pink: #ff2d78;         /* 主霓虹：招牌 / 主按钮 / 爆灯 */
+  --neon-pink-hot: #ff6ea8;     /* 主霓虹亮芯 */
+  --neon-cyan: #2de2ff;         /* 副霓虹：交互反馈 / 边框 */
+  --neon-cyan-soft: #9ff3ff;    /* 副霓虹亮芯 */
+  --neon-purple: #a86bff;       /* 第三霓虹：装饰 / 次强调 */
+  --neon-amber: #ffb648;        /* 吧台暖灯：温暖光晕 / 酒液高光 */
+  --neon-amber-deep: #e08a1e;   /* 暖灯深：木质反光 */
+  --neon-green: #58ff9b;        /* 成功 / 在线 / 全对 */
+  --neon-red: #ff4141;          /* 罚酒 / 危险 / 麻辣 */
+
+  /* 半透明光晕衍生（box-shadow / 渐变用） */
+  --glow-pink-70: rgba(255, 45, 120, 0.7);
+  --glow-pink-40: rgba(255, 45, 120, 0.4);
+  --glow-pink-18: rgba(255, 45, 120, 0.18);
+  --glow-cyan-70: rgba(45, 226, 255, 0.7);
+  --glow-cyan-40: rgba(45, 226, 255, 0.4);
+  --glow-cyan-16: rgba(45, 226, 255, 0.16);
+  --glow-purple-45: rgba(168, 107, 255, 0.45);
+  --glow-purple-20: rgba(168, 107, 255, 0.2);
+  --glow-amber-55: rgba(255, 182, 72, 0.55);
+  --glow-amber-25: rgba(255, 182, 72, 0.25);
+  --glow-amber-12: rgba(255, 182, 72, 0.12);
+
+  /* ---------- 3) 文字与描边 ---------- */
+  --ink-hi: #f4ecff;            /* 主文字：微紫的暖白 */
+  --ink-mid: #b9a8d4;           /* 次级文字 */
+  --ink-dim: #7d6a9c;           /* 弱化文字 / 占位 */
+  --ink-ghost: #4d3d68;         /* 更弱：禁用态 */
+  --line-neon: #55307f;         /* 常规描边（暗紫） */
+  --line-soft: rgba(168, 107, 255, 0.25);   /* 弱描边 */
+  --line-counter: #241007;      /* 吧台木描边 */
+
+  /* ---------- 4) 面板与玻璃 ---------- */
+  --panel: rgba(36, 21, 54, 0.92);          /* 玻璃卡片底 */
+  --panel-solid: #241536;                   /* 实心卡片底 */
+  --panel-deep: rgba(18, 10, 28, 0.88);     /* 更深玻璃（弹幕条 / HUD） */
+  --panel-glow-edge: rgba(255, 110, 168, 0.12); /* 卡片内侧霓虹描光 */
+
+  /* ---------- 5) 字体栈 ---------- */
+  /* 像素标题字：缝合像素（简中） → DotGothic16 思路的日字兜底 → 系统栈 */
+  --font-pixel: "Fusion Pixel 12px Proportional SC", "Zpix", "DotGothic16",
+                "PingFang SC", "Microsoft YaHei", monospace;
+  --font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont,
+               "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+
+  /* ---------- 6) 圆角 / 描边 / 阴影 ---------- */
+  --radius-card: 10px;
+  --radius-btn: 8px;
+  --radius-sm: 6px;
+  --radius-pill: 999px;
+  --stroke-thin: 1px;
+  --stroke: 2px;                /* 像素风描边偏硬 */
+  --stroke-bold: 3px;
+
+  --shadow-panel: 0 12px 40px rgba(0, 0, 0, 0.55),
+                  0 0 0 1px var(--line-soft),
+                  inset 0 1px 0 var(--panel-glow-edge);
+  --shadow-counter: 0 -6px 24px var(--glow-amber-25); /* 吧台暖光上浮 */
+  --focus-ring: 0 0 0 3px var(--glow-cyan-40);
+
+  /* ---------- 6b) 霓虹 glow 预组阴影（text-shadow 多层） ---------- */
+  --neon-text-pink:
+    0 0 2px #fff,
+    0 0 6px var(--neon-pink-hot),
+    0 0 14px var(--neon-pink),
+    0 0 32px var(--glow-pink-70),
+    0 0 56px var(--glow-pink-40);
+  --neon-text-cyan:
+    0 0 2px #fff,
+    0 0 6px var(--neon-cyan-soft),
+    0 0 14px var(--neon-cyan),
+    0 0 32px var(--glow-cyan-70),
+    0 0 56px var(--glow-cyan-40);
+  --neon-text-purple:
+    0 0 2px #fff,
+    0 0 6px #cfaaff,
+    0 0 14px var(--neon-purple),
+    0 0 30px var(--glow-purple-45);
+  --neon-text-amber:
+    0 0 2px #fff8ec,
+    0 0 6px #ffd28a,
+    0 0 14px var(--neon-amber),
+    0 0 30px var(--glow-amber-55);
+  --neon-box-pink:
+    0 0 6px var(--glow-pink-70),
+    0 0 18px var(--glow-pink-40),
+    inset 0 0 8px var(--glow-pink-18);
+  --neon-box-cyan:
+    0 0 6px var(--glow-cyan-70),
+    0 0 18px var(--glow-cyan-40),
+    inset 0 0 8px var(--glow-cyan-16);
+}
+
+/* ==========================================================================
+   7) 霓虹 glow 混入类
+   用法：<h1 class="px-title neon-pink">…</h1>
+   ========================================================================== */
+.px-title {
+  font-family: var(--font-pixel);
+  letter-spacing: 0.06em;
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+  text-rendering: optimizeSpeed;
+}
+.neon-pink   { color: var(--neon-pink-hot);  text-shadow: var(--neon-text-pink); }
+.neon-cyan   { color: var(--neon-cyan-soft); text-shadow: var(--neon-text-cyan); }
+.neon-purple { color: #d9beff;               text-shadow: var(--neon-text-purple); }
+.neon-amber  { color: #ffe2b0;               text-shadow: var(--neon-text-amber); }
+
+/* 霓虹管边框（按钮 / 桌号牌） */
+.neon-frame-pink {
+  border: var(--stroke) solid var(--neon-pink);
+  box-shadow: var(--neon-box-pink);
+}
+.neon-frame-cyan {
+  border: var(--stroke) solid var(--neon-cyan);
+  box-shadow: var(--neon-box-cyan);
+}
+
+/* 霓虹闪烁（招牌通电的偶发抽搐，别太频繁） */
+@keyframes neon-flicker {
+  0%, 91%, 94%, 100% { opacity: 1; }
+  92%, 95.5% { opacity: 0.45; }
+  93% { opacity: 0.85; }
+}
+.neon-flicker { animation: neon-flicker 6s linear infinite; }
+
+/* ==========================================================================
+   8) 质感层：扫描线 / 噪点 / CRT 暗角
+   用法：场景根元素加 .fx-scanlines / .fx-vignette（它们是覆盖伪元素，
+   要求宿主 position:relative 且内容 z-index 正常即可，pointer-events 已关）
+   ========================================================================== */
+.fx-scanlines { position: relative; }
+.fx-scanlines::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.22) 0px,
+      rgba(0, 0, 0, 0.22) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+  mix-blend-mode: multiply;
+  opacity: 0.55;
+}
+.fx-vignette { position: relative; }
+.fx-vignette::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 59;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 120% 90% at 50% 42%,
+    transparent 55%,
+    rgba(8, 3, 15, 0.55) 100%
+  );
+}
+/* 噪点：SVG feTurbulence data-uri，避免图片依赖 */
+.fx-noise { position: relative; }
+.fx-noise::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 61;
+  pointer-events: none;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ==========================================================================
+   9) 像素 disco ball（体育 bar × 霓虹夜店 的桥）
+   结构：<div class="disco-ball"><i class="disco-chain"></i></div>
+   ========================================================================== */
+@keyframes disco-spin {
+  from { background-position-x: 0; }
+  to   { background-position-x: 48px; }
+}
+@keyframes disco-glint {
+  0%, 100% { box-shadow: 0 0 18px var(--glow-cyan-40), 0 0 40px var(--glow-purple-20); }
+  50%      { box-shadow: 0 0 26px var(--glow-pink-40), 0 0 52px var(--glow-cyan-16); }
+}
+.disco-ball {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  /* 像素镜面格：两层错位格子 + 高光，background-position 平移 = 旋转错觉 */
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255,255,255,0.85) 0 8%, transparent 26%),
+    repeating-linear-gradient(90deg,
+      #cfe6ff 0 6px, #8fb8e8 6px 12px, #e8f4ff 12px 18px, #a4c8f0 18px 24px),
+    repeating-linear-gradient(0deg,
+      rgba(20, 30, 60, 0.35) 0 6px, transparent 6px 12px);
+  background-blend-mode: normal, normal, multiply;
+  image-rendering: pixelated;
+  animation: disco-spin 3.2s steps(8) infinite, disco-glint 4s ease-in-out infinite;
+}
+.disco-ball .disco-chain {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  width: 2px;
+  height: 34px;
+  transform: translateX(-50%);
+  background: repeating-linear-gradient(0deg,
+    var(--ink-dim) 0 3px, transparent 3px 6px);
+}
+
+/* ==========================================================================
+   10) 摇酒壶签筒（shaker）组件类 —— 修「签穿模」的标准结构
+   --------------------------------------------------------------------------
+   V1 bug 根因：签是筒的兄弟节点、无 overflow 裁剪，摇晃位移一大签就飞出筒壁。
+   V2 结构（给整合线程抄，z-index / overflow 关系如下）：
+
+   <div class="shaker-stage">                 ← 只负责摇晃动画（transform 在这层）
+     <div class="shaker-slot">                ← 裁剪窗：overflow:hidden，只露筒口以上
+       <div class="shaker-sticks">            ← 签的容器，绝对定位在筒口内
+         <i class="shaker-stick"></i> ×N      ← 每根签只做小幅 translateY，永不超出 slot
+       </div>
+     </div>
+     <img class="shaker-body" src="/assets-v2/stick-tube.svg" />  ← 壶身在签之上
+   </div>
+
+   关键点：
+   1. 摇晃 transform 只加在 .shaker-stage —— 签和壶一起动，相对位置恒定，不会穿。
+   2. .shaker-slot 的 overflow:hidden 是第二道保险：签的任何动画都被裁在筒口区域。
+   3. z-index：.shaker-slot(1) < .shaker-body(2) —— 壶壁永远盖住签的下半段，
+      视觉上签「插在壶里」。签只从壶口露头，露头量 = slot 高度 - 壶口顶部偏移。
+   ========================================================================== */
+.shaker-stage {
+  position: relative;
+  width: 160px;
+  height: 230px;
+  margin: 0 auto;
+  transform-origin: 50% 88%;
+}
+.shaker-stage.shaking { animation: shaker-shake 0.5s ease-in-out infinite; }
+@keyframes shaker-shake {
+  0%, 100% { transform: rotate(0deg) translateY(0); }
+  20%      { transform: rotate(-9deg) translateY(-3px); }
+  50%      { transform: rotate(7deg) translateY(2px); }
+  80%      { transform: rotate(-5deg) translateY(-2px); }
+}
+.shaker-slot {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+  width: 96px;
+  height: 88px;           /* 签只允许在壶口上方这块区域活动 */
+  overflow: hidden;        /* ← 防穿模第二道保险 */
+  z-index: 1;
+}
+.shaker-sticks {
+  position: absolute;
+  inset: auto 0 -6px 0;    /* 贴住 slot 底部，签根埋进壶口 */
+  display: flex;
+  justify-content: center;
+  gap: 7px;
+  align-items: flex-end;
+}
+.shaker-stick {
+  width: 9px;
+  height: 72px;
+  border-radius: 3px 3px 0 0;
+  background: linear-gradient(180deg,
+    var(--neon-amber) 0 14px,        /* 签头：霓虹琥珀 */
+    #d8c9a6 14px 100%);
+  border: 1px solid var(--line-counter);
+  box-shadow: 0 0 6px var(--glow-amber-25);
+}
+.shaker-stage.shaking .shaker-stick { animation: stick-bounce 0.5s ease-in-out infinite; }
+.shaker-stage.shaking .shaker-stick:nth-child(2n) { animation-delay: 0.12s; }
+.shaker-stage.shaking .shaker-stick:nth-child(3n) { animation-delay: 0.22s; }
+@keyframes stick-bounce {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-12px); }  /* 小于 slot 余量，永不出界 */
+}
+.shaker-body {
+  position: absolute;
+  left: 50%;
+  top: 56px;               /* 壶口盖住签根：slot 底部 32px 被壶身遮挡 */
+  transform: translateX(-50%);
+  width: 150px;
+  z-index: 2;              /* ← 壶身在签之上 */
+  pointer-events: none;
+  filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.5));
+}

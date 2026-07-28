@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>调酒仪式 · 理想型·加载中</title>
+  <link rel="stylesheet" href="../theme-v2.css" />
+  <link rel="stylesheet" href="./cocktail.css" />
+</head>
+<body>
+  <div class="stage fx-vignette fx-scanlines fx-noise">
+
+    <header class="head">
+      <img class="head-logo" src="../assets-v2/logo.svg" alt="理想型·加载中" />
+      <p class="head-sub px-title neon-cyan">先调一杯，再进场 —— 这杯就是你今晚的身份</p>
+    </header>
+
+    <!-- 问答区 -->
+    <main class="quiz" id="quiz">
+      <div class="quiz-progress" id="progress"></div>
+      <div class="quiz-card" id="quizCard">
+        <p class="quiz-step px-title" id="stepLabel"></p>
+        <h2 class="quiz-title px-title neon-pink" id="questionTitle"></h2>
+        <p class="quiz-hint" id="questionHint"></p>
+        <div class="quiz-options" id="options"></div>
+      </div>
+    </main>
+
+    <!-- 调酒动画区（选完最后一题出现） -->
+    <section class="mixing hidden" id="mixing">
+      <div class="mix-shaker" id="mixShaker" aria-hidden="true">
+        <div class="ms-cap"></div>
+        <div class="ms-body"><span class="ms-shine"></span><span class="ms-band"></span></div>
+      </div>
+      <div class="pour-stream" id="pourStream" aria-hidden="true"></div>
+
+      <div class="glass-zone" id="glassZone">
+        <!-- 杯子由 cocktail.js 按 resolveCocktail 结果生成 -->
+      </div>
+
+      <div class="mix-caption px-title neon-amber" id="mixCaption">摇匀中…</div>
+    </section>
+
+    <!-- 结果卡 -->
+    <section class="result hidden" id="result">
+      <p class="result-eyebrow px-title neon-cyan">你的今晚特调</p>
+      <h2 class="result-name px-title neon-pink" id="resultName"></h2>
+      <p class="result-intro" id="resultIntro"></p>
+      <button class="result-go px-title" id="resultGo" type="button">端着它进场 →</button>
+    </section>
+
+  </div>
+  <script type="module" src="./cocktail.js"></script>
+</body>
+</html>

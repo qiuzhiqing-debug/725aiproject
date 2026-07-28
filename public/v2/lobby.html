@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>酒吧大厅 · 理想型·加载中</title>
+  <link rel="stylesheet" href="../theme-v2.css" />
+  <link rel="stylesheet" href="./lobby.css" />
+</head>
+<body>
+  <div id="scene" class="scene fx-vignette fx-scanlines fx-noise">
+
+    <!-- 天花板：吊灯 + 像素 disco ball -->
+    <div class="ceiling">
+      <div class="disco-wrap"><div class="disco-ball"><i class="disco-chain"></i></div></div>
+      <div class="hang-lamp lamp-l"><i></i></div>
+      <div class="hang-lamp lamp-r"><i></i></div>
+    </div>
+
+    <!-- 霓虹招牌 Logo -->
+    <header class="marquee">
+      <img class="logo neon-flicker" src="../assets-v2/logo.svg" alt="理想型·加载中" />
+    </header>
+
+    <!-- 背景：酒瓶架背墙 -->
+    <div class="backwall">
+      <div class="shelf shelf-1"></div>
+      <div class="shelf shelf-2"></div>
+      <div class="bottles bottles-1" aria-hidden="true"></div>
+      <div class="bottles bottles-2" aria-hidden="true"></div>
+      <div class="wall-neon" aria-hidden="true">OPEN 24/7</div>
+    </div>
+
+    <!-- 酒保：站在吧台后 -->
+    <div class="bartender-slot" id="bartenderSlot" title="老K"></div>
+    <div class="bartender-tag px-title neon-cyan">老K</div>
+
+    <!-- 吧台 -->
+    <div class="counter">
+      <div class="counter-top"></div>
+      <div class="counter-face"></div>
+      <!-- 吧台单人位 -->
+      <button class="solo-seat" id="soloSeat" type="button">
+        <span class="stool" aria-hidden="true"></span>
+        <span class="solo-label px-title neon-amber">一个人喝</span>
+      </button>
+    </div>
+
+    <!-- 前景圆桌区 -->
+    <div class="floor" id="floor">
+      <!-- 桌子由 lobby.js 生成：桌号霓虹牌 + 圆桌剪影 -->
+    </div>
+
+    <!-- 弹幕层（体育 bar 基因：欢呼飘屏） -->
+    <div class="danmaku" id="danmaku" aria-hidden="true"></div>
+
+    <!-- 竖屏提示（不阻塞） -->
+    <div class="rotate-hint px-title" id="rotateHint">
+      <span class="hint-icon" aria-hidden="true">⟳</span>
+      转过来，酒吧横着更好看
+    </div>
+  </div>
+
+  <script type="module" src="./lobby.js"></script>
+</body>
+</html>

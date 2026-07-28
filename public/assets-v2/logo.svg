@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="理想型·加载中 霓虹招牌">
+  <!-- pixel-bar neon 招牌：霓虹管 = 宽模糊层 + 中模糊层 + 锐利亮芯 三层叠加 -->
+  <defs>
+    <filter id="glowWide" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="9"/>
+    </filter>
+    <filter id="glowMid" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="3.2"/>
+    </filter>
+    <filter id="glowTight" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="1.1"/>
+    </filter>
+    <linearGradient id="barFill" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2de2ff"/>
+      <stop offset="0.6" stop-color="#a86bff"/>
+      <stop offset="1" stop-color="#ff2d78"/>
+    </linearGradient>
+    <!-- 霓虹马天尼杯：手绘 path，酒吧图腾 -->
+    <path id="glassTube" d="M 30 6 L 102 6 L 66 52 L 66 88 M 46 88 L 86 88 M 42 20 L 90 20"
+          fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </defs>
+
+  <!-- 左侧霓虹杯（青色管） -->
+  <g transform="translate(24,52)">
+    <use href="#glassTube" stroke="#2de2ff" stroke-width="12" opacity="0.55" filter="url(#glowWide)"/>
+    <use href="#glassTube" stroke="#2de2ff" stroke-width="6" opacity="0.9" filter="url(#glowMid)"/>
+    <use href="#glassTube" stroke="#c9f7ff" stroke-width="2.6" filter="url(#glowTight)"/>
+    <!-- 杯里的橄榄小灯 -->
+    <circle cx="66" cy="30" r="7" fill="#ff2d78" opacity="0.5" filter="url(#glowWide)"/>
+    <circle cx="66" cy="30" r="4" fill="#ffb0cd" filter="url(#glowTight)"/>
+  </g>
+
+  <!-- 主标题：理想型·加载中（粉红霓虹管） -->
+  <g font-family="'Fusion Pixel 12px Proportional SC','Zpix','DotGothic16','PingFang SC','Microsoft YaHei',monospace"
+     font-size="76" font-weight="400" text-anchor="middle" letter-spacing="4">
+    <text x="416" y="128" fill="#ff2d78" opacity="0.6" filter="url(#glowWide)">理想型·加载中</text>
+    <text x="416" y="128" fill="#ff2d78" opacity="0.95" filter="url(#glowMid)">理想型·加载中</text>
+    <text x="416" y="128" fill="#ffd7e6" stroke="#ff6ea8" stroke-width="1.4" filter="url(#glowTight)">理想型·加载中</text>
+  </g>
+
+  <!-- 加载条：永远 99% 的梗 -->
+  <g transform="translate(150,176)">
+    <!-- 轨道（暗紫描边管） -->
+    <rect x="0" y="0" width="452" height="30" rx="6" fill="#160c22"
+          stroke="#a86bff" stroke-width="3" opacity="0.5" filter="url(#glowMid)"/>
+    <rect x="0" y="0" width="452" height="30" rx="6" fill="#160c22"
+          stroke="#cfaaff" stroke-width="1.6"/>
+    <!-- 进度：停在 99% —— 永远差一点 -->
+    <rect x="5" y="5" width="437" height="20" rx="3" fill="url(#barFill)" opacity="0.55" filter="url(#glowMid)"/>
+    <rect x="5" y="5" width="437" height="20" rx="3" fill="url(#barFill)"/>
+    <!-- 像素缺口：最后 1% 永远空着 -->
+    <rect x="436" y="4" width="12" height="22" fill="#160c22"/>
+    <!-- 扫描格纹 -->
+    <g fill="#160c22" opacity="0.35">
+      <rect x="41" y="5" width="4" height="20"/><rect x="83" y="5" width="4" height="20"/>
+      <rect x="125" y="5" width="4" height="20"/><rect x="167" y="5" width="4" height="20"/>
+      <rect x="209" y="5" width="4" height="20"/><rect x="251" y="5" width="4" height="20"/>
+      <rect x="293" y="5" width="4" height="20"/><rect x="335" y="5" width="4" height="20"/>
+      <rect x="377" y="5" width="4" height="20"/><rect x="419" y="5" width="4" height="20"/>
+    </g>
+  </g>
+  <g font-family="'Fusion Pixel 12px Proportional SC','Zpix','DotGothic16','PingFang SC','Microsoft YaHei',monospace"
+     font-size="26" text-anchor="middle">
+    <text x="360" y="250" fill="#2de2ff" opacity="0.6" filter="url(#glowMid)">LOADING… 99%　别急，好东西都压轴</text>
+    <text x="360" y="250" fill="#bdf2ff">LOADING… 99%　别急，好东西都压轴</text>
+  </g>
+</svg>

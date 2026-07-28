@@ -1,0 +1,400 @@
+/* ==========================================================================
+   酒吧大厅 lobby.css （pixel-bar 风 · 横屏优先）
+   场景分层（z-index）：
+     backwall(1) < bartender(2) < counter(3) < floor tables(4)
+     < danmaku(50) < 质感层(59-61 in theme) < rotate-hint(70)
+   ========================================================================== */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  background: var(--bar-bg-deep);
+  font-family: var(--font-sans);
+  color: var(--ink-hi);
+  overflow: hidden;
+}
+
+.scene {
+  --counter-bottom: 30%;
+  --counter-h: clamp(58px, 9vh, 80px);
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 90% 60% at 50% 30%, var(--bar-bg-wall) 0%, transparent 70%),
+    linear-gradient(180deg, var(--bar-bg-deep) 0%, var(--bar-bg) 40%, var(--bar-floor) 100%);
+}
+
+/* ---------- 天花板 ---------- */
+.ceiling {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 96px;
+  z-index: 5;
+  pointer-events: none;
+}
+.disco-wrap {
+  position: absolute;
+  left: 18%;
+  top: 30px;
+}
+.hang-lamp {
+  position: absolute;
+  top: 0;
+  width: 3px;
+  height: 44px;
+  background: repeating-linear-gradient(0deg, var(--ink-ghost) 0 4px, transparent 4px 8px);
+}
+.hang-lamp.lamp-l { left: 68%; }
+.hang-lamp.lamp-r { left: 84%; }
+.hang-lamp i {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 34px;
+  height: 18px;
+  background: linear-gradient(180deg, #3a2a12, var(--neon-amber-deep));
+  clip-path: polygon(28% 0, 72% 0, 100% 100%, 0 100%);
+}
+.hang-lamp i::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 120px;
+  height: 150px;
+  background: radial-gradient(ellipse 50% 100% at 50% 0%, var(--glow-amber-25), transparent 75%);
+}
+
+/* ---------- 霓虹招牌 ---------- */
+.marquee {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  width: min(440px, 58vw);
+  pointer-events: none;
+}
+.logo { display: block; width: 100%; }
+
+/* ---------- 背墙酒瓶架 ---------- */
+.backwall {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 38%;
+  width: min(820px, 86vw);
+  height: 28vh;
+  min-height: 150px;
+  z-index: 1;
+}
+.shelf {
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  height: 8px;
+  background: linear-gradient(180deg, var(--bar-counter-top), var(--bar-counter));
+  border: 2px solid var(--line-counter);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+}
+.shelf-1 { bottom: 46%; }
+.shelf-2 { bottom: 8%; }
+/* 酒瓶剪影：像素瓶群（固定 px 周期，瓶身+瓶颈两层对齐），暖灯从后面透出来 */
+.bottles {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  height: 34px;
+  background:
+    repeating-linear-gradient(90deg,
+      #10081c 0 14px,   transparent 14px 24px,
+      #170d26 24px 40px, transparent 40px 48px,
+      #0d0716 48px 60px, transparent 60px 76px);
+}
+.bottles::before {
+  /* 背光：暖色灯带打亮瓶群 */
+  content: "";
+  position: absolute;
+  inset: -14px -2% -2px;
+  z-index: -1;
+  background: linear-gradient(180deg,
+    var(--glow-amber-12) 0%, var(--glow-amber-25) 60%, transparent 100%);
+}
+.bottles::after {
+  /* 瓶颈层：与瓶身周期 76px 对齐（瓶心 7 / 32 / 54） */
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: -10px; height: 10px;
+  background:
+    repeating-linear-gradient(90deg,
+      transparent 0 4px,  #10081c 4px 10px,  transparent 10px 29px,
+      #170d26 29px 35px,  transparent 35px 51px,
+      #0d0716 51px 57px,  transparent 57px 76px);
+}
+.bottles-1 { bottom: calc(46% + 8px); }
+.bottles-2 { bottom: calc(8% + 8px); }
+.wall-neon {
+  position: absolute;
+  right: -2%;
+  top: -14%;
+  font-family: var(--font-pixel);
+  font-size: 15px;
+  letter-spacing: 0.2em;
+  color: var(--neon-cyan-soft);
+  text-shadow: var(--neon-text-cyan);
+  transform: rotate(-4deg);
+}
+
+/* ---------- 酒保（锚定在吧台上沿，露出半身） ---------- */
+.bartender-slot {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--counter-bottom) + var(--counter-h) - 26px);
+  width: clamp(120px, 20vh, 190px);
+  height: clamp(120px, 20vh, 190px);
+  z-index: 2;
+  filter: drop-shadow(0 0 18px rgba(0, 0, 0, 0.6));
+}
+.bartender-tag {
+  position: absolute;
+  left: 50%;
+  transform: translateX(calc(-50% + 100px));
+  bottom: calc(var(--counter-bottom) + var(--counter-h) + 40px);
+  z-index: 2;
+  font-size: 15px;
+  pointer-events: none;
+}
+
+/* ---------- 吧台 ---------- */
+.counter {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: var(--counter-bottom);
+  width: min(900px, 92vw);
+  height: var(--counter-h);
+  z-index: 3;
+}
+.counter-top {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 16px;
+  background: linear-gradient(180deg, var(--bar-counter-top), var(--bar-counter));
+  border: 2px solid var(--line-counter);
+  border-radius: 4px;
+  box-shadow: var(--shadow-counter);
+}
+.counter-face {
+  position: absolute;
+  top: 16px; left: 8px; right: 8px; bottom: 0;
+  background:
+    repeating-linear-gradient(90deg,
+      var(--bar-counter) 0 42px, #331d13 42px 44px),
+    linear-gradient(180deg, #46281a, #24120a);
+  background-blend-mode: multiply;
+  border: 2px solid var(--line-counter);
+  border-top: none;
+}
+.counter-face::after {
+  /* 吧台踢脚霓虹灯带 */
+  content: "";
+  position: absolute;
+  left: 4px; right: 4px; bottom: 4px;
+  height: 3px;
+  background: var(--neon-purple);
+  box-shadow: 0 0 8px var(--glow-purple-45), 0 0 20px var(--glow-purple-20);
+}
+
+/* 吧台单人位 */
+.solo-seat {
+  position: absolute;
+  right: 3%;
+  top: -34px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 46px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  z-index: 4;
+  padding: 0 8px;
+}
+.stool {
+  width: 34px;
+  height: 12px;
+  border-radius: 6px 6px 2px 2px;
+  background: linear-gradient(180deg, var(--neon-pink-hot), var(--neon-pink));
+  box-shadow: 0 0 10px var(--glow-pink-40);
+  position: relative;
+}
+.stool::after {
+  content: "";
+  position: absolute;
+  top: 100%; left: 50%;
+  transform: translateX(-50%);
+  width: 6px; height: 26px;
+  background: var(--ink-ghost);
+}
+.solo-label {
+  font-size: 14px;
+  white-space: nowrap;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  border: var(--stroke-thin) solid var(--neon-amber);
+  background: var(--panel-deep);
+  box-shadow: 0 0 8px var(--glow-amber-25);
+  transition: transform 0.15s;
+}
+.solo-seat:hover .solo-label,
+.solo-seat:active .solo-label { transform: scale(1.08); }
+
+/* ---------- 前景圆桌 ---------- */
+.floor {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 30%;
+  z-index: 4;
+  background:
+    repeating-linear-gradient(90deg,
+      transparent 0 88px, rgba(168, 107, 255, 0.05) 88px 90px),
+    linear-gradient(180deg, var(--bar-floor), #0e0818);
+}
+.table {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  transition: transform 0.15s ease-out;
+}
+.table:hover, .table:active { transform: translate(-50%, -56%) scale(1.06); }
+.table-sign {
+  font-family: var(--font-pixel);
+  font-size: 17px;
+  color: var(--neon-cyan-soft);
+  text-shadow: var(--neon-text-cyan);
+  padding: 3px 12px;
+  border: var(--stroke-thin) solid var(--neon-cyan);
+  border-radius: var(--radius-sm);
+  background: var(--panel-deep);
+  box-shadow: var(--neon-box-cyan);
+}
+.table:nth-child(2n) .table-sign {
+  color: var(--neon-pink-hot);
+  text-shadow: var(--neon-text-pink);
+  border-color: var(--neon-pink);
+  box-shadow: var(--neon-box-pink);
+}
+.table-top {
+  width: var(--tw, 120px);
+  height: calc(var(--tw, 120px) * 0.32);
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at 50% 30%, #4a2c1c 0%, var(--bar-counter) 55%, #241209 100%);
+  border: 2px solid var(--line-counter);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.55),
+    inset 0 2px 0 rgba(255, 182, 72, 0.18);
+  position: relative;
+}
+.table-top::after {
+  /* 桌上一支小蜡烛灯 */
+  content: "";
+  position: absolute;
+  left: 50%; top: 30%;
+  transform: translateX(-50%);
+  width: 6px; height: 6px;
+  border-radius: 2px;
+  background: var(--neon-amber);
+  box-shadow: 0 0 10px var(--glow-amber-55), 0 0 22px var(--glow-amber-25);
+}
+.table-seats {
+  font-size: 11px;
+  color: var(--ink-dim);
+  font-family: var(--font-pixel);
+  letter-spacing: 0.1em;
+}
+
+/* ---------- 弹幕 ---------- */
+.danmaku {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  overflow: hidden;
+}
+.danmaku-item {
+  position: absolute;
+  left: 100%;
+  white-space: nowrap;
+  font-family: var(--font-pixel);
+  font-size: 15px;
+  color: var(--ink-mid);
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.8);
+  animation: danmaku-fly linear forwards;
+}
+.danmaku-item.hot {
+  color: var(--neon-pink-hot);
+  text-shadow: var(--neon-text-pink);
+}
+.danmaku-item.cool {
+  color: var(--neon-cyan-soft);
+  text-shadow: var(--neon-text-cyan);
+}
+@keyframes danmaku-fly {
+  from { transform: translateX(0); }
+  to   { transform: translateX(calc(-100vw - 100%)); }
+}
+
+/* ---------- 竖屏提示（不阻塞，仅顶部悬浮条） ---------- */
+.rotate-hint {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 70;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  color: var(--neon-amber);
+  text-shadow: var(--neon-text-amber);
+  background: var(--panel-deep);
+  border: var(--stroke-thin) solid var(--neon-amber);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 0 14px var(--glow-amber-25);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.hint-icon { display: inline-block; animation: hint-spin 2.4s linear infinite; }
+@keyframes hint-spin { to { transform: rotate(360deg); } }
+
+/* ---------- 竖屏适配：整体纵向压缩布局 ---------- */
+@media (orientation: portrait) {
+  .rotate-hint { display: inline-flex; font-size: 12px; padding: 6px 14px; }
+  .marquee { width: min(340px, 84vw); top: 52px; }
+  .disco-wrap { left: 6%; top: 8px; transform: scale(0.72); }
+  .backwall { bottom: 46%; height: 20vh; width: 94vw; }
+  .counter { width: 96vw; }
+  .scene { --counter-bottom: 38%; --counter-h: 64px; }
+  .bartender-slot { width: 118px; height: 118px; }
+  .bartender-tag { transform: translateX(calc(-50% + 70px)); font-size: 13px; }
+  .solo-seat { right: 2%; }
+  .floor { height: 38%; }
+  .hang-lamp.lamp-l { left: 74%; }
+  .hang-lamp.lamp-r { left: 90%; }
+  .wall-neon { display: none; }
+}

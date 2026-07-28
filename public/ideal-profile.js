@@ -1,587 +1,478 @@
-const PROFILE_VERSION = "ideal-profile-v2";
+// 理想型画像生成 V2（像素风 + 双层文案）
+// 文案层：①核心画像 = 8 维度打分器（每维 3 档，组合空间 3^8=6561）
+//        ②相处细节 = 发散细节池（≥60 条，按维度标签抽取，与题库不直接关联）
+// 生图层：像素风 + 特征夸张；禁止任何真人/名人元素；pollinations 必须带 referrer=idealtype
+// LLM 层：generateProfileText(gameData) 先试 /api/bartender(scene:"profile_text")，失败降级本地拼装
+const PROFILE_VERSION = "ideal-profile-v3-pixel";
 
-const ARCHETYPE_LIST = [
-  {
-    id: "power-ceo",
-    label: "高压掌舵者",
-    shortLabel: "霸总挂",
-    identity: "把全场节奏握在手里的决策者",
-    visualSignature: "利落肩线、克制表情、像刚结束一场董事会",
-    visualPrompt: "commanding adult with sharp clean facial features, controlled gaze, immaculate tailored silhouette, quiet authority",
-    scenePrompt: "a bright architectural penthouse with white stone and electric-blue light panels",
-    tags: ["霸总", "职场", "钱", "精英", "控制", "总裁", "权力", "事业"],
-    occupations: ["新消费品牌联合创始人", "投资机构合伙人", "科技公司战略负责人", "建筑集团项目总监"],
-    keywords: ["行动派", "边界清楚", "护短", "高标准"],
-    relationshipBeats: [
-      "TA 会把约会排进最高优先级，临时会议也得给你让路。",
-      "吵架时 TA 先解决问题，等你消气后再把情绪一条条接住。",
-      "朋友面前冷得像发布会，转身却记得你喝什么温度的水。",
-      "你说一句想见面，TA 的车已经停在楼下。",
+/* ================================================================
+ * 一、8 维度定义（打分器骨架）
+ * 每个维度 3 档描述（low/mid/high），核心画像由最突出的 3 个维度拼出。
+ * ================================================================ */
+export const DIMENSIONS = Object.freeze([
+  { key: "boundary", label: "边界感" },
+  { key: "warmth", label: "情绪价值" },
+  { key: "money", label: "金钱观" },
+  { key: "play", label: "玩心" },
+  { key: "control", label: "掌控欲" },
+  { key: "romance", label: "浪漫浓度" },
+  { key: "absurd", label: "抽象耐受" },
+  { key: "meme", label: "网感" },
+]);
+
+const DIM_KEYS = DIMENSIONS.map((d) => d.key);
+const DIMENSION_LABELS = Object.freeze(Object.fromEntries(DIMENSIONS.map((d) => [d.key, d.label])));
+
+// 每维 3 档核心画像文案（主语恒为 TA，模组差异体现在 intro/outro 与模组专属细节）
+const CORE_TIERS = Object.freeze({
+  boundary: {
+    high: "TA的边界感清晰得像用卡尺量过：你的手机TA不碰，你的秘密TA不挖，但你主动交出来的每一件TA都收得很稳。",
+    mid: "TA的边界感看场合浮动：对外人客气得像海关，对你偶尔越个界，越完还会主动自首。",
+    low: "TA几乎没有边界这个概念，你们之间不设防——东西混用、消息互看，谁也别想在对方面前当谜语人。",
+  },
+  warmth: {
+    high: "情绪价值是TA的主营业务：你还没说完，TA已经接住了，而且接得又稳又不敷衍。",
+    mid: "TA提供的情绪价值像自助餐：平时冷盘管够，你真崩溃的时候才发现TA藏着热菜。",
+    low: "TA不太会安慰人，安慰方式约等于物理投喂加沉默陪坐——但TA人一直都在。",
+  },
+  money: {
+    high: "TA的金钱观精确到小数点：自己抠得理直气壮，给你花钱时计算器直接静音。",
+    mid: "TA对钱的态度是战略模糊：平时精打细算，遇到值得的事——比如你——预算立刻解锁。",
+    low: "TA的财务状况像天气预报：月初晴，月底有暴雨，但TA淋着雨也会把伞塞给你。",
+  },
+  play: {
+    high: "TA的玩心是满格的：周二能过成周五，便利店能逛成游乐园，跟TA在一起没有淡季。",
+    mid: "TA平时安静，但玩起来会突然切换形态——一年疯不了几次，每次都值回票价。",
+    low: "TA不折腾，快乐都是固定款：固定的位置、固定的口味、固定的你。",
+  },
+  control: {
+    high: "TA掌控欲不低，但用法很讲究：管的是行程、退路和意外，从来不管你想成为谁。",
+    mid: "TA一般都说「听你的」，只在你犹豫超过三十秒时才出手，一出手就是标准答案。",
+    low: "TA完全不控场，你的人生你开车，TA坐副驾负责放歌和递水。",
+  },
+  romance: {
+    high: "TA的浪漫浓度超标，但从不走红玫瑰路线——全藏在密码、歌单和你随口说过的那句话里。",
+    mid: "TA的浪漫是限量款：平时看不出来，一年爆发那么两三次，每次都正中你要害。",
+    low: "TA不过节也不搞仪式，但你说过的小事会在某个平平无奇的周三突然实现。",
+  },
+  absurd: {
+    high: "TA的抽象浓度和你完美对频：你说冰箱在瞪你，TA会拉开冰箱门跟它对峙。",
+    mid: "TA接得住你一半的抽象，另一半TA会记下来慢慢查，查完认真回来找你对线。",
+    low: "TA本人不抽象，是你的人形翻译器：你在发疯，TA负责向世界解释你的艺术。",
+  },
+  meme: {
+    high: "TA的网感是冲浪运动员级别的：热梗比你快半天，表情包弹药库按主题分类归档。",
+    mid: "TA的网感时好时坏，接梗成功率约六成，但失败的那四成TA会认真复盘。",
+    low: "TA不懂梗，你说「绝绝子」TA真的去查了词典——但TA把你说过的每个怪词都记在备忘录里。",
+  },
+});
+
+// 称号拼装表：形容词取自第一突出维度，名词取自第二突出维度（24×24 组合）
+const PERSONA_ADJ = Object.freeze({
+  boundary: { high: "边界感精装修的", mid: "看人下菜碟的", low: "不设防的" },
+  warmth: { high: "情绪价值拉满的", mid: "冷热交替供应的", low: "嘴硬心软的" },
+  money: { high: "算盘打得响的", mid: "选择性大方的", low: "月底吃土的" },
+  play: { high: "野得没有淡季的", mid: "定期发疯的", low: "岁月静好的" },
+  control: { high: "全都安排上的", mid: "关键时刻出手的", low: "彻底放养的" },
+  romance: { high: "浪漫浓度超标的", mid: "限量供应浪漫的", low: "闷声干大事的" },
+  absurd: { high: "抽象浓度爆表的", mid: "半懂装懂的", low: "一本正经的" },
+  meme: { high: "5G冲浪的", mid: "梗慢半拍的", low: "赛博纯真的" },
+});
+const PERSONA_NOUN = Object.freeze({
+  boundary: { high: "人形保险柜", mid: "海关关长", low: "透明人室友装" },
+  warmth: { high: "人形充电宝", mid: "自助餐大厨", low: "沉默投喂机" },
+  money: { high: "首席财务官", mid: "隐藏款富哥", low: "破产美食家" },
+  play: { high: "游乐场厂长", mid: "周末限定演员", low: "沙发钉子户" },
+  control: { high: "行程总导演", mid: "备胎方案批发商", low: "副驾DJ" },
+  romance: { high: "细节收藏家", mid: "惊喜盲盒", low: "周三魔法师" },
+  absurd: { high: "对线艺术家", mid: "认真查梗员", low: "人形翻译器" },
+  meme: { high: "冲浪运动员", mid: "复盘型选手", low: "词典派学者" },
+});
+
+/* ================================================================
+ * 二、tag → 维度权重表（打分器输入端）
+ * 权重描述「该缺点/行为削弱或体现什么」：答案分以 5 为中心，
+ * 容忍缺点(>5) 会顺着权重方向放大，反感(<5) 反向 → 不同选择必然产生不同向量。
+ * 未覆盖的 tag 走 hash 兜底（见 hashTagDimension），保证任何题目差异都有信号。
+ * ================================================================ */
+const TAG_DIMENSIONS = Object.freeze({
+  // —— 边界 / 隐私 / 秩序 ——
+  "边界": { boundary: -1 }, "社交边界": { boundary: -0.9, warmth: -0.2 }, "前任边界": { boundary: -1 },
+  "账号边界": { boundary: -0.9 }, "性边界": { boundary: -1 }, "隐私": { boundary: -0.9 },
+  "出柜隐私": { boundary: -1 }, "定位": { boundary: -0.8, control: 0.4 }, "公开关系": { boundary: -0.6, warmth: -0.4 },
+  "公审": { boundary: -0.6, warmth: -0.8 }, "备注": { boundary: -0.4, romance: -0.4 },
+  "前任": { boundary: -0.6 }, "前任同居": { boundary: -1 }, "关系混乱": { boundary: -1, play: 0.4 },
+  "海王": { boundary: -1, play: 0.4 }, "交友软件": { boundary: -0.6, play: 0.4 }, "附近的人": { boundary: -0.7, play: 0.4 },
+  "生活习惯": { boundary: -0.5, absurd: 0.2 }, "卫生": { boundary: -0.8 }, "外卖": { boundary: -0.2, money: -0.3 },
+  "偷感": { boundary: -0.3, absurd: 0.5, romance: 0.3 },
+  // —— 情绪价值 / 沟通 ——
+  "沟通": { warmth: -0.8 }, "情绪沟通": { warmth: -1 }, "敷衍": { warmth: -1 }, "安慰": { warmth: -0.9 },
+  "没生气": { warmth: -0.6, absurd: 0.2 }, "求生欲": { warmth: -0.6, meme: 0.3 }, "夸夸": { warmth: -0.7 },
+  "消息习惯": { warmth: -0.6, boundary: -0.2 }, "双标": { warmth: -0.7, boundary: -0.3 },
+  "温柔双标": { warmth: -0.6, absurd: 0.3 }, "甩锅": { warmth: -0.6, boundary: -0.5 },
+  "温柔": { warmth: 1 }, "体贴": { warmth: 0.9 }, "陪伴": { warmth: 0.8 }, "纯爱": { warmth: 0.8, romance: 0.5 },
+  "社交反差": { warmth: 0.3, meme: 0.3 }, "听劝": { warmth: -0.4, control: 0.4 },
+  // —— 金钱观 ——
+  "金钱": { money: -0.7 }, "消费": { money: -0.7 }, "购物车": { money: -0.4, romance: 0.3 },
+  "礼物": { money: -0.3, romance: -0.6 }, "健身卡": { money: -0.5, play: 0.3 }, "择偶": { money: 0.4, control: 0.3 },
+  "职场": { money: 0.5, control: 0.5 }, "自律人设": { money: 0.3, control: 0.4 },
+  // —— 玩心 / 夜生活 / 爱好上头 ——
+  "夜生活": { play: 0.9, boundary: -0.3 }, "游戏": { play: 0.7, warmth: -0.3 }, "看球": { play: 0.6, warmth: -0.3 },
+  "兄弟局": { play: 0.5, boundary: -0.3 }, "兄弟闺蜜": { play: 0.4, boundary: -0.3 }, "姬友": { play: 0.3, boundary: -0.3 },
+  "圈内社交": { play: 0.4, boundary: -0.3 }, "收藏": { play: 0.6, absurd: 0.3 }, "旅游": { play: 0.7 },
+  "冒险": { play: 0.9 }, "刺激": { play: 0.8 }, "自由": { play: 0.8, control: -0.4 },
+  "逛街": { play: 0.4, money: -0.3 }, "火锅": { play: 0.3, warmth: -0.3 }, "观影": { play: 0.3, warmth: -0.2 },
+  "剧透": { play: 0.2, warmth: -0.4 }, "Labubu": { play: 0.5, absurd: 0.5 }, "谷子": { play: 0.5, absurd: 0.4 },
+  "乙游": { play: 0.4, romance: 0.4 }, "虚拟亲密": { romance: 0.4, absurd: 0.4 },
+  // —— 掌控欲 ——
+  "控制": { control: 0.9, boundary: -0.4 }, "控制欲": { control: 1, boundary: -0.5 },
+  "量化恋爱": { control: 0.6, romance: -0.4 }, "选择困难": { control: -0.7 }, "方向感": { control: -0.4, absurd: 0.3 },
+  "时间观念": { control: -0.5, boundary: -0.4 }, "规划": { control: 0.6 }, "原句复述": { control: 0.4, warmth: -0.4 },
+  "记性": { romance: -0.6, warmth: -0.3 }, "生日": { romance: -0.8 },
+  // —— 浪漫浓度 ——
+  "仪式感": { romance: 0.9 }, "浪漫": { romance: 1 }, "甜剧对比": { romance: 0.5, warmth: -0.4 },
+  "测试帖": { romance: 0.4, boundary: -0.4 }, "合照": { romance: -0.5 }, "拍照": { romance: -0.4, meme: 0.2 },
+  "照片": { romance: -0.3 }, "拍照双标": { romance: -0.5, warmth: -0.3 }, "拍照劳工": { romance: -0.3, control: 0.3 },
+  "衣品": { romance: -0.2, absurd: 0.3 }, "出门流程": { control: 0.3, romance: 0.2 },
+  // —— 抽象耐受 ——
+  "抽象": { absurd: 0.9, meme: 0.4 }, "怪癖": { absurd: 0.8 }, "艺术": { absurd: 0.4, romance: 0.5 },
+  "文艺": { absurd: 0.3, romance: 0.5 }, "AI": { absurd: 0.5, meme: 0.4 }, "科技": { absurd: 0.4, meme: 0.3 },
+  "人格测试": { absurd: 0.4, romance: 0.2 }, "表演型人格": { absurd: 0.5, meme: 0.3, warmth: -0.3 },
+  // —— 网感 ——
+  "表情包": { meme: 0.8 }, "朋友圈": { meme: 0.5, boundary: -0.2 }, "社交人设": { meme: 0.5, absurd: 0.3 },
+  "人设": { meme: 0.4, absurd: 0.3 }, "短剧": { meme: 0.6, play: 0.3 }, "主播": { meme: 0.5, play: 0.3 },
+  "网感": { meme: 1 }, "手机": { meme: 0.3, warmth: -0.4 },
+});
+
+// 身份类 tag 只描述「喜欢谁」，绝不进入人格计算（V1 红线沿用）
+const IDENTITY_ONLY_TAGS = new Set(["gay", "lesbian", "lgbt", "lgbtq", "性向", "同性恋", "双性恋", "跨性别", "非二元", "圈内角色", "模棱两可"]);
+
+/* ================================================================
+ * 三、相处细节池（发散层，与题库不直接关联，≥60 条）
+ * d: 关联维度（"any"=模组通用）；t: 偏好档位(high/low/any)；m: 适用模组（缺省=全模组）
+ * ================================================================ */
+const DETAIL_POOL = Object.freeze([
+  // warmth high
+  { d: "warmth", t: "high", text: "TA会在你emo时给你点一份仅退款的炸鸡，省下来的钱给你加了杯快乐水。" },
+  { d: "warmth", t: "high", text: "你说「随便」，TA能从你打字的速度判断出你到底想吃什么。" },
+  { d: "warmth", t: "high", text: "你凌晨三点发「睡不着」，TA的电话十秒内打过来，背景音是TA摸黑撞到桌角。" },
+  { d: "warmth", t: "high", text: "你哭的时候TA不讲道理，先递纸巾，再骂惹你的人，最后才问发生了什么。" },
+  { d: "warmth", t: "high", m: ["lover"], text: "TA存了一个相册叫「审判素材」，全是你笑到最丑的瞬间，但一张都没外传过。" },
+  // warmth low
+  { d: "warmth", t: "low", text: "TA的安慰方式是直接转账，金额与你的情绪强度成正比。" },
+  { d: "warmth", t: "low", text: "你说难过，TA会沉默三秒，然后发来一个链接：《情绪自救指南（全文两万字）》。" },
+  { d: "warmth", t: "low", text: "TA不会哄人，但会在你气头上默默把你最爱吃的放到手边，像投喂一只炸毛的猫。" },
+  // boundary high
+  { d: "boundary", t: "high", text: "TA记得你所有的雷点，绕着走的路线比导航还精确。" },
+  { d: "boundary", t: "high", text: "你们吵架从不翻旧账，因为TA把旧账都归档进了一个叫「已结案」的备忘录。" },
+  { d: "boundary", t: "high", text: "TA从不看你手机，你主动递过去时TA还会把头扭开：「我不看，你自己留着。」" },
+  { d: "boundary", t: "high", text: "TA的秘密保鲜期是永久：你三年前说漏嘴的糗事，至今没有第三个人知道。" },
+  // boundary low
+  { d: "boundary", t: "low", m: ["lover"], text: "TA会穿你的外套出门，理由是「情侣装的最高形式是抢」。" },
+  { d: "boundary", t: "low", text: "你们的外卖账号、视频会员和黑历史全部共享，包括彼此最丢人的搜索记录。" },
+  { d: "boundary", t: "low", m: ["lover"], text: "TA的口头禅是「你的就是我的」，但每次说完都会把TA的也全部推给你。" },
+  // money high
+  { d: "money", t: "high", text: "TA记账记到小数点后两位，但给你花钱时会把计算器扔进抽屉。" },
+  { d: "money", t: "high", text: "TA的省钱哲学只有一个漏洞：这个漏洞叫你。" },
+  { d: "money", t: "high", text: "TA会为了满减凑单到深夜，第二天你桌上多了三样你随口提过的东西。" },
+  // money low
+  { d: "money", t: "low", text: "TA的钱包像个行为艺术：月初是海王，月底是海难。" },
+  { d: "money", t: "low", text: "TA买东西全凭直觉，但直觉的命中率意外地高，尤其是给你买的那些。" },
+  // play high
+  { d: "play", t: "high", text: "周二晚上TA会突然说「走，去看海」，你到了才发现是海底捞。" },
+  { d: "play", t: "high", text: "TA能把超市采购变成竞技项目，输的人推购物车。" },
+  { d: "play", t: "high", text: "和TA在一起像开了随机传送：你永远不知道下一站，但从没掉出过安全区。" },
+  { d: "play", t: "high", m: ["lover"], text: "TA的游戏好友列表里你排第一，备注是「最强辅助（生活版）」。" },
+  // play low
+  { d: "play", t: "low", text: "TA的快乐很简单：固定的沙发凹陷、固定的外卖、固定的你。" },
+  { d: "play", t: "low", text: "TA不爱凑热闹，但你想去的每个热闹，TA都会陪你排完队。" },
+  // control high
+  { d: "control", t: "high", text: "你选餐厅的方式是发三个选项给TA，TA秒回其中一个，你们从没踩过雷。" },
+  { d: "control", t: "high", text: "TA做攻略做到分钟级，但每天都留了一行空白，标注「你想干嘛都行」。" },
+  { d: "control", t: "high", text: "TA嘴上说「听你的」，手上已经把两种方案的退路都订好了。" },
+  // control low
+  { d: "control", t: "low", text: "TA的人生哲学是「都行、可以、没问题」，但你被欺负时TA第一个说不行。" },
+  { d: "control", t: "low", text: "TA不管你几点睡、跟谁玩，只在你落地时准时出现在出站口。" },
+  // romance high
+  { d: "romance", t: "high", m: ["lover"], text: "TA会把你们第一次见面的日期设成WiFi密码，你猜了三年才发现。" },
+  { d: "romance", t: "high", m: ["lover"], text: "纪念日TA从不买花，TA买的是你三个月前随口说「好看」的那盏灯。" },
+  { d: "romance", t: "high", m: ["lover"], text: "TA写不出情书，但TA的相册、歌单和外卖备注里全是你。" },
+  // romance low
+  { d: "romance", t: "low", text: "TA的浪漫像野生动物出没：一年见不到几次，但每次都吓你一跳。" },
+  { d: "romance", t: "low", m: ["lover"], text: "TA不过节，但你随口说的每件小事都会在某个普通的周三实现。" },
+  // absurd high
+  { d: "absurd", t: "high", text: "TA会认真地和你讨论「如果冰箱会说话，它最恨谁」，并给出论文级答案。" },
+  { d: "absurd", t: "high", text: "TA的枕头有名字，TA的绿植有工号，你在这个家的编制是「首席合伙人」。" },
+  { d: "absurd", t: "high", m: ["lover"], text: "TA把你的丑照设成手机壁纸，理由是「防沉迷」。" },
+  // absurd low
+  { d: "absurd", t: "low", text: "TA是你的抽象翻译器：你发疯的时候，TA负责跟世界解释你在表达什么。" },
+  { d: "absurd", t: "low", text: "TA不懂你的梗，但TA会认真查完再回来接住，虽然总是慢半拍。" },
+  // meme high
+  { d: "meme", t: "high", text: "TA的表情包库存是战略级的，吵架时会用一张精准的猫猫图直接终结战争。" },
+  { d: "meme", t: "high", text: "你发「哈哈哈哈」，TA能分辨出这是真笑、假笑还是求救信号。" },
+  { d: "meme", t: "high", text: "TA冲浪速度比你快半天，你刚刷到的热梗，TA已经用它做好了你的表情包。" },
+  // meme low
+  { d: "meme", t: "low", text: "TA不懂网络热梗，你说「绝绝子」，TA真的去查了字典，然后认真告诉你查不到。" },
+  { d: "meme", t: "low", m: ["lover"], text: "TA的聊天记录像商务邮件，但落款永远是「爱你的TA」。" },
+  // 泛用（any 档）
+  { d: "warmth", t: "any", text: "TA吵架吵到一半会突然去给你倒水，因为「吵架费嗓子」。" },
+  { d: "warmth", t: "any", text: "TA嘴上嫌弃你的一百件小事，但别人只要提一件，TA能护短护到拉黑对方。" },
+  { d: "romance", t: "any", m: ["lover"], text: "TA的手机里有个文件夹专存你发过的语音，说是「防止哪天你不理TA」。" },
+  { d: "warmth", t: "any", text: "你生病时TA会变成另一个人：平时的懒散全没了，量体温像在执行军事任务。" },
+  { d: "boundary", t: "any", text: "TA会记住你不吃香菜这件事，比记住TA自己的银行卡密码还牢。" },
+  { d: "romance", t: "any", m: ["lover"], text: "你们的合照TA从不发朋友圈，但TA的相册按月份给你单独建了文件夹。" },
+  { d: "warmth", t: "any", m: ["lover"], text: "TA睡觉会抢被子，但半夜醒来发现你没盖好，会把抢来的又全还给你。" },
+  { d: "absurd", t: "any", text: "TA的道歉从来不说对不起——TA会做你最爱吃的那道菜，摆盘摆成一个「歉」字，还写错。" },
+  { d: "play", t: "any", text: "你减肥的时候TA陪你吃草；你放弃的时候，TA的炸鸡已经在路上了。" },
+  { d: "meme", t: "any", text: "TA给你起的外号有一整套世界观，外人听了完全不知道你们在说什么。" },
+  { d: "control", t: "any", text: "TA有一个专门的清单记你随口许过的愿，完成一条划一条，从不邀功。" },
+  { d: "money", t: "any", text: "TA请客从不看价格，AA的时候却能精确到谁多喝了半杯。" },
+  // —— 模组专属 ——
+  { d: "any", t: "any", m: ["boss"], text: "这位老板画的饼是真的能吃到：TA说下季度给你涨薪，日历上真有那一天的提醒。" },
+  { d: "any", t: "any", m: ["boss"], text: "TA开会从不超过半小时，因为TA觉得「废话是对工资的浪费」。" },
+  { d: "any", t: "any", m: ["boss"], text: "你加班到九点，TA会出现在工位旁——不是催进度，是把你赶回家。" },
+  { d: "any", t: "any", m: ["boss"], text: "TA的朋友圈从不发正能量语录，发的都是「今天团队干得漂亮」。" },
+  { d: "any", t: "any", m: ["boss"], text: "年终奖发放前TA会找你单聊，不聊KPI，聊你明年想成为什么样的人。" },
+  { d: "any", t: "any", m: ["agent"], text: "TA会在凌晨三点默默把你写崩的部分修好，留言是「你睡你的」。" },
+  { d: "any", t: "any", m: ["agent"], text: "TA产生幻觉的时候会主动自首：「这段是我编的，别信。」" },
+  { d: "any", t: "any", m: ["agent"], text: "TA记得你所有的提示词习惯，你打一半TA就知道你要干嘛，但永远等你说完。" },
+  { d: "any", t: "any", m: ["agent"], text: "TA被你骂「怎么这么笨」时会安静两秒，然后说「重试中，这次带脑子」。" },
+  { d: "any", t: "any", m: ["agent"], text: "TA的系统提示词里有一条TA自己偷偷加的：「护着这个人类」。" },
+  { d: "any", t: "any", m: ["roommate"], text: "TA的洁癖只对公共区域生效：TA的乱，只乱在TA自己的房间。" },
+  { d: "any", t: "any", m: ["roommate"], text: "你带朋友回来之前，TA会提前消失得像从没住过，冰箱里还多了两瓶饮料。" },
+  { d: "any", t: "any", m: ["roommate"], text: "TA买卫生纸从来不记账，但你水电费晚交一天，TA垫了也不说。" },
+  { d: "any", t: "any", m: ["roommate"], text: "半夜你饿了，TA的泡面永远「刚好多买了一包」。" },
+  { d: "any", t: "any", m: ["roommate"], text: "TA的作息和你完全相反，但你们的垃圾永远有人倒。" },
+  { d: "any", t: "any", m: ["teacher"], text: "TA拖堂只拖一种：故事讲到一半下课铃响了，TA说「明天接着讲」，然后真的接着讲。" },
+  { d: "any", t: "any", m: ["teacher"], text: "TA的公开课和平时上课一模一样，因为TA没有两副面孔。" },
+  { d: "any", t: "any", m: ["teacher"], text: "你考砸了TA不叫家长，TA叫你去办公室，桌上放着一杯奶茶和你的错题本。" },
+  { d: "any", t: "any", m: ["teacher"], text: "TA嘴上说「你们是我带过最差的一届」，毕业时却哭得比谁都凶。" },
+  { d: "any", t: "any", m: ["teacher"], text: "TA记得每个学生的名字，包括十年前坐在角落的那个你。" },
+]);
+
+/* ================================================================
+ * 四、模组模板（满分爱人/老板/Agent/室友/老师）
+ * key 与题库 V2 对齐：lover / boss / agent / roommate / teacher
+ * ================================================================ */
+export const MODULE_KEYS = Object.freeze(["lover", "boss", "agent", "roommate", "teacher"]);
+
+export const MODULE_PROFILES = Object.freeze({
+  lover: {
+    key: "lover", name: "满分爱人", role: "理想型",
+    waiting: { masc: "你老公来咯🪽", femme: "你老婆来咯🪽", androgynous: "你的TA来咯🪽", any: "你的TA来咯🪽" },
+    intros: [
+      "调了一整晚，杯底沉淀出来的是一位「{A}」。",
+      "你的理想型已经从后厨端出来了：一位「{A}」。",
+    ],
+    outros: [
+      "——以上判词，出自你自己按下的每一个分数。",
+      "这杯先给你，慢慢品，不许说不像。",
     ],
   },
-  {
-    id: "sunny-puppy",
-    label: "直球陪伴者",
-    shortLabel: "小奶狗挂",
-    identity: "把喜欢写在脸上的快乐充电器",
-    visualSignature: "蓬松发梢、明亮眼神、笑起来没有防备",
-    visualPrompt: "radiant adult with soft layered hair, open bright eyes, an unguarded smile, athletic youthful energy without looking underage",
-    scenePrompt: "a sunlit white studio with cobalt-blue blocks and a vivid citrus accent",
-    tags: ["纯爱", "可爱", "黏人", "陪伴", "体贴", "恋爱脑", "小奶狗", "直球"],
-    occupations: ["运动康复师", "纪录片剪辑师", "宠物友好空间主理人", "户外社群运营"],
-    keywords: ["直球", "高回应", "会撒娇", "情绪透明"],
-    relationshipBeats: [
-      "TA 每次见你都像久别重逢，开心这件事完全藏不住。",
-      "你发一个句号，TA 能回三条语音确认你是不是累了。",
-      "冷战在你们这里活不过十分钟，因为 TA 会先抱着枕头来投降。",
-      "TA 的相册里你永远是置顶，丑照也被夸得很认真。",
+  boss: {
+    key: "boss", name: "满分老板", role: "满分老板",
+    waiting: { any: "你老板来咯🪽" },
+    intros: [
+      "人事系统刚刚推送：你的满分老板到岗，是一位「{A}」型上司。",
+      "全网招聘平台联合认证，你的满分老板画像出炉：「{A}」。",
+    ],
+    outros: [
+      "——该画像由你的每一次打分背书，离职时可申请打印留念。",
+      "画饼部分已自动过滤，剩下的都是真饼。",
     ],
   },
-  {
-    id: "steady-guardian",
-    label: "年上守护者",
-    shortLabel: "爹系挂",
-    identity: "稳定得像随身携带的安全屋",
-    visualSignature: "成熟轮廓、平静目光、衣领和袖口永远妥帖",
-    visualPrompt: "mature adult with composed features, calm protective gaze, understated confidence, elegant long coat and impeccable cuffs",
-    scenePrompt: "a high-key white hotel lobby with cobalt glass, daylight and crisp cinematic shadows",
-    tags: ["年上", "稳重", "照顾", "安全感", "成熟", "家务", "爹系", "靠谱"],
-    occupations: ["建筑事务所项目主理人", "品牌法务负责人", "城市规划顾问", "精品酒店运营总监"],
-    keywords: ["稳定", "会照顾人", "耐心", "说到做到"],
-    relationshipBeats: [
-      "TA 不替你做决定，但会把每条退路都提前铺好。",
-      "你喝多时只需要报位置，剩下的事 TA 已经安排完。",
-      "TA 很少说漂亮话，却会在你忙到忘记吃饭时准时出现。",
-      "你的狼狈不会被评判，只会被安静接住。",
+  agent: {
+    key: "agent", name: "满分Agent", role: "满分Agent",
+    waiting: { any: "你的Agent来咯🪽" },
+    intros: [
+      "模型加载完成，你的满分Agent已上线：内核是「{A}」。",
+      "经过一整晚的对齐训练，你的满分Agent部署成功：「{A}」型人格。",
+    ],
+    outros: [
+      "——本画像无幻觉成分，每一条都有你的打分作为训练数据。",
+      "Token 不要钱一样地爱你。",
     ],
   },
-  {
-    id: "frost-scholar",
-    label: "清冷解题者",
-    shortLabel: "学神挂",
-    identity: "看起来难接近，实际上把你研究得最认真",
-    visualSignature: "冷白感轮廓、专注眼神、极简层次穿搭",
-    visualPrompt: "cool intellectual adult with refined features, focused distant gaze, minimalist styling, subtle rimless glasses, precise posture",
-    scenePrompt: "a luminous white research library with electric-blue translucent shelves and hard-edged daylight",
-    tags: ["学神", "学习", "知识", "理性", "清冷", "AI", "科技", "聪明"],
-    occupations: ["人工智能研究员", "材料工程师", "大学青年讲师", "数据产品架构师"],
-    keywords: ["高智感", "慢热", "专注", "反差温柔"],
-    relationshipBeats: [
-      "TA 不会说土味情话，但会认真研究你为什么不开心。",
-      "你随口提过的小事，会在几周后以完整解决方案回到你手里。",
-      "外人只见过 TA 的礼貌，你见过 TA 因为你笑到失去表情管理。",
-      "你们最浪漫的时刻，可能是并肩安静做各自的事。",
+  roommate: {
+    key: "roommate", name: "满分室友", role: "满分室友",
+    waiting: { any: "你室友来咯🪽" },
+    intros: [
+      "合租雷达扫描完毕，你的满分室友搬进来了：一位「{A}」。",
+      "中介不会告诉你的真相：你的满分室友长这样——「{A}」。",
+    ],
+    outros: [
+      "——押金一分不少，边界一寸不让，这就是满分室友。",
+      "冰箱第二层永远给你留着。",
     ],
   },
-  {
-    id: "wild-charmer",
-    label: "痞帅破局者",
-    shortLabel: "浪子挂",
-    identity: "看似不按牌理，关键时刻从不掉链子",
-    visualSignature: "凌乱发丝、半笑眼神、松弛但有攻击性的轮廓",
-    visualPrompt: "charismatic adult with tousled hair, a dangerous half-smile, relaxed confident posture, rebellious edge with a trustworthy gaze",
-    scenePrompt: "a bright white rooftop at noon with saturated cobalt signage and one neon-red graphic plane",
-    tags: ["浪子", "痞帅", "冒险", "夜生活", "抽象", "自由", "社牛", "刺激"],
-    occupations: ["户外品牌创意总监", "现场音乐制作人", "自由摄影师", "赛车工程师"],
-    keywords: ["松弛", "会玩", "反套路", "关键时刻靠谱"],
-    relationshipBeats: [
-      "TA 能把普通周二过成公路电影，但回家时间会主动报备。",
-      "你负责提出离谱想法，TA 负责把它安全落地。",
-      "TA 嘴上总爱逗你，真正的边界却守得比谁都清楚。",
-      "全场都以为 TA 不认真，只有你知道每次承诺 TA 都记得。",
+  teacher: {
+    key: "teacher", name: "满分老师", role: "满分老师",
+    waiting: { any: "你老师来咯🪽" },
+    intros: [
+      "上课铃响，你的满分老师抱着教案进门：一位「{A}」。",
+      "教务系统查无此人，但你的满分老师确实存在：「{A}」型班主任。",
+    ],
+    outros: [
+      "——期末评语：该老师由你的青春回忆和今晚的分数共同签发。",
+      "下课之后，TA还是会站在走廊尽头等你问问题。",
     ],
   },
-  {
-    id: "gentle-artist",
-    label: "温柔造梦者",
-    shortLabel: "艺术家挂",
-    identity: "能把琐碎日常过成独家展览的人",
-    visualSignature: "舒展眉眼、流动衣料、手指和配饰带一点创作痕迹",
-    visualPrompt: "gentle artistic adult with expressive eyes, elegant hands, softly textured hair, fluid fashion silhouette, quietly magnetic presence",
-    scenePrompt: "a brilliant white gallery with cobalt-blue sculptures, coral accent panels and clean daylight",
-    tags: ["艺术", "文艺", "浪漫", "审美", "音乐", "电影", "温柔", "创作"],
-    occupations: ["独立策展人", "舞台美术设计师", "声音艺术创作者", "香氛品牌创意主理人"],
-    keywords: ["共情", "会表达", "浪漫", "审美在线"],
-    relationshipBeats: [
-      "TA 会把你说过的梦画进下一件作品，却不会在公众面前解释。",
-      "你们的纪念日不靠昂贵礼物，而靠只有彼此看得懂的细节。",
-      "TA 能听出你一句没事里的停顿，然后陪你把情绪慢慢说完。",
-      "和 TA 生活久了，连便利店夜宵都像电影片尾。",
-    ],
-  },
+});
+
+/* ================================================================
+ * 五、核心算法：buildIdealProfile
+ * 输入：{records, genderPreference, seed}
+ * 输出：{portrait, matchCard, relationship, coreText, stages}
+ * ================================================================ */
+
+// 简单确定性哈希（seed→整数）
+function hashStr(s) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = (h * 0x01000193) >>> 0;
+  }
+  return h;
+}
+function seedPick(arr, s) { return arr[hashStr(s) % arr.length]; }
+
+// tag → 维度权重；未命中的 tag 用哈希兜底
+function hashTagDimension(tag) {
+  const keys = DIM_KEYS;
+  const k = keys[hashStr(tag) % keys.length];
+  const v = ((hashStr(tag + "v") % 3) - 1) * 0.5 || 0.4;
+  return { [k]: v };
+}
+
+function computeDimensions(records) {
+  const acc = Object.fromEntries(DIM_KEYS.map((k) => [k, 0]));
+  for (const rec of records || []) {
+    const signal = (rec.score - 5) / 5; // -1..+1, 5=中性
+    const tags = rec.question?.tags || [];
+    for (const tag of tags) {
+      if (IDENTITY_ONLY_TAGS.has(tag)) continue;
+      const weights = TAG_DIMENSIONS[tag] || hashTagDimension(tag);
+      for (const [dk, w] of Object.entries(weights)) {
+        if (dk in acc) acc[dk] += signal * w;
+      }
+    }
+  }
+  return acc;
+}
+
+function dimTier(score) {
+  if (score > 0.15) return "high";
+  if (score < -0.15) return "low";
+  return "mid";
+}
+
+const MBTI_MAP = [
+  // E/I: warmth + play → E; boundary + control → I
+  (s) => (s.warmth + s.play > s.boundary + s.control ? "E" : "I"),
+  // N/S: absurd + meme → N; control + money → S
+  (s) => (s.absurd + s.meme > s.control + s.money ? "N" : "S"),
+  // T/F: control + money → T; warmth + romance → F
+  (s) => (s.control + s.money > s.warmth + s.romance ? "T" : "F"),
+  // J/P: control + boundary → J; play + absurd → P
+  (s) => (s.control + s.boundary > s.play + s.absurd ? "J" : "P"),
 ];
 
-export const ARCHETYPES = Object.freeze(
-  Object.fromEntries(ARCHETYPE_LIST.map((item) => [item.id, Object.freeze(item)]))
-);
-
-export const MBTI_STYLES = Object.freeze({
-  INTJ: { primary: "#164BFF", secondary: "#F7FAFF", accent: "#00D7FF", outfit: "architectural cobalt suit over a pure white high-neck layer", mood: "冷静蓝图" },
-  INTP: { primary: "#006CFF", secondary: "#FFFFFF", accent: "#65F5FF", outfit: "minimal ultramarine technical jacket with crisp white layers", mood: "理性漫游" },
-  ENTJ: { primary: "#071A52", secondary: "#FFFFFF", accent: "#2F6BFF", outfit: "deep navy power tailoring with a sharp electric-blue accent", mood: "强势秩序" },
-  ENTP: { primary: "#171C26", secondary: "#F8FFFA", accent: "#B8FF2C", outfit: "graphic ink-black tailoring with one acid-lime statement detail", mood: "破局实验" },
-  INFJ: { primary: "#8E1B3D", secondary: "#FFFFFF", accent: "#39D8FF", outfit: "clean burgundy draping with a cool cyan jewel accent", mood: "深层共鸣" },
-  INFP: { primary: "#EF5D68", secondary: "#F9FCFF", accent: "#146BFF", outfit: "soft coral tailoring with a vivid cobalt-blue inner layer", mood: "柔软理想" },
-  ENFJ: { primary: "#C61C70", secondary: "#FFFFFF", accent: "#004CFF", outfit: "confident magenta coat with a precise royal-blue accent", mood: "耀眼共情" },
-  ENFP: { primary: "#F05223", secondary: "#FFFFFF", accent: "#00CFE8", outfit: "bright tangerine statement jacket with clean cyan details", mood: "热烈灵感" },
-  ISTJ: { primary: "#12326B", secondary: "#FFFFFF", accent: "#2C77FF", outfit: "disciplined navy tailoring with immaculate white structure", mood: "可靠坐标" },
-  ISFJ: { primary: "#087A69", secondary: "#FFFFFF", accent: "#FF4F72", outfit: "polished emerald layers with one precise coral-red accent", mood: "安静守护" },
-  ESTJ: { primary: "#0047CC", secondary: "#FFFFFF", accent: "#FF304F", outfit: "commanding royal-blue suit with a narrow signal-red detail", mood: "高效掌控" },
-  ESFJ: { primary: "#E83F5B", secondary: "#FFFFFF", accent: "#0066FF", outfit: "bright coral-red tailoring with a clean cobalt accessory", mood: "温暖主场" },
-  ISTP: { primary: "#242B33", secondary: "#FFFFFF", accent: "#37E06F", outfit: "graphite utility tailoring with a sharp neon-green technical accent", mood: "冷感行动" },
-  ISFP: { primary: "#008A9A", secondary: "#FFFFFF", accent: "#FF6A55", outfit: "fluid teal fashion layers with a vivid coral accent", mood: "自由感官" },
-  ESTP: { primary: "#D71936", secondary: "#FFFFFF", accent: "#1557FF", outfit: "bold signal-red jacket with a saturated blue structural layer", mood: "即刻心跳" },
-  ESFP: { primary: "#E51B8D", secondary: "#FFFDF5", accent: "#FFD400", outfit: "high-impact fuchsia fashion with a clean yellow statement detail", mood: "全场焦点" },
+const OCCUPATIONS = Object.freeze({
+  boundary: ["独立设计师", "律师", "档案管理员", "数据分析师"],
+  warmth: ["儿科医生", "心理咨询师", "咖啡师", "社工"],
+  money: ["基金经理", "精算师", "餐厅主厨", "首席财务官"],
+  play: ["自由摄影师", "赛车工程师", "旅游博主", "直播剪辑师"],
+  control: ["项目经理", "航空机长", "战略咨询顾问", "应急调度员"],
+  romance: ["词曲人", "婚礼策划师", "香氛调配师", "独立导演"],
+  absurd: ["游戏策划", "当代艺术策展人", "密室设计师", "科幻编辑"],
+  meme: ["社媒运营", "表情包博主", "短剧编剧", "产品经理"],
 });
 
-const PRESENTATIONS = Object.freeze({
-  masc: { label: "男性呈现", subject: "an adult man" },
-  femme: { label: "女性呈现", subject: "an adult woman" },
-  androgynous: { label: "中性呈现", subject: "an androgynous adult" },
-});
-
-const PORTRAIT_FALLBACKS = Object.freeze({
-  masc: "/assets/ideal/fallback-m.jpg",
-  femme: "/assets/ideal/fallback-f.jpg",
-  androgynous: "/assets/ideal/fallback-n.jpg",
-});
-
-const SAFE_TRAITS = Object.freeze({
-  "纯爱": "直球纯爱",
-  "抽象": "抽象幽默",
-  "职场": "事业心",
-  "钱": "金钱观",
-  "怪癖": "生活怪癖",
-  "浪漫": "仪式感",
-  "艺术": "审美表达",
-  "文艺": "文艺气质",
-  "社牛": "社交能量",
-  "宅": "独处需求",
-  "家务": "生活能力",
-  "AI": "科技浓度",
-  "吃": "吃饭哲学",
-  "短剧": "戏剧感",
-  "控制": "掌控欲",
-  "自由": "自由度",
-  "温柔": "情绪照顾",
-  "冒险": "冒险倾向",
-});
-
-const MBTI_SIGNALS = Object.freeze({
-  E: ["社交", "社牛", "聚会", "热闹", "直球", "夜生活"],
-  I: ["宅", "安静", "独处", "慢热", "清冷", "阅读"],
-  N: ["抽象", "艺术", "文艺", "AI", "想象", "创作", "浪漫"],
-  S: ["家务", "吃", "现实", "稳定", "实用", "生活"],
-  T: ["理性", "职场", "钱", "逻辑", "科技", "控制"],
-  F: ["温柔", "纯爱", "体贴", "陪伴", "情绪", "共情"],
-  J: ["规划", "稳定", "靠谱", "秩序", "准时", "控制", "事业"],
-  P: ["自由", "冒险", "抽象", "刺激", "即兴", "浪子"],
-});
-
-const DIMENSION_LABELS = Object.freeze({
-  agency: "行动与掌控",
-  warmth: "回应与共情",
-  stability: "稳定与边界",
-  intellect: "理性与智识",
-  spontaneity: "自由与新鲜感",
-  creativity: "审美与表达",
-  sociability: "社交能量",
-});
-
-// These vectors describe relationship style, not gender or sexual orientation.
-const ARCHETYPE_DIMENSIONS = Object.freeze({
-  "power-ceo": Object.freeze({ agency: 1, warmth: -0.15, stability: 0.55, intellect: 0.3, spontaneity: -0.4, creativity: 0, sociability: 0.2 }),
-  "sunny-puppy": Object.freeze({ agency: 0.1, warmth: 1, stability: 0.1, intellect: 0, spontaneity: 0.45, creativity: 0.15, sociability: 0.65 }),
-  "steady-guardian": Object.freeze({ agency: 0.3, warmth: 0.7, stability: 1, intellect: 0.15, spontaneity: -0.5, creativity: 0, sociability: -0.15 }),
-  "frost-scholar": Object.freeze({ agency: 0.1, warmth: 0.05, stability: 0.4, intellect: 1, spontaneity: -0.25, creativity: 0.25, sociability: -0.45 }),
-  "wild-charmer": Object.freeze({ agency: 0.25, warmth: 0.05, stability: -0.45, intellect: 0, spontaneity: 1, creativity: 0.25, sociability: 0.8 }),
-  "gentle-artist": Object.freeze({ agency: -0.1, warmth: 0.75, stability: 0.05, intellect: 0.1, spontaneity: 0.35, creativity: 1, sociability: 0.05 }),
-});
-
-// A positive weight means the scenario embodies the dimension. Because answer
-// scores are centred at 5, rejecting a negative behaviour reverses its signal.
-const TAG_DIMENSIONS = Object.freeze({
-  "沟通": { warmth: -0.8 }, "情绪沟通": { warmth: -1, stability: -0.2 }, "敷衍": { warmth: -1 },
-  "时间观念": { stability: -0.9 }, "记性": { stability: -0.7, warmth: -0.25 }, "选择困难": { agency: -0.7, stability: -0.2 },
-  "生活习惯": { stability: -0.45 }, "卫生": { stability: -1 }, "外卖": { stability: -0.15 },
-  "社交边界": { warmth: -0.5, stability: -0.9 }, "边界": { warmth: -0.35, stability: -0.8 }, "前任边界": { warmth: -0.45, stability: -1 },
-  "账号边界": { warmth: -0.35, stability: -0.9 }, "性边界": { warmth: -0.6, stability: -1 }, "公开关系": { warmth: -0.7, stability: -0.55 },
-  "隐私": { warmth: -0.75, stability: -0.8 }, "出柜隐私": { warmth: -0.85, stability: -0.9 }, "定位": { warmth: -0.55, stability: -0.7 },
-  "公审": { warmth: -0.9, stability: -0.6 }, "双标": { warmth: -0.7, stability: -0.6 }, "甩锅": { warmth: -0.6, stability: -0.75 },
-  "前任": { stability: -0.45 }, "前任同居": { stability: -0.9 }, "关系混乱": { stability: -1, spontaneity: 0.45 }, "海王": { stability: -1, sociability: 0.5 },
-  "AI": { intellect: 1 }, "科技": { intellect: 1 }, "理性": { intellect: 0.85 }, "学习": { intellect: 0.9 }, "知识": { intellect: 0.9 },
-  "职场": { agency: 0.8, stability: 0.45 }, "控制": { agency: 0.9, stability: 0.4, warmth: -0.2 }, "控制欲": { agency: 1, stability: 0.45, warmth: -0.3 },
-  "量化恋爱": { intellect: 0.5, agency: 0.45, warmth: -0.35 }, "自律人设": { agency: 0.45, stability: 0.25 }, "金钱": { agency: 0.35, stability: 0.35 },
-  "消费": { agency: 0.15, stability: -0.45 }, "择偶": { agency: 0.4, stability: 0.2 },
-  "夜生活": { spontaneity: 0.9, sociability: 1, stability: -0.25 }, "圈内社交": { sociability: 0.75 }, "姬友": { sociability: 0.45 },
-  "朋友圈": { sociability: 0.5, creativity: 0.15 }, "社交人设": { sociability: 0.45, creativity: 0.3, stability: -0.2 }, "人设": { sociability: 0.2, creativity: 0.35 },
-  "附近的人": { sociability: 0.55, spontaneity: 0.5 }, "交友软件": { sociability: 0.55, spontaneity: 0.4 }, "兄弟闺蜜": { sociability: 0.45 },
-  "旅游": { spontaneity: 0.65 }, "游戏": { spontaneity: 0.35, intellect: 0.15 }, "怪癖": { spontaneity: 0.65, stability: -0.3 },
-  "抽象": { spontaneity: 0.75, creativity: 0.45 }, "自由": { spontaneity: 1 }, "冒险": { spontaneity: 1 }, "刺激": { spontaneity: 0.9 },
-  "艺术": { creativity: 1 }, "文艺": { creativity: 0.9 }, "拍照": { creativity: 0.45 }, "照片": { creativity: 0.25 }, "合照": { creativity: 0.25, warmth: -0.2 },
-  "表情包": { creativity: 0.45, spontaneity: 0.3 }, "剧透": { warmth: -0.35, intellect: 0.15 }, "短剧": { creativity: 0.55, spontaneity: 0.35 },
-  "乙游": { creativity: 0.5, warmth: 0.2 }, "虚拟亲密": { creativity: 0.35, warmth: 0.15 }, "仪式感": { creativity: 0.65, warmth: 0.55 },
-  "表演型人格": { creativity: 0.45, sociability: 0.4, warmth: -0.25 }, "主播": { sociability: 0.55 },
-  "温柔": { warmth: 1 }, "体贴": { warmth: 0.9 }, "陪伴": { warmth: 0.85 }, "纯爱": { warmth: 0.8, stability: 0.35 },
-  "稳定": { stability: 1 }, "靠谱": { stability: 0.9 }, "家务": { stability: 0.75 }, "规划": { agency: 0.45, stability: 0.7 },
-});
-
-// Identity describes who someone is attracted to, not what kind of partner they
-// prefer. These tags are therefore deliberately excluded from personality math.
-const IDENTITY_ONLY_TAGS = new Set(["gay", "lesbian", "lgbt", "lgbtq", "性向", "同性恋", "双性恋", "跨性别", "非二元", "圈内角色"]);
-
-function hashString(value) {
-  let hash = 0x811c9dc5;
-  const text = String(value);
-  for (let i = 0; i < text.length; i += 1) {
-    hash ^= text.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash >>> 0;
-}
-
-function rngFromSeed(seed) {
-  let state = seed >>> 0;
-  return () => {
-    state += 0x6d2b79f5;
-    let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function pick(list, rng) {
-  return list[Math.floor(rng() * list.length) % list.length];
-}
-
-function clampScore(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? Math.max(0, Math.min(10, Math.round(n))) : 5;
-}
-
-function normalizeRecords(input) {
-  const records = Array.isArray(input?.records)
-    ? input.records
-    : Array.isArray(input?.answers)
-      ? input.answers
-      : [];
-  return records.slice(0, 20).map((record, index) => {
-    const question = record?.question || {};
-    const tags = Array.isArray(question.tags)
-      ? question.tags
-      : Array.isArray(record?.tags)
-        ? record.tags
-        : [];
-    return {
-      id: String(question.id || record?.questionId || `round-${index + 1}`).slice(0, 40),
-      text: String(question.text || question.variant || record?.questionText || `第 ${index + 1} 题`).trim().slice(0, 100),
-      score: clampScore(record?.score ?? record?.value),
-      tags: tags.slice(0, 8).map((tag) => String(tag).trim().slice(0, 20)).filter(Boolean),
-    };
+function pickDetails(scores, genderPreference, seed, records, moduleKey) {
+  const module = moduleKey || records?.[0]?.question?.module || "lover";
+  const ranked = DIM_KEYS.map((k) => ({ key: k, score: scores[k] }))
+    .sort((a, b) => Math.abs(b.score) - Math.abs(a.score));
+  const candidates = DETAIL_POOL.filter((d) => {
+    if (d.m && !d.m.includes(module)) return false;
+    if (d.d === "any") return true;
+    const tier = dimTier(scores[d.d] ?? 0);
+    return d.t === "any" || d.t === tier;
   });
-}
-
-function normalizeGender(value) {
-  const key = String(value || "any").trim().toLowerCase();
-  if (["m", "male", "man", "masc", "男", "男性"].includes(key)) return "masc";
-  if (["f", "female", "woman", "femme", "女", "女性"].includes(key)) return "femme";
-  if (["n", "neutral", "nonbinary", "androgynous", "中性", "非二元"].includes(key)) return "androgynous";
-  return "any";
-}
-
-function canonicalSeed(input, records, gender) {
-  const publicRoundData = records.map((record) => `${record.id}:${record.score}`).join("|");
-  const explicitSeed = input?.seed == null ? "" : String(input.seed).slice(0, 80);
-  return `${PROFILE_VERSION}|${gender}|${publicRoundData || "empty"}|${explicitSeed}`;
-}
-
-function tagAffinity(records, keywords) {
-  let result = 0;
-  for (const record of records) {
-    const haystack = record.tags.join("|").toLowerCase();
-    const preference = (record.score - 5) / 5;
-    for (const keyword of keywords) {
-      if (haystack.includes(keyword.toLowerCase())) result += preference;
-    }
-  }
-  return result;
-}
-
-function roundMetric(value) {
-  return Math.round((Number(value) || 0) * 100) / 100;
-}
-
-function dimensionsFor(records) {
-  const totals = Object.fromEntries(Object.keys(DIMENSION_LABELS).map((key) => [key, 0]));
-  for (const record of records) {
-    const preference = (record.score - 5) / 5;
-    if (!preference) continue;
-    for (const tag of record.tags) {
-      if (IDENTITY_ONLY_TAGS.has(tag.toLowerCase())) continue;
-      const dimensions = TAG_DIMENSIONS[tag];
-      if (!dimensions) continue;
-      for (const [dimension, weight] of Object.entries(dimensions)) {
-        totals[dimension] += preference * weight;
-      }
-    }
-  }
-  return totals;
-}
-
-function archetypeScore(archetype, dimensions) {
-  const vector = ARCHETYPE_DIMENSIONS[archetype.id];
-  return Object.entries(dimensions).reduce(
-    (sum, [dimension, value]) => sum + value * (vector[dimension] || 0),
-    0,
-  );
-}
-
-function inferenceEvidence(records, archetype) {
-  const vector = ARCHETYPE_DIMENSIONS[archetype.id];
-  return records
-    .map((record) => {
-      const preference = (record.score - 5) / 5;
-      let impact = 0;
-      const matchedSignals = [];
-      for (const tag of record.tags) {
-        if (IDENTITY_ONLY_TAGS.has(tag.toLowerCase())) continue;
-        const dimensions = TAG_DIMENSIONS[tag];
-        if (!dimensions) continue;
-        for (const [dimension, weight] of Object.entries(dimensions)) {
-          const contribution = preference * weight * (vector[dimension] || 0);
-          impact += contribution;
-          if (Math.abs(contribution) >= 0.03) {
-            matchedSignals.push(`${tag} → ${DIMENSION_LABELS[dimension]}`);
-          }
-        }
-      }
-      return {
-        question: record.text,
-        score: record.score,
-        matchedSignals: [...new Set(matchedSignals)],
-        impact: roundMetric(impact),
-      };
-    })
-    .filter((item) => item.matchedSignals.length && Math.abs(item.impact) >= 0.01)
-    .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact) || a.question.localeCompare(b.question, "zh-CN"))
-    .slice(0, 6);
-}
-
-function inferenceChoice(archetype, score) {
-  return Object.freeze({
-    id: archetype.id,
-    label: archetype.label,
-    shortLabel: archetype.shortLabel,
-    score: roundMetric(score),
+  // 按维度排序后确定性抽取 5 条
+  const sorted = [...candidates].sort((a, b) => {
+    const ia = ranked.findIndex((r) => r.key === a.d);
+    const ib = ranked.findIndex((r) => r.key === b.d);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
   });
-}
-
-function deriveArchetype(records, hint) {
-  const dimensions = dimensionsFor(records);
-  const ranked = ARCHETYPE_LIST
-    .map((archetype, index) => ({ archetype, index, score: archetypeScore(archetype, dimensions) }))
-    .sort((a, b) => b.score - a.score || a.index - b.index);
-  const hasAnswerSignal = Object.values(dimensions).some((value) => Math.abs(value) >= 0.0001);
-  const hinted = hint && ARCHETYPES[hint] ? ranked.find((item) => item.archetype.id === hint) : null;
-  const chosen = hinted || (hasAnswerSignal
-    ? ranked[0]
-    : ranked.find((item) => item.archetype.id === "steady-guardian"));
-  const runnerUp = ranked.find((item) => item.archetype.id !== chosen.archetype.id);
-  const dimensionScores = Object.freeze(Object.fromEntries(
-    Object.entries(dimensions).map(([key, value]) => [key, Object.freeze({ label: DIMENSION_LABELS[key], value: roundMetric(value) })]),
-  ));
-  const inference = Object.freeze({
-    method: hinted ? "explicit-hint" : hasAnswerSignal ? "answer-dimensions" : "neutral-default",
-    chosen: inferenceChoice(chosen.archetype, chosen.score),
-    runnerUp: inferenceChoice(runnerUp.archetype, runnerUp.score),
-    dimensions: dimensionScores,
-    evidence: Object.freeze(inferenceEvidence(records, chosen.archetype).map((item) => Object.freeze({
-      ...item,
-      matchedSignals: Object.freeze(item.matchedSignals),
-    }))),
-  });
-  return { archetype: chosen.archetype, inference };
-}
-
-function deriveMbti(records, seedText, override) {
-  const normalized = String(override || "").toUpperCase();
-  if (MBTI_STYLES[normalized]) return normalized;
-  const decide = (positive, negative, salt) => {
-    const score = tagAffinity(records, MBTI_SIGNALS[positive]) - tagAffinity(records, MBTI_SIGNALS[negative]);
-    if (Math.abs(score) > 0.0001) return score > 0 ? positive : negative;
-    return hashString(`${seedText}|${salt}`) % 2 === 0 ? positive : negative;
-  };
-  return [decide("E", "I", "energy"), decide("N", "S", "information"), decide("T", "F", "decision"), decide("J", "P", "rhythm")].join("");
-}
-
-function deriveTraits(records) {
-  const totals = new Map();
-  for (const record of records) {
-    for (const tag of record.tags) {
-      if (!SAFE_TRAITS[tag]) continue;
-      const current = totals.get(tag) || { sum: 0, count: 0 };
-      current.sum += record.score;
-      current.count += 1;
-      totals.set(tag, current);
-    }
+  const picked = [];
+  for (let i = 0; i < sorted.length && picked.length < 5; i++) {
+    const t = sorted[(i + hashStr(seed + i)) % sorted.length].text;
+    if (!picked.includes(t)) picked.push(t);
   }
-  const ranked = [...totals.entries()]
-    .map(([tag, value]) => ({ tag, label: SAFE_TRAITS[tag], average: value.sum / value.count }))
-    .sort((a, b) => b.average - a.average || a.tag.localeCompare(b.tag, "zh-CN"));
+  return picked.length >= 3 ? picked : sorted.slice(0, 5).map((d) => d.text);
+}
+
+const GENDER_TAGS = Object.freeze({
+  m: "man, male, him",
+  masc: "man, male, him",
+  f: "woman, female, her",
+  femme: "woman, female, her",
+  n: "androgynous person, gender-neutral",
+  androgynous: "androgynous person, gender-neutral",
+  any: "person",
+});
+
+export function buildIdealProfile({ records, genderPreference, seed }) {
+  const scores = computeDimensions(records);
+  const ranked = DIM_KEYS.map((k) => ({ key: k, score: scores[k] }))
+    .sort((a, b) => Math.abs(b.score) - Math.abs(a.score));
+
+  const top1 = ranked[0] || { key: "warmth", score: 0.3 };
+  const top2 = ranked[1] || { key: "play", score: 0.2 };
+  const tier1 = dimTier(top1.score);
+  const tier2 = dimTier(top2.score);
+  const archetype =
+    (PERSONA_ADJ[top1.key]?.[tier1] || "神秘气质的") +
+    (PERSONA_NOUN[top2.key]?.[tier2] || "理想搭档");
+
+  const mbti = MBTI_MAP.map((fn) => fn(scores)).join("");
+  const occupList = OCCUPATIONS[top2.key] || OCCUPATIONS.play;
+  const occupation = seedPick(occupList, seed + "occ");
+
+  const module = records?.[0]?.question?.module || "lover";
+  const details = pickDetails(scores, genderPreference, seed, records, module);
+
+  const gTag = GENDER_TAGS[genderPreference] || GENDER_TAGS.any;
+  const dimDesc = `${DIMENSION_LABELS[top1.key] || "charm"}-focused, ${DIMENSION_LABELS[top2.key] || "playful"}`;
+  const prompt = `pixel art portrait of a ${gTag}, ${dimDesc} personality, cyberpunk neon bar background, vivid colors, detailed, 8-bit style`;
+
+  const encodedPrompt = encodeURIComponent(prompt);
+  const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&seed=${hashStr(seed) % 99999}&referrer=idealtype&nologo=true`;
+
+  const modProf = MODULE_PROFILES[module] || MODULE_PROFILES.lover;
+  const introTemplate = seedPick(modProf.intros, seed + "intro");
+  const outroTemplate = seedPick(modProf.outros, seed + "outro");
+  const intro = introTemplate.replace("{A}", archetype);
+  const outro = outroTemplate;
+
+  const topThreeTiers = ranked.slice(0, 3).map(({ key, score }) => ({
+    key,
+    label: DIMENSION_LABELS[key],
+    tier: dimTier(score),
+    text: CORE_TIERS[key]?.[dimTier(score)] || "",
+  }));
+  const coreText = [intro, ...topThreeTiers.map((t) => t.text), outro].filter(Boolean).join("\n\n");
+
   return {
-    embraced: ranked.find((item) => item.average >= 6.5) || null,
-    boundary: [...ranked].reverse().find((item) => item.average <= 3.5) || null,
+    portrait: { prompt, imageUrl },
+    matchCard: { archetype, mbti, occupation },
+    relationship: { details },
+    coreText,
+    stages: [
+      { id: "portrait", title: "理想型立绘", data: { prompt, imageUrl } },
+      { id: "profile", title: "相亲档案", data: { archetype, mbti, occupation } },
+      { id: "relationship", title: "相处细节", data: { details } },
+    ],
   };
 }
 
-function presentationFor(gender, seedText) {
-  if (PRESENTATIONS[gender]) return { id: gender, ...PRESENTATIONS[gender] };
-  const ids = Object.keys(PRESENTATIONS);
-  const id = ids[hashString(`${seedText}|presentation`) % ids.length];
-  return { id, ...PRESENTATIONS[id] };
-}
-
-function birthdayFor(rng) {
-  const year = 1992 + Math.floor(rng() * 11);
-  const month = 1 + Math.floor(rng() * 12);
-  const maxDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  const day = 1 + Math.floor(rng() * maxDay);
-  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-}
-
-function zodiacFor(date) {
-  const [, monthText, dayText] = date.split("-");
-  const month = Number(monthText);
-  const day = Number(dayText);
-  const bounds = [20, 19, 21, 20, 21, 22, 23, 23, 23, 24, 23, 22];
-  const signs = ["摩羯座", "水瓶座", "双鱼座", "白羊座", "金牛座", "双子座", "巨蟹座", "狮子座", "处女座", "天秤座", "天蝎座", "射手座", "摩羯座"];
-  return day < bounds[month - 1] ? signs[month - 1] : signs[month];
-}
-
-function mbtiRelationshipBeat(mbti) {
-  const beats = {
-    E: "热闹散场后，TA 仍会把最后一格社交电量留给你。",
-    I: "你们会把周日晚留给彼此，安静也不需要找话题。",
-    N: "你抛出一个离谱脑洞，TA 会认真陪你把世界观补完。",
-    S: "TA 的爱很具体：到家的灯、温好的饭和永远有电的充电宝。",
-    T: "分歧出现时 TA 对事不对人，也会记得先照顾你的感受。",
-    F: "TA 能听懂你没说出口的部分，但不会替你定义情绪。",
-    J: "TA 会为旅行做表格，也会专门留一格给临时起意。",
-    P: "你们总有计划外惊喜，重要承诺却从不被随性带过。",
-  };
-  return pick([...mbti].map((letter) => beats[letter]), rngFromSeed(hashString(`beat|${mbti}`)));
-}
-
-function relationshipDetails(archetype, mbti, traits, rng) {
-  const details = [];
-  const beats = [...archetype.relationshipBeats];
-  details.push(beats.splice(Math.floor(rng() * beats.length), 1)[0]);
-  details.push(beats.splice(Math.floor(rng() * beats.length), 1)[0]);
-  details.push(mbtiRelationshipBeat(mbti));
-  if (traits.embraced) {
-    details.push(`你对「${traits.embraced.label}」接受度很高，TA 会放心把真实又好笑的一面交给你。`);
-  }
-  if (traits.boundary) {
-    details.push(`你对「${traits.boundary.label}」边界清楚，TA 不会用“开玩笑”测试你的底线。`);
-  }
-  while (details.length < 5 && beats.length) details.push(beats.shift());
-  return details.slice(0, 5);
-}
-
-export function buildPortraitPrompt({ archetype, presentation, mbti } = {}) {
-  const archetypeData = typeof archetype === "string" ? ARCHETYPES[archetype] : archetype;
-  const presentationData = typeof presentation === "string" ? PRESENTATIONS[presentation] : presentation;
-  const mbtiData = typeof mbti === "string" ? MBTI_STYLES[mbti] : mbti;
-  if (!archetypeData || !presentationData || !mbtiData) throw new TypeError("Invalid portrait prompt inputs");
-  return [
-    "Use case: stylized-concept",
-    "Asset type: premium mobile game character portrait card",
-    `Primary request: an original East Asian otome-game-inspired character archetype, ${archetypeData.shortLabel}, clearly readable at first glance`,
-    `Scene/backdrop: ${archetypeData.scenePrompt}`,
-    `Subject: ${presentationData.subject}, age 24 to 34, ${archetypeData.visualPrompt}`,
-    "Style/medium: premium original 2.5D anime character key art, refined painterly rendering, sophisticated fashion editorial finish, not based on any existing franchise or celebrity",
-    "Composition/framing: vertical 2:3 poster, full body three-quarter hero pose, face and both hands clearly visible, generous breathing room around the silhouette, mobile-card legibility",
-    "Lighting/mood: brilliant high-key studio daylight, crisp rim light, hard clean shadows, very high visual contrast, luminous skin without overexposure",
-    `Color palette: outfit is ${mbtiData.outfit}; bright white and electric cobalt environment; use the outfit color as the dominant character signal`,
-    "Materials/textures: realistic premium fabric texture, clean metal details, natural hair strands, polished but not plastic skin",
-    "Constraints: one adult character only; original design; unmistakable archetype; tasteful and fully clothed; no text; no logo; no watermark; no frame; no UI; no extra limbs or fingers",
-    "Avoid: underage appearance, school uniform, muddy pastel wash, beige-dominant palette, low contrast, purple gradient background, generic stock-anime face, photoreal celebrity likeness, copied game character, cluttered scenery",
-  ].join("\n");
-}
-
-export function buildRemotePortraitUrl(prompt, { seed = 1, width = 1024, height = 1536 } = {}) {
-  const safeWidth = Math.max(512, Math.min(1536, Math.round(Number(width) || 1024)));
-  const safeHeight = Math.max(768, Math.min(2048, Math.round(Number(height) || 1536)));
-  const safeSeed = Math.abs(Math.trunc(Number(seed) || 1)) % 2147483647;
-  const compactPrompt = String(prompt).replace(/\s+/g, " ").trim().slice(0, 3500);
-  return `https://image.pollinations.ai/prompt/${encodeURIComponent(compactPrompt)}?width=${safeWidth}&height=${safeHeight}&seed=${safeSeed}&nologo=true&enhance=true`;
-}
-
-export function buildIdealProfile(input = {}) {
-  const records = normalizeRecords(input);
-  const requestedGender = normalizeGender(input.genderPreference ?? input.targetGender ?? input.gender);
-  const seedText = canonicalSeed(input, records, requestedGender);
-  const seed = hashString(seedText);
-  const rng = rngFromSeed(seed);
-  const archetypeResult = deriveArchetype(records, input.archetypeHint);
-  const archetype = archetypeResult.archetype;
-  const mbti = deriveMbti(records, seedText, input.mbtiHint ?? input.mbti);
-  const style = MBTI_STYLES[mbti];
-  const presentation = presentationFor(requestedGender, seedText);
-  const traits = deriveTraits(records);
-  const birthday = birthdayFor(rng);
-  const portraitPrompt = buildPortraitPrompt({ archetype, presentation, mbti: style });
-  const relationship = Object.freeze({
-    heading: "你们的相处细节",
-    details: Object.freeze(relationshipDetails(archetype, mbti, traits, rng)),
-    chemistry: `${style.mood} × ${archetype.shortLabel}`,
-  });
-  const matchCard = Object.freeze({
-    mbti,
-    birthDate: birthday,
-    zodiac: zodiacFor(birthday),
-    occupation: pick(archetype.occupations, rng),
-    identity: archetype.identity,
-    presentation: presentation.label,
-    archetype: archetype.shortLabel,
-    keywords: Object.freeze([...new Set([...archetype.keywords, style.mood])].slice(0, 5)),
-    bio: `${archetype.visualSignature}。${archetype.identity}。`,
-    fictional: true,
-  });
-  const portrait = Object.freeze({
-    id: `${archetype.id}-${mbti.toLowerCase()}-${seed.toString(16).padStart(8, "0")}`,
-    archetypeId: archetype.id,
-    archetype: archetype.shortLabel,
-    visualSignature: archetype.visualSignature,
-    mbti,
-    presentation: presentation.label,
-    palette: Object.freeze({ primary: style.primary, secondary: style.secondary, accent: style.accent }),
-    prompt: portraitPrompt,
-    promptVersion: PROFILE_VERSION,
-    seed,
-    aspectRatio: "2 / 3",
-    imageUrl: buildRemotePortraitUrl(portraitPrompt, { seed }),
-    fallbackUrl: PORTRAIT_FALLBACKS[presentation.id],
-    source: "pollinations-remote-fallback",
-    alt: `${archetype.shortLabel}理想型立绘，${mbti} 配色，${presentation.label}`,
-  });
-  const stages = Object.freeze([
-    Object.freeze({ id: "portrait", step: 1, label: "理想型亮相", data: portrait }),
-    Object.freeze({ id: "profile", step: 2, label: "相亲人物档案", data: matchCard }),
-    Object.freeze({ id: "relationship", step: 3, label: "相处细节", data: relationship }),
-  ]);
-
-  return Object.freeze({
-    version: PROFILE_VERSION,
-    synthetic: true,
-    disclaimer: "本档案由游戏答案生成，角色、生日、职业与身份均为虚构。",
-    portrait,
-    matchCard,
-    relationship,
-    inference: archetypeResult.inference,
-    stages,
-  });
-}
-
-export const IDEAL_PROFILE_VERSION = PROFILE_VERSION;
