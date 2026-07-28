@@ -61,7 +61,7 @@
   </g>
   <g font-family="'Fusion Pixel 12px Proportional SC','Zpix','DotGothic16','PingFang SC','Microsoft YaHei',monospace"
      font-size="26" text-anchor="middle">
-    <text x="360" y="250" fill="#2de2ff" opacity="0.6" filter="url(#glowMid)">LOADING… 99%　别急，好东西都压轴</text>
-    <text x="360" y="250" fill="#bdf2ff">LOADING… 99%　别急，好东西都压轴</text>
+    <text x="360" y="250" fill="#2de2ff" opacity="0.6" filter="url(#glowMid)">LOADING… 99%</text>
+    <text x="360" y="250" fill="#bdf2ff">LOADING… 99%</text>
   </g>
 </svg>

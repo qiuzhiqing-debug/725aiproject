@@ -1,7 +1,7 @@
 /* ==========================================================================
    酒保「老K」立绘组件（pixel-bar 风 · 纯 SVG 像素半身像 · 原创角色）
    --------------------------------------------------------------------------
-   人设：浪子调酒师——微乱头发、松掉的领结、擦杯布搭肩、永远挑着一边眉。
+   人设：夜班调酒师——短黑发、略疲惫、一直在工作，不主动向玩家卖帅。
    状态：
      idle → 眨眼循环（约 4s 一次，双帧）
      talk → 嘴部开合循环
@@ -14,21 +14,21 @@
 
 // ---- 像素调色板（角色专属，不进 theme：立绘换装时只改这里） ----
 const PAL = {
-  H: "#2f1f42", // 头发主色（深紫黑）
-  h: "#4b3468", // 头发挑染高光
-  S: "#e9b585", // 皮肤
-  s: "#c78e5e", // 皮肤暗部
-  N: "#b57f52", // 颈部阴影
-  W: "#d8cfe8", // 衬衫
-  w: "#a99dc5", // 衬衫暗部
-  V: "#191028", // 马甲（近黑紫）
-  v: "#2b1d44", // 马甲高光
-  T: "#ff2d78", // 领结（霓虹粉）
-  t: "#b81b52", // 领结暗部
-  C: "#9ff3ff", // 擦杯布（霓虹青）
-  c: "#56c8de", // 擦杯布暗部
-  E: "#f7f1ff", // 眼白
-  P: "#1a1026", // 瞳孔
+  H: "#17141f", // 头发主色（近黑）
+  h: "#3b323f", // 头发受光面
+  S: "#c48763", // 皮肤
+  s: "#915945", // 皮肤暗部
+  N: "#6c4038", // 颈部与胡茬阴影
+  W: "#c8b7a4", // 旧白衬衫
+  w: "#8d7e7c", // 衬衫暗部
+  V: "#211821", // 马甲（近黑酒红）
+  v: "#50303c", // 马甲受光面
+  T: "#7e3947", // 松领带（暗红）
+  t: "#532431", // 领带暗部
+  C: "#a9b8ad", // 擦杯布（灰绿）
+  c: "#71827b", // 擦杯布暗部
+  E: "#d6c7b5", // 眼部微光
+  P: "#160f18", // 瞳孔
   G: "#3ad08f", // 酒瓶玻璃
   g: "#1e7d54", // 酒瓶暗部
   L: "#ffb648", // 酒液（琥珀）
@@ -37,30 +37,30 @@ const PAL = {
 // ---- 半身像素图（24 宽 × 24 高，"." = 透明）----
 // 脸部不带五官：眉/眼/嘴由状态层叠加
 const BASE = [
-  "......H..HH.H....H......",
-  ".....HHHHHHHHH..H.......",
-  "....hHHHHHHHHHHHH.......",
-  "...HHHHHhHHHHHHHHH......",
-  "...HHhHHHHHHHHhHHH......",
-  "...HHSSSSSSSSSSHh.......",
-  "...HhSSSSSSSSSShH.......",
-  "...H.SSSSSSSSSS.H.......",
-  ".....SSSSSSSSSS.........",
-  ".....SSSSSSSSSS.........",
-  ".....sSSSSSSSSs.........",
-  "......SSSSSSSSs.........",
-  "......sSSSSSSs..........",
-  ".......SSSSSS...........",
-  "........NSSN............",
-  "....Ww.wSSSw..wW........",
-  "...WWWw.NN.wWWWWC.......",
-  "..vWWWW....WWWWWCC......",
-  "..VvWWW.TT.WWWvVCC......",
-  "..VVwWWTtTWWWVVVCc......",
-  "..VVVwWTt.WWvVVVCc......",
-  "..VVVVWW..WWVVVVVc......",
-  ".VVVVVWWWWWWVVVVVV......",
-  ".VVVVVVWWWWVVVVVVV......",
+  "........................",
+  "........................",
+  "........HHHHHH..........",
+  ".......HHHHHHHH.........",
+  ".......HHhHHHHH.........",
+  ".......HSSSSSSH.........",
+  ".......HSSSSSSH.........",
+  ".......HSSSSSSH.........",
+  ".......HSSSSSSH.........",
+  "........sSSSSs..........",
+  ".........sSSs...........",
+  "..........NN............",
+  ".......WWwNNwWW.........",
+  "......VVWWTTWWVV........",
+  ".....VVVWWTtWWVVV.......",
+  "....VVVVWWWWWWVVVV......",
+  "...VVVVVWWWWWWVVVVV.....",
+  "...VVVVVVWWWWVVVVVV.....",
+  "...VVVVVVWWWWVVVVVV.....",
+  "...VVVVVVVVVVVVVVVV.....",
+  "...VVVVVVVVVVVVVVVV.....",
+  "..VVVVVVVVVVVVVVVVVV....",
+  "..VVVVVVVVVVVVVVVVVV....",
+  "..VVVVVVVVVVVVVVVVVV....",
 ];
 
 const CELL = 10; // 每像素 10 单位，viewBox 240×240
@@ -87,27 +87,26 @@ function px(x, y, w, h, fill) {
   return `<rect x="${x * CELL}" y="${y * CELL}" width="${w * CELL}" height="${h * CELL}" fill="${fill}"/>`;
 }
 
-// 眉毛：左平右挑（挑眉是人设，不随状态变）
+// 眉毛：压低、平直，避免“挑眉卖帅”
 const BROWS =
-  px(6.5, 7.2, 2.5, 0.8, PAL.H) +           // 左眉 平
-  px(11.5, 6.4, 2.5, 0.8, PAL.H) +          // 右眉 高半格 = 挑眉
-  px(13.5, 7.0, 0.5, 0.6, PAL.H);           // 右眉尾下勾
+  px(9, 6, 2, 1, PAL.H) +
+  px(13, 6, 2, 1, PAL.H);
 
 // 眼睛两帧
 const EYES_OPEN =
-  px(7, 8, 2, 1.4, PAL.E) + px(8, 8.3, 1, 1, PAL.P) +
-  px(12, 8, 2, 1.4, PAL.E) + px(12.6, 8.3, 1, 1, PAL.P);
+  px(9, 7, 1, 1, PAL.E) + px(10, 7, 1, 1, PAL.P) +
+  px(13, 7, 1, 1, PAL.P) + px(14, 7, 1, 1, PAL.E);
 const EYES_SHUT =
-  px(7, 8.8, 2, 0.6, PAL.s) + px(12, 8.8, 2, 0.6, PAL.s);
+  px(9, 7, 2, 1, PAL.s) + px(13, 7, 2, 1, PAL.s);
 
 // 鼻影 + 下颌线胡渣
 const FACE_DETAIL =
-  px(10, 9.6, 1, 1.4, PAL.s) +
-  px(7.4, 12.2, 1.2, 0.5, PAL.s) + px(12.6, 12, 1.2, 0.5, PAL.s);
+  px(11, 8, 1, 1, PAL.s) +
+  px(10, 10, 3, 1, PAL.N);
 
-// 嘴：闭（歪嘴笑）/ 开
-const MOUTH_SMIRK = px(8.6, 11.2, 2.6, 0.7, PAL.s) + px(11.2, 10.8, 0.8, 0.7, PAL.s);
-const MOUTH_OPEN  = px(8.8, 10.9, 2.4, 1.5, "#71353a") + px(9.2, 10.9, 1.6, 0.5, PAL.E);
+// 嘴：平直闭嘴 / 说话，不做歪嘴笑
+const MOUTH_IDLE = px(10, 9, 3, 1, PAL.N);
+const MOUTH_OPEN = px(10, 8, 3, 2, "#5b3034");
 
 // pour 状态：右侧举瓶手臂 + 酒瓶 + 酒线（酒线用 CSS 动画伸缩）
 const POUR_ARM =
@@ -137,7 +136,7 @@ export function createBartender(el, state = "idle") {
     @keyframes ${uid}-blinkB { 0%,93.9% {visibility:hidden} 94%,99.9% {visibility:visible} 100%{visibility:hidden} }
 
     /* talk：嘴开合 */
-    .${uid}.bk-talk .bk-mouth-smirk { animation: ${uid}-talkA 0.46s step-end infinite; }
+    .${uid}.bk-talk .bk-mouth-idle { animation: ${uid}-talkA 0.46s step-end infinite; }
     .${uid}.bk-talk .bk-mouth-open  { animation: ${uid}-talkB 0.46s step-end infinite; }
     @keyframes ${uid}-talkA { 0%,49% {visibility:visible} 50%,100% {visibility:hidden} }
     @keyframes ${uid}-talkB { 0%,49% {visibility:hidden} 50%,100% {visibility:visible} }
@@ -166,7 +165,7 @@ export function createBartender(el, state = "idle") {
     ${FACE_DETAIL}
     <g class="bk-eyes-open">${EYES_OPEN}</g>
     <g class="bk-eyes-shut">${EYES_SHUT}</g>
-    <g class="bk-mouth-smirk">${MOUTH_SMIRK}</g>
+    <g class="bk-mouth-idle">${MOUTH_IDLE}</g>
     <g class="bk-mouth-open">${MOUTH_OPEN}</g>
 
     <g class="bk-pour-layer">
