@@ -13,11 +13,17 @@ export default {
     }
     const um = url.pathname.match(/^\/api\/user\/([A-Za-z0-9-]{4,40})$/);
     if (um && req.method === "GET") {
-      return handleUserGet(um[1], env);
+      // ?token=xxx 且 token 正确 → 本人视角：返回含 hidden 记录的完整展示柜
+      return handleUserGet(um[1], env, url.searchParams.get("token"));
     }
     const urm = url.pathname.match(/^\/api\/user\/([A-Za-z0-9-]{4,40})\/records$/);
     if (urm && req.method === "POST") {
       return handleUserRecord(req, urm[1], env);
+    }
+    // 展示柜记录可见性：POST /api/user/:id/records/:idx/visibility  body {token, hidden}
+    const uvm = url.pathname.match(/^\/api\/user\/([A-Za-z0-9-]{4,40})\/records\/(\d{1,3})\/visibility$/);
+    if (uvm && req.method === "POST") {
+      return handleRecordVisibility(req, uvm[1], Number(uvm[2]), env);
     }
 
     // 酒保老K：LLM 锐评 / 画像文案
@@ -26,16 +32,51 @@ export default {
     }
 
     // 建房：POST /api/room  -> { code }
+    // body（可选）：{ visibility: "public"|"private"（默认 private）, solo: true（1 人可开局） }
     if (url.pathname === "/api/room" && req.method === "POST") {
+      let body = {};
+      try { body = await readJson(req); } catch {}
+      const visibility = body.visibility === "public" ? "public" : "private";
+      const solo = body.solo === true;
       for (let i = 0; i < 15; i++) {
         const code = String(Math.floor(1000 + Math.random() * 9000));
         const stub = env.ROOM.get(env.ROOM.idFromName(code));
-        const res = await stub.fetch("https://do/create?code=" + code);
+        const res = await stub.fetch(
+          `https://do/create?code=${code}&visibility=${visibility}${solo ? "&solo=1" : ""}`
+        );
         if (res.ok) {
           return jsonRes({ code });
         }
       }
       return jsonRes({ error: "房间码分配失败，请重试" }, 503);
+    }
+
+    // 桌子=固定房间：POST /api/table/:n/join -> { code, table }
+    // 仲裁人 = ROOM namespace 里名为 table-N 的 DO 实例（单实例串行，天然防并发双开）
+    // body（可选）：{ visibility }，桌子开的房默认 public
+    const tm = url.pathname.match(/^\/api\/table\/([1-9])\/join$/);
+    if (tm && req.method === "POST") {
+      let body = {};
+      try { body = await readJson(req); } catch {}
+      const visibility = body.visibility === "private" ? "private" : "public";
+      const stub = env.ROOM.get(env.ROOM.idFromName("table-" + tm[1]));
+      return stub.fetch(`https://do/table/join?table=${tm[1]}&visibility=${visibility}`);
+    }
+
+    // 桌子占用状态：GET /api/tables -> { tables: [{table, code, players, phase}] }
+    if (url.pathname === "/api/tables" && req.method === "GET") {
+      const tables = await Promise.all(
+        [1, 2, 3, 4, 5, 6].map(async (n) => {
+          try {
+            const stub = env.ROOM.get(env.ROOM.idFromName("table-" + n));
+            const res = await stub.fetch("https://do/table/info?table=" + n);
+            return await res.json();
+          } catch {
+            return { table: n, code: null, players: 0, phase: null, active: false };
+          }
+        })
+      );
+      return jsonRes({ tables });
     }
 
     // WebSocket：GET /api/room/:code/ws
@@ -92,13 +133,15 @@ function sanitizeProfileFields(body) {
     if (typeof body.cocktail === "string") {
       out.cocktail = cleanUserText(body.cocktail, 40);
     } else if (body.cocktail && typeof body.cocktail === "object") {
-      // 允许结构化鸡尾酒（名字/配色/杯型），字段白名单 + 限长
+      // 允许结构化鸡尾酒（名字/配色/杯型/介绍语/头像图），字段白名单 + 限长
       const c = body.cocktail;
       out.cocktail = {
         name: cleanUserText(c.name, 24),
         color: cleanUserText(c.color, 24),
         glass: cleanUserText(c.glass, 24),
         recipe: cleanUserText(c.recipe, 80),
+        intro: cleanUserText(c.intro, 120),
+        imageUrl: typeof c.imageUrl === "string" ? c.imageUrl.slice(0, 500) : "",
       };
     }
   }
@@ -139,22 +182,32 @@ async function handleUserUpsert(req, env) {
   return jsonRes({ userId: id, token: user.token, nick: user.nick }, 201);
 }
 
-async function handleUserGet(id, env) {
+async function handleUserGet(id, env, token) {
   if (!env.USERS) return jsonRes({ error: "USERS KV 未绑定" }, 500);
   const user = await env.USERS.get("user:" + id, "json");
   if (!user) return jsonRes({ error: "档案不存在" }, 404);
   // 公开档案：不外泄 token；records 按 module 分组 = 理想型展示柜
+  // 本人（?token= 正确）看全部并带 hidden 标注；其他人只看未隐藏的记录
+  const owner = !!token && token === user.token;
   const showcase = {};
-  for (const rec of user.records || []) {
+  const records = user.records || [];
+  let visibleCount = 0;
+  for (let idx = 0; idx < records.length; idx++) {
+    const rec = records[idx];
+    const hidden = rec.hidden === true;
+    if (hidden && !owner) continue;
+    visibleCount++;
     const mod = rec.module || "lover";
-    (showcase[mod] || (showcase[mod] = [])).push(rec);
+    // idx = 记录在原始数组中的下标，用于 /records/:idx/visibility
+    (showcase[mod] || (showcase[mod] = [])).push({ ...rec, hidden, idx });
   }
   return jsonRes({
     userId: user.id,
     nick: user.nick,
     cocktail: user.cocktail,
     avatarSeed: user.avatarSeed,
-    playCount: (user.records || []).length,
+    owner,
+    playCount: visibleCount,
     showcase,
   });
 }
@@ -173,6 +226,7 @@ async function handleUserRecord(req, id, env) {
     // profile 摘要：只收有限字段，防止把整个 aha 塞进来撑爆 128KB
     profile: sanitizeRecordProfile(body.profile),
     ts: Number(body.ts) || Date.now(),
+    hidden: body.hidden === true, // 默认公开；小眼睛可改 /records/:idx/visibility
   };
   if (!Array.isArray(user.records)) user.records = [];
   user.records.push(rec);
@@ -193,9 +247,29 @@ function sanitizeRecordProfile(profile) {
     mbti: cleanUserText(profile.mbti, 8),
     occupation: cleanUserText(profile.occupation, 30),
     avgScore: Number(profile.avgScore) || 0,
-    imageUrl: typeof profile.imageUrl === "string" ? profile.imageUrl.slice(0, 500) : "",
+    // 立绘 URL 必须整条保留（截断即 404）；pollinations 带编码 prompt 可能超 500，放宽到 800
+    imageUrl: typeof profile.imageUrl === "string" ? profile.imageUrl.slice(0, 800) : "",
     summary: cleanUserText(profile.summary, 200),
   };
+}
+
+// 展示柜记录可见性开关（小眼睛）：仅本人（token 正确）可改
+async function handleRecordVisibility(req, id, idx, env) {
+  if (!env.USERS) return jsonRes({ error: "USERS KV 未绑定" }, 500);
+  let body;
+  try { body = await readJson(req); } catch { return jsonRes({ error: "body 不是合法 JSON" }, 400); }
+  const key = "user:" + id;
+  const user = await env.USERS.get(key, "json");
+  if (!user) return jsonRes({ error: "档案不存在" }, 404);
+  if (!body.token || user.token !== body.token) return jsonRes({ error: "token 不符" }, 403);
+  const records = Array.isArray(user.records) ? user.records : [];
+  if (!Number.isInteger(idx) || idx < 0 || idx >= records.length) {
+    return jsonRes({ error: "记录不存在" }, 404);
+  }
+  records[idx].hidden = body.hidden === true;
+  user.updatedAt = Date.now();
+  await env.USERS.put(key, JSON.stringify(user));
+  return jsonRes({ ok: true, idx, hidden: records[idx].hidden });
 }
 
 /* ============ 酒保老K（LLM）============ */
@@ -364,6 +438,8 @@ export class RoomDO {
       this.room = (await this.ctx.storage.get("room")) || null;
       // 旧存档兼容：补齐互动体系字段
       if (this.room) {
+        if (this.room.visibility !== "public") this.room.visibility = "private";
+        if (typeof this.room.solo !== "boolean") this.room.solo = false;
         if (!Array.isArray(this.room.chat)) this.room.chat = [];
         if (typeof this.room.chatSeq !== "number") this.room.chatSeq = 0;
         if (!Array.isArray(this.room.socialFeed)) this.room.socialFeed = [];
@@ -405,22 +481,33 @@ export class RoomDO {
   async fetch(req) {
     const url = new URL(req.url);
 
+    // 桌子仲裁（本实例名为 table-N 时走这两条路；仲裁 DO 只记「这张桌当前的房间码」，
+    // 自己不承载任何游戏房状态，游戏房仍是按 4 位码命名的独立 RoomDO）
+    if (url.pathname === "/table/join") return this.tableJoin(url);
+    if (url.pathname === "/table/info") return this.tableInfo(url);
+
     if (url.pathname === "/create") {
       // 只按 createdAt TTL 回收：空房也是别人刚建的房，finished 房还有人在看海报
       const active = this.room && Date.now() - this.room.createdAt < ROOM_TTL_MS;
       if (active) return new Response("occupied", { status: 409 });
-      this.room = this.freshRoom(url.searchParams.get("code"));
+      this.room = this.freshRoom(url.searchParams.get("code"), {
+        visibility: url.searchParams.get("visibility") === "public" ? "public" : "private",
+        solo: url.searchParams.get("solo") === "1",
+        table: Number(url.searchParams.get("table")) || null,
+      });
       await this.save();
       await this.scheduleReap();
       return new Response("ok");
     }
 
     if (url.pathname === "/info") {
-      if (!this.room) return jsonRes({ exists: false }, 404);
+      const alive = this.room && Date.now() - this.room.createdAt < ROOM_TTL_MS;
+      if (!alive) return jsonRes({ exists: false }, 404);
       return jsonRes({
         exists: true,
         phase: this.room.phase,
-        players: this.room.players.length,
+        players: this.room.players.filter((p) => !p.left).length,
+        visibility: this.room.visibility || "private",
       });
     }
 
@@ -435,11 +522,78 @@ export class RoomDO {
     return new Response("not found", { status: 404 });
   }
 
-  freshRoom(code) {
+  /* ---- 桌子仲裁（table-N 实例专用）---- */
+
+  // 查游戏房现状；房不存在/查询失败一律视为 null（→ 桌上无活跃房）
+  async roomSnapshot(code) {
+    try {
+      const stub = this.env.ROOM.get(this.env.ROOM.idFromName(code));
+      const res = await stub.fetch("https://do/info");
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  // 桌上房间仍可作为「这张桌的房」：存在、没打完、没坐满
+  tableRoomActive(info) {
+    return !!info && info.exists && info.phase !== "finished" && info.players < 12;
+  }
+
+  async tableJoin(url) {
+    const table = Number(url.searchParams.get("table")) || 0;
+    const visibility = url.searchParams.get("visibility") === "private" ? "private" : "public";
+    // 简易互斥：并发 join 串行化，防止同桌同时开出两个房
+    this.tableLock = (this.tableLock || Promise.resolve()).then(async () => {
+      const saved = (await this.ctx.storage.get("table")) || null;
+      if (saved?.code && this.tableRoomActive(await this.roomSnapshot(saved.code))) {
+        return { code: saved.code, table };
+      }
+      // 无活跃房（或已 finished/解散/满员）→ 开新房并记住
+      for (let i = 0; i < 15; i++) {
+        const code = String(Math.floor(1000 + Math.random() * 9000));
+        const stub = this.env.ROOM.get(this.env.ROOM.idFromName(code));
+        const res = await stub.fetch(
+          `https://do/create?code=${code}&visibility=${visibility}&table=${table}`
+        );
+        if (res.ok) {
+          await this.ctx.storage.put("table", { code, table, createdAt: Date.now() });
+          return { code, table };
+        }
+      }
+      return null;
+    });
+    const result = await this.tableLock;
+    if (!result) return jsonRes({ error: "房间码分配失败，请重试" }, 503);
+    return jsonRes(result);
+  }
+
+  async tableInfo(url) {
+    const table = Number(url.searchParams.get("table")) || 0;
+    const saved = (await this.ctx.storage.get("table")) || null;
+    const idle = { table, code: null, players: 0, phase: null, active: false };
+    if (!saved?.code) return jsonRes(idle);
+    const info = await this.roomSnapshot(saved.code);
+    if (!this.tableRoomActive(info)) return jsonRes(idle);
+    return jsonRes({
+      table,
+      // 大厅列表只暴露 public 房的码；private 桌只报占用状态
+      code: info.visibility === "public" ? saved.code : null,
+      players: info.players,
+      phase: info.phase,
+      active: true,
+    });
+  }
+
+  freshRoom(code, opts = {}) {
     return {
       code,
       createdAt: Date.now(),
       phase: "lobby",
+      visibility: opts.visibility === "public" ? "public" : "private",
+      solo: opts.solo === true, // solo 房允许 1 人开局
+      table: opts.table || null, // 由几号桌开出（非桌房为 null）
       settings: {
         rounds: 5,
         deck: "qingtang",
@@ -720,6 +874,9 @@ export class RoomDO {
       code: r.code,
       phase: r.phase,
       settings: r.settings,
+      solo: !!r.solo,
+      // 房主视角可见当前公开/私密状态（set_visibility 可改）
+      ...(me?.isHost ? { visibility: r.visibility || "private" } : {}),
       you: me ? { ...this.pub(me), token: me.token, isHost: me.isHost } : null,
       // token 是唯一身份凭证，绝不出现在 players[] 里；踢人改用公开 id
       players: r.players.map((p) => this.pub(p)),
@@ -889,6 +1046,13 @@ export class RoomDO {
         me.drink = msg.drink;
         break;
       }
+      case "set_visibility": {
+        // 仅房主可切换公开/私密；private 桌不出现在大厅 /api/tables 的房码里
+        if (!me.isHost) return;
+        if (msg.visibility !== "public" && msg.visibility !== "private") return;
+        r.visibility = msg.visibility;
+        break;
+      }
       case "kick": {
         if (!me.isHost) return;
         const idx = r.players.findIndex(
@@ -911,7 +1075,8 @@ export class RoomDO {
       case "start": {
         if (!me.isHost || r.phase !== "lobby") return;
         const seated = r.players.filter((p) => !p.left);
-        if (seated.length < 2)
+        // solo 房 1 人可开局（体验全流程）；正常房保持 2 人下限
+        if (seated.length < (r.solo ? 1 : 2))
           return this.send(ws, { type: "error", msg: "至少 2 人才能开局" });
         // V2 协议：{module, pool, deck, rounds, noun, questions, kingQuestions}
         // 向后兼容：旧前端只发 {questions:[...]}，缺省 module=lover / pool=all
@@ -1477,8 +1642,9 @@ export class RoomDO {
     const guessers = r.players.filter(
       (p) => p.token !== cur.protagonist && p.connected && this.isActive(p)
     );
-    const allIn = guessers.every((p) => cur.guesses[p.token] != null);
-    if (!allIn || guessers.length === 0) return;
+    // solo 房：没有猜分人，主角自评即开牌（results 为空，走完整流程）
+    if (guessers.length === 0 && !r.solo) return;
+    if (!guessers.every((p) => cur.guesses[p.token] != null)) return;
 
     // 开牌判罚
     const results = [];
@@ -1487,7 +1653,8 @@ export class RoomDO {
       const g = cur.guesses[p.token];
       if (g == null) continue;
       const diff = Math.abs(g - cur.score);
-      const drink = diff >= 3;
+      // 罚酒判定：|猜分-实际| ≥ 2 就罚（FEEDBACK-0729 #18，原阈值 3）
+      const drink = diff >= 2;
       const exact = diff === 0;
       if (drink) p.drinks++;
       if (drink) cur.penalties[p.token] = (cur.penalties[p.token] || 0) + 1;

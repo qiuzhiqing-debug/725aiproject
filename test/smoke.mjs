@@ -203,11 +203,13 @@ async function main() {
   await A.waitPhase("answering");
   ok(A.state.current.question?.text?.includes("满分男"), `发题：${A.state.current.question.text.slice(0, 30)}…`);
 
-  // 3 轮：主角打 7 分，O1 猜 7（精确命中），O2 猜 2（diff 5 → 罚酒）
+  // 3 轮：主角打 7 分，O1 猜 7（精确命中）；O2 依次猜 2/5/6 → diff 5/2/1
+  // 罚酒阈值 2：前两轮罚（含 |5-7|=2 的边界），第三轮 diff 1 不罚
+  const o2Guess = { 1: 2, 2: 5, 3: 6 };
   for (let round = 1; round <= 3; round++) {
     hero.send({ type: "score", v: 7 });
     others[0].send({ type: "guess", v: 7 });
-    others[1].send({ type: "guess", v: 2 });
+    others[1].send({ type: "guess", v: o2Guess[round] });
     await A.waitPhase("reveal");
     const rv = A.state.current.reveal;
     const r1 = rv.results.find((x) => x.name === others[0].name);
@@ -215,7 +217,7 @@ async function main() {
     if (round === 1) {
       ok(rv.score === 7, `开牌主角分=7`);
       ok(r1.exact === true && r1.drink === false && r1.diff === 0, `${others[0].name} 猜7 → 精确命中懂TA+1、不罚`);
-      ok(r2.exact === false && r2.drink === true && r2.diff === 5, `${others[1].name} 猜2 → |2-7|=5≥3 罚酒`);
+      ok(r2.exact === false && r2.drink === true && r2.diff === 5, `${others[1].name} 猜2 → |2-7|=5≥2 罚酒`);
       // 精确命中者指定一人喝
       others[0].send({ type: "assign_drink", target: others[1].name });
       // 主角补刀
@@ -227,8 +229,13 @@ async function main() {
       ok(A.state.current.reveal.comment === "你们根本不懂我", "主角补刀文字广播");
       const o2pub = A.state.players.find((p) => p.name === others[1].name);
       ok(o2pub.drinks === 2, `被指定者共 2 杯（罚1+被指定1）`);
+    } else if (round === 2) {
+      ok(r2.drink === true && r2.diff === 2, `罚酒阈值=2 边界：${others[1].name} 猜5 → |5-7|=2 ≥2 罚酒`);
+    } else {
+      ok(r2.drink === false && r2.diff === 1, `${others[1].name} 猜6 → |6-7|=1 <2 不罚`);
     }
     A.send({ type: "next" });
+    if (round === 3) break; // 第三轮无人欠酒 → next 直接进 aha 结算
     await A.waitPhase("drinking");
     const ceremony = A.state.current.drinking;
     const punished = ceremony.drinkers.find((item) => item.name === others[1].name);
@@ -242,16 +249,13 @@ async function main() {
       others[1].send({ type: "drink_done" });
       await waitUntil(() => A.state?.current?.drinking?.allDone === true);
       ok(A.state.current.drinking.allDone, "喝酒人确认后全桌同步完成状态");
-    } else if (round === 2) {
+    } else {
       A.send({ type: "skip_drinking" });
       await waitUntil(() => A.state?.current?.drinking?.skipped === true);
       ok(A.state.current.drinking.skipped, "房主可跳过罚酒仪式，避免卡局");
-    } else {
-      others[1].send({ type: "drink_done" });
-      await waitUntil(() => A.state?.current?.drinking?.allDone === true);
     }
     A.send({ type: "next" });
-    if (round < 3) await A.waitPhase("answering");
+    await A.waitPhase("answering");
   }
 
   // Aha
@@ -639,6 +643,132 @@ async function main() {
   ok(finished, "3 人局 1 人中途离场，剩 2 人顺利玩完整局（finished）");
   ok(stayers[0].state.ahaHistory.length >= 2, `两位在场玩家都有结算（ahaHistory=${stayers[0].state.ahaHistory.length}）`);
   stayers.forEach((p) => { try { p.ws.close(); } catch {} });
+
+  /* ================= V2：桌子=固定房间 + 公开/私密 ================= */
+  console.log("\n-- V2 桌子=固定房间 + 公开/私密 --");
+
+  const tj1 = await (await fetch(BASE + "/api/table/1/join", { method: "POST" })).json();
+  const tj2 = await (await fetch(BASE + "/api/table/1/join", { method: "POST" })).json();
+  ok(/^\d{4}$/.test(tj1.code) && tj1.table === 1, `table join 返回 {code:${tj1.code}, table:1}`);
+  ok(tj1.code === tj2.code, "同桌连点两次 join 返回同一房间码（幂等）");
+
+  let tablesData = await (await fetch(BASE + "/api/tables")).json();
+  ok(Array.isArray(tablesData.tables) && tablesData.tables.length === 6
+    && tablesData.tables.every((t) => "table" in t && "code" in t && "players" in t && "phase" in t && "active" in t),
+    "GET /api/tables 返回 6 桌，结构 {table, code, players, phase, active}");
+  let t1info = tablesData.tables.find((t) => t.table === 1);
+  ok(t1info.active === true && t1info.code === tj1.code, "table 1 有活跃房，public 房码对大厅可见");
+
+  // 入座后人数计入 /api/tables（人数从房间 DO 实查）
+  const TT = new Player("桌一客" + Math.floor(Math.random() * 10000), "🍺");
+  await TT.connect(tj1.code);
+  await waitUntil(() => (TT.state?.players?.length || 0) >= 1);
+  tablesData = await (await fetch(BASE + "/api/tables")).json();
+  t1info = tablesData.tables.find((t) => t.table === 1);
+  ok(t1info.players >= 1, `入座后 /api/tables 桌上人数=${t1info.players}（≥1）`);
+
+  // 房主可切公开/私密；private 桌在大厅隐藏房码但保留占用状态
+  if (TT.state?.you?.isHost) {
+    ok(TT.state.visibility === "public", "桌子开的房默认 public（房主视角可见）");
+    TT.send({ type: "set_visibility", visibility: "private" });
+    await waitUntil(() => TT.state?.visibility === "private");
+    ok(TT.state.visibility === "private", "房主 set_visibility → viewFor 同步 private");
+    tablesData = await (await fetch(BASE + "/api/tables")).json();
+    t1info = tablesData.tables.find((t) => t.table === 1);
+    ok(t1info.code === null && t1info.active === true, "private 桌 /api/tables 隐藏房码、保留占用");
+    TT.send({ type: "set_visibility", visibility: "public" });
+    await waitUntil(() => TT.state?.visibility === "public");
+    ok(TT.state.visibility === "public", "房主切回 public，大厅恢复可加入");
+  } else {
+    ok(false, "本次入座者不是桌一房主（多半是上次运行残留的座位，清 .wrangler/state 后重跑）");
+  }
+  TT.send({ type: "leave" }); // lobby 撤座，保证复跑时房主判定成立
+  await sleep(200);
+  try { TT.ws.close(); } catch {}
+
+  /* ================= V2：solo 一人开局 ================= */
+  console.log("\n-- V2 solo 一人开局 --");
+
+  const soloRoom = await (await fetch(BASE + "/api/room", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ solo: true }),
+  })).json();
+  ok(/^\d{4}$/.test(soloRoom.code), `solo 建房得到房间码 ${soloRoom.code}`);
+  const S = new Player("独酌侠", "🥃", "baijiu");
+  await S.connect(soloRoom.code);
+  S.send({ type: "start", rounds: 3, questions: v2Questions });
+  await S.waitPhase("picking");
+  ok(S.state.solo === true, "solo 房 1 人可开局（state.solo=true）");
+  const soloFinished = await autoPlay([S]);
+  ok(soloFinished, "solo 一人自动驾驶跑完整局 → finished");
+  ok(S.state.ahaHistory?.length === 1, "solo 局也生成 aha 结算（ahaHistory=1）");
+  try { S.ws.close(); } catch {}
+
+  // 正常房仍保持 2 人下限
+  const { code: codeN } = await (await fetch(BASE + "/api/room", { method: "POST" })).json();
+  const N1 = new Player("孤勇者", "🍺");
+  await N1.connect(codeN);
+  N1.lastError = null;
+  N1.send({ type: "start", rounds: 3, questions: v2Questions });
+  await waitUntil(() => !!N1.lastError);
+  ok(N1.lastError?.msg?.includes("至少 2 人"), "非 solo 房 1 人开局仍被拒");
+  try { N1.ws.close(); } catch {}
+
+  /* ================= V2：展示柜记录可见性（hidden） ================= */
+  console.log("\n-- V2 展示柜记录可见性 --");
+
+  // 此时 created 用户 records = [0]=lover, [1]=boss, [2]=lover
+  const hideRes = await fetch(`${BASE}/api/user/${created.userId}/records/1/visibility`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token: created.token, hidden: true }),
+  });
+  const hide = await hideRes.json();
+  ok(hideRes.status === 200 && hide.ok === true && hide.hidden === true, "POST records/1/visibility 设为隐藏");
+  const badHide = await fetch(`${BASE}/api/user/${created.userId}/records/0/visibility`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token: "wrong-token", hidden: true }),
+  });
+  ok(badHide.status === 403, "错 token 改可见性被拒 403");
+  const oobHide = await fetch(`${BASE}/api/user/${created.userId}/records/99/visibility`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token: created.token, hidden: true }),
+  });
+  ok(oobHide.status === 404, "越界 idx 返回 404");
+
+  const guestView = await (await fetch(`${BASE}/api/user/${created.userId}`)).json();
+  ok(guestView.playCount === 2 && !guestView.showcase.boss && guestView.showcase.lover?.length === 2,
+    "非本人视角：hidden 记录被过滤（boss 组消失，playCount=2）");
+  const ownerView = await (await fetch(`${BASE}/api/user/${created.userId}?token=${created.token}`)).json();
+  ok(ownerView.owner === true && ownerView.playCount === 3
+    && ownerView.showcase.boss?.[0]?.hidden === true && ownerView.showcase.boss[0].idx === 1,
+    "本人带 token：返回全部记录并标注 hidden/idx");
+  const wrongView = await (await fetch(`${BASE}/api/user/${created.userId}?token=not-mine`)).json();
+  ok(wrongView.owner === false && wrongView.playCount === 2 && !wrongView.showcase.boss,
+    "错 token 查询视角等同路人");
+
+  // 立绘 imageUrl 不被 sanitize 截断丢失（QA：展示柜没图）
+  const longUrl = "https://image.pollinations.ai/prompt/" + "a".repeat(600) + "?width=512";
+  await fetch(`${BASE}/api/user/${created.userId}/records`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token: created.token, module: "art", profile: { archetype: "测试型", imageUrl: longUrl } }),
+  });
+  const artView = await (await fetch(`${BASE}/api/user/${created.userId}?token=${created.token}`)).json();
+  ok(artView.showcase.art?.[0]?.profile?.imageUrl === longUrl,
+    `record.profile.imageUrl 完整保存（${longUrl.length} 字符不截断）`);
+
+  // cocktail.intro 通过白名单
+  await fetch(BASE + "/api/user", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ userId: created.userId, token: created.token, cocktail: { name: "霓虹落日", intro: "先苦后甜，像极了暗恋" } }),
+  });
+  const introView = await (await fetch(`${BASE}/api/user/${created.userId}`)).json();
+  ok(introView.cocktail?.intro === "先苦后甜，像极了暗恋", "cocktail.intro 通过白名单保存");
 
   console.log(`\n== 结果：${passed} 通过 / ${failed} 失败`);
   process.exit(failed ? 1 : 0);
