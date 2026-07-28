@@ -10,6 +10,9 @@
 <body>
   <div id="scene" class="scene fx-vignette fx-scanlines fx-noise">
 
+    <!-- 墙面质感层：护墙板 + 侧墙氛围光 -->
+    <div class="wall" aria-hidden="true"></div>
+
     <!-- 天花板：吊灯 + 像素 disco ball -->
     <div class="ceiling">
       <div class="disco-wrap"><div class="disco-ball"><i class="disco-chain"></i></div></div>
@@ -22,13 +25,16 @@
       <img class="logo neon-flicker" src="../assets-v2/logo.svg" alt="理想型·加载中" />
     </header>
 
-    <!-- 背景：酒瓶架背墙 -->
+    <!-- 背景：酒柜背墙（木柜 + 双层瓶架） -->
     <div class="backwall">
+      <!-- OPEN 24/7 霓虹牌：挂在酒柜上方的墙面 -->
+      <div class="wall-neon neon-flicker" aria-hidden="true">OPEN 24/7</div>
       <div class="shelf shelf-1"></div>
       <div class="shelf shelf-2"></div>
       <div class="bottles bottles-1" aria-hidden="true"></div>
       <div class="bottles bottles-2" aria-hidden="true"></div>
-      <div class="wall-neon" aria-hidden="true">OPEN 24/7</div>
+      <!-- 酒柜中段：老K身后的吧镜 -->
+      <div class="mirror" aria-hidden="true"></div>
     </div>
 
     <!-- 酒保：站在吧台后 -->
@@ -39,51 +45,55 @@
     <div class="counter">
       <div class="counter-top"></div>
       <div class="counter-face"></div>
-      <!-- 吧台单人位 -->
+      <!-- 台面小物：酒杯 + 待洗的酒瓶 -->
+      <div class="counter-props" aria-hidden="true">
+        <i class="glass g1"></i><i class="glass g2"></i><i class="cbottle"></i>
+      </div>
+      <!-- 吧台电话：找朋友（输房间码） -->
+      <button class="barphone" id="findFriendsBtn" type="button" title="找朋友">
+        <span class="phone-label px-title neon-cyan">找朋友</span>
+        <span class="phone-shape" aria-hidden="true"></span>
+      </button>
+    </div>
+
+    <!-- 吧台前的吧台凳：两张空凳 + 一张单人位 -->
+    <div class="stool-row">
+      <span class="stool deco s1" aria-hidden="true"><i></i></span>
+      <span class="stool deco s2" aria-hidden="true"><i></i></span>
       <button class="solo-seat" id="soloSeat" type="button">
-        <span class="stool" aria-hidden="true"></span>
         <span class="solo-label px-title neon-amber">一个人喝</span>
+        <span class="stool solo" aria-hidden="true"><i></i></span>
       </button>
     </div>
 
     <!-- 前景圆桌区 -->
     <div class="floor" id="floor">
-      <!-- 桌子由 lobby.js 生成：桌号霓虹牌 + 圆桌剪影 -->
+      <!-- 桌子由 lobby.js 生成：桌号霓虹牌 + 圆桌剪影 + 人数 -->
     </div>
 
-    <!-- 弹幕层（体育 bar 基因：欢呼飘屏） -->
-    <div class="danmaku" id="danmaku" aria-hidden="true"></div>
+    <!-- 氛围语录层（老K式酒吧广播，低密度淡入淡出） -->
+    <div class="quotes" id="quotes" aria-hidden="true"></div>
 
-    <!-- 竖屏提示（不阻塞） -->
+    <!-- 竖屏提示（几秒后自动淡出） -->
     <div class="rotate-hint px-title" id="rotateHint">
       <span class="hint-icon" aria-hidden="true">⟳</span>
       转过来，酒吧横着更好看
     </div>
+
+    <!-- 找朋友：报房间码 -->
+    <div class="codeboard" id="codeboard" hidden>
+      <div class="codeboard-panel" role="dialog" aria-label="找朋友">
+        <button class="codeboard-close" id="codeClose" type="button" aria-label="关闭">×</button>
+        <div class="codeboard-title px-title neon-pink">找朋友</div>
+        <p class="codeboard-line">报个房间码，我带你过去。</p>
+        <input class="code-input px-title" id="codeInput" inputmode="numeric" maxlength="4"
+               placeholder="0000" autocomplete="off" />
+        <div class="code-msg px-title" id="codeMsg"></div>
+        <button class="code-go px-title" id="codeGo" type="button">带我过去</button>
+      </div>
+    </div>
   </div>
 
-  <!-- 整合钩子：桌子/单人位 → 建房 → 跳转游戏 -->
-  <script type="module">
-    window.onTableClick = async (_n) => {
-      try {
-        const res = await fetch("/api/room", { method: "POST" });
-        const { code } = await res.json();
-        location.href = `/?room=${code}`;
-      } catch {
-        const t = document.getElementById("danmaku");
-        if (t) {
-          const el = document.createElement("span");
-          el.className = "danmaku-item hot";
-          el.textContent = "建房失败，请重试";
-          el.style.top = "50%";
-          t.appendChild(el);
-          setTimeout(() => el.remove(), 4000);
-        }
-      }
-    };
-    window.onSoloClick = () => {
-      location.href = "/?solo=1";
-    };
-  </script>
   <script type="module" src="./lobby.js"></script>
 </body>
 </html>
