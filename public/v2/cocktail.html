@@ -50,10 +50,32 @@
     </section>
 
   </div>
-  <!-- 整合钩子：调酒完成 → 存身份 → 进大厅 -->
+  <!-- 整合钩子：调酒完成 → 存身份 + 建 KV 档案 → 进大厅 -->
   <script type="module">
     window.onCocktailDone = (cocktail) => {
       localStorage.setItem("ideal_cocktail", JSON.stringify(cocktail));
+
+      // 后台静默建/更新 KV 用户档案，不阻塞跳转
+      (async () => {
+        try {
+          const savedId    = localStorage.getItem("ideal_userId");
+          const savedToken = localStorage.getItem("ideal_token");
+          const nick       = localStorage.getItem("mfn_name") || "匿名";
+          const body = savedId && savedToken
+            ? { userId: savedId, token: savedToken, nick, cocktail }
+            : { nick, cocktail };
+          const data = await fetch("/api/user", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }).then(r => r.json());
+          if (data.userId) {
+            localStorage.setItem("ideal_userId",    data.userId);
+            localStorage.setItem("ideal_token",     data.token);
+          }
+        } catch {}
+      })();
+
       location.href = "/v2/lobby.html";
     };
   </script>

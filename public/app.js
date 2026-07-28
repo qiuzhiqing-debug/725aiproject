@@ -200,6 +200,16 @@ function onMessage(msg) {
     localStorage.setItem("mfn_name", ui.name);
     localStorage.setItem("mfn_emoji", ui.emoji);
     localStorage.setItem("mfn_drink", ui.drink);
+    // 有 KV 档案时同步昵称（静默，不阻塞）
+    const kvId = localStorage.getItem("ideal_userId");
+    const kvToken = localStorage.getItem("ideal_token");
+    if (kvId && kvToken && ui.name) {
+      fetch("/api/user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: kvId, token: kvToken, nick: ui.name }),
+      }).catch(() => {});
+    }
     ui.screen = "game";
     if (msg.reconnected) toast("已回到座位");
     const u = new URL(location.href);
@@ -255,6 +265,7 @@ function onMessage(msg) {
         if (msg.state.phase === "aha") sound.riff(); // 理想型入场 riff
         if (msg.state.phase === "drinking") sound.chug();
         ui.ahaStage = 0;
+        ui.ahaSaved = false;
         ui.posterUrl = null;
         ui.stickDoneSent = false;
         if (msg.state.phase === "picking") {
@@ -802,6 +813,42 @@ function safeProfileColor(value, fallback) {
   return /^#[0-9a-f]{6}$/i.test(String(value || "")) ? value : fallback;
 }
 
+// 主角本人第一次看到自己的 aha 档案时，静默写入 KV 用户记录
+async function maybeSaveAhaProfile(s, aha, profile) {
+  if (ui.ahaSaved) return;
+  if (!s.current?.youAreProtagonist) return;
+  const userId = localStorage.getItem("ideal_userId");
+  const token  = localStorage.getItem("ideal_token");
+  if (!userId || !token) return;
+  ui.ahaSaved = true; // 乐观锁，防止重复提交
+  try {
+    const portrait = profile.portrait || {};
+    const card     = profile.matchCard || {};
+    const rel      = profile.relationship || {};
+    await fetch(`/api/user/${userId}/records`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId, token,
+        module: s.settings?.module || "lover",
+        role: s.you?.isHost ? "host" : "player",
+        ts: Date.now(),
+        profile: {
+          archetype: card.archetype || "",
+          title: card.title || "",
+          mbti: card.mbti || "",
+          occupation: card.occupation || "",
+          avgScore: aha.stats?.avgScore ?? 0,
+          imageUrl: portrait.imageUrl || "",
+          summary: rel.coreText || "",
+        },
+      }),
+    });
+  } catch {
+    ui.ahaSaved = false; // 失败允许下次重试
+  }
+}
+
 function renderAha(s, aha, isFinal) {
   const me = s.you;
   if (!(aha.profile?.portrait && aha.profile?.matchCard && aha.profile?.relationship) && !buildIdealProfileFn) {
@@ -814,6 +861,7 @@ function renderAha(s, aha, isFinal) {
     return;
   }
   const profile = resolveAhaProfile(aha);
+  maybeSaveAhaProfile(s, aha, profile); // 静默写 KV，不等 await
   const card = profile.matchCard;
   const portrait = profile.portrait;
   const relationship = profile.relationship;

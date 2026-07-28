@@ -72,6 +72,30 @@
 - ✅ `node test/smoke.mjs` → 101/101 全绿（含 V2 用户档案 KV、酒保端点、取向池隔离、国王游戏、force_next、离场/房主移交全部测到）
 - ✅ `node qa/questions-qa.mjs` → 701 道题 0 处不达标
 
-### 当前状态（Git 待 push）
-- 后端线程交付完成，待整合进前端 app.js/index.html
-- 下一步：视觉整合（v2/ 页面接入）+ 结果页/海报/用户主页
+### 当前状态
+- 后端全绿，已 push
+
+## 2026-07-28（续：视觉整合 + 用户主页）
+
+### 已完成
+- ✅ 入场路由：index.html 第一次进入无 ideal_cocktail → 跳 /v2/cocktail.html；有 ?room/?solo → 直通游戏
+- ✅ cocktail.html：onCocktailDone 存 ideal_cocktail + 静默建 KV 档案（POST /api/user）→ 跳大厅
+- ✅ lobby.html：桌子点击 POST /api/room 得房间码 → 跳 /?room=CODE；单人位 → /?solo=1
+- ✅ app.js：welcome 时静默同步昵称到 KV；aha 阶段主角静默写 KV 档案记录（maybeSaveAhaProfile）
+- ✅ app.js：海报按钮文案 "生成年报海报" → "生成海报"
+- ✅ public/u.html（新建）：用户档案页，展示柜按模组分行，双视口 QA 通过
+
+### QA 自评（本次 session 结束状态）
+| 维度 | 分 | 备注 |
+|---|---|---|
+| 功能完整性 | 9 | cocktail→lobby→game→u.html 全链路可走通；aha 写 KV 档案 |
+| 视觉品质 | 8 | 三主页面双视口无溢出；desktop u.html 右侧留白偏多 |
+| 交互体验 | 8 | 路由跳转清晰；错误态友好；桌子点击无 loading 指示 |
+| 代码健壮性 | 9 | esc() XSS 防护；onerror 图片降级；所有异步操作静默失败不阻塞主流程 |
+| 后端集成 | 9 | 101/101 smoke test；KV 写入经 seed 脚本端到端验证 |
+| **综合** | **86/100** | |
+
+### 剩余优化（非阻塞）
+- lobby 桌子 loading 反馈（点击后按钮禁用/弹幕提示）
+- desktop u.html 多列展示柜布局
+- aha 后立绘 imageUrl 为空时 u.html 卡片仍显示占位符（需 pollinations 实际出图才有）
