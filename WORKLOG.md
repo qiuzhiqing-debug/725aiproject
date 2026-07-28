@@ -119,3 +119,9 @@ Kim 定了 PM→Dev→QA 循环：零上下文子线程做真实体验 QA（第�
 
 ### 待办
 - QA 第二轮报告 → 修复 → wrangler deploy --config wrangler.new.jsonc（新网址 ideal-type-loading，不碰 manfen-nan）→ 公网双视口 QA → push GitHub。
+
+## 2026-07-29 凌晨（续：QA2→修复→上线新网址）
+- QA 第二轮（零上下文，62/100）揪出 P0：真实对局 aha 档案页必崩（buildIdealProfile 与 renderAha 字段契约不符）+ 档案重复写入；另有国王文案张冠李戴、幽灵罚酒杯、"锅底"火锅串场等。
+- 三条修复线交付：G `52e8ce7`（契约补全+全字段防御+按 aha.id 判重+国王/罚酒/进桌/锅底→"今晚的酒劲"文案+solo 裁剪+CDP 真跑 solo 全流程零报错海报出图）；H `7cce5db`（空桌冷光呼吸脉冲可点性+老K名牌底衬+竖屏叠压修正）；I `8075626`（摇酒紧凑构图+四杯型装饰贴沿+u.html 文字logo/老K错误文案）。
+- 集成 smoke 125/125 → **部署新 Worker：https://ideal-type-loading.kimnin-iup.workers.dev（Version edebd93d-41de-42a7-84b0-02a35f20dcd1）**，旧 manfen-nan 未动。
+- 公网验证：桌子幂等（两次 join 同码 9273）、/api/tables 正常、双视口截图 qa/prod-*-390/1400.jpg 人工核对通过（调酒/大厅/游戏页全暗紫霓虹，零蓝白）。
