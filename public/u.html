@@ -78,7 +78,19 @@
       color: var(--ink-hi);
     }
     .user-cocktail {
-      margin-top: 6px;
+      margin-top: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .cocktail-glass-icon {
+      width: 52px;
+      height: 52px;
+      flex-shrink: 0;
+      filter: drop-shadow(0 0 6px var(--glow-purple-45));
+    }
+    .cocktail-glass-icon svg { width: 100%; height: 100%; display: block; }
+    .user-cocktail-text {
       font-size: 13px;
       color: var(--neon-amber);
       font-style: italic;
@@ -224,6 +236,89 @@
       border-radius: 4px;
     }
 
+    /* ---- 可见性小眼睛（仅本人可见） ---- */
+    .record-eye {
+      position: absolute;
+      top: 4px;
+      left: 6px;
+      z-index: 2;
+      width: 28px;
+      height: 28px;
+      border: none;
+      border-radius: 50%;
+      background: rgba(18,10,28,.72);
+      color: var(--ink-mid);
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .record-eye:hover { color: var(--neon-cyan-soft); }
+    .record-card.is-hidden { opacity: .45; }
+    .record-card.is-hidden .record-eye { opacity: 1; color: var(--ink-dim); }
+
+    /* ---- toast ---- */
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 32px;
+      transform: translateX(-50%);
+      background: var(--panel, rgba(18,10,28,.92));
+      border: 1px solid var(--line-neon);
+      color: var(--ink-hi);
+      font-size: 13px;
+      padding: 10px 18px;
+      border-radius: var(--radius-pill);
+      z-index: 99;
+      opacity: 0;
+      transition: opacity .25s;
+      pointer-events: none;
+      max-width: 80vw;
+    }
+    .toast.show { opacity: 1; }
+
+    /* ---- 图鉴占位入口 ---- */
+    .dex-entry {
+      margin: 8px 16px 24px;
+      padding: 18px 20px;
+      border: 1px dashed var(--line-neon);
+      border-radius: var(--radius-card);
+      background: var(--bar-bg-raise);
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      opacity: .75;
+      cursor: not-allowed;
+      user-select: none;
+    }
+    .dex-lock { font-size: 24px; flex-shrink: 0; filter: grayscale(.4); }
+    .dex-name {
+      font-family: var(--font-pixel);
+      font-size: 14px;
+      color: var(--ink-mid);
+      letter-spacing: .08em;
+    }
+    .dex-sub { margin-top: 4px; font-size: 12px; color: var(--ink-dim); }
+
+    /* ---- desktop：卡片行改多列网格 ---- */
+    @media (min-width: 900px) {
+      .user-card, .cabinet-head, .module-section, .action-bar, .dex-entry {
+        max-width: 1200px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      .user-card { margin-top: 32px; }
+      .card-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+        overflow-x: visible;
+      }
+      .record-card { width: auto; }
+      .record-card-portrait, .record-card-portrait-placeholder { height: 160px; }
+    }
+
     /* ---- 空状态 ---- */
     .empty {
       text-align: center;
@@ -312,6 +407,48 @@
       return `${d.getMonth() + 1}/${d.getDate()}`;
     }
 
+    /* ---- toast ---- */
+    let toastTimer = null;
+    function toast(msg) {
+      let $t = document.querySelector(".toast");
+      if (!$t) {
+        $t = document.createElement("div");
+        $t.className = "toast";
+        document.body.appendChild($t);
+      }
+      $t.textContent = msg;
+      $t.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => $t.classList.remove("show"), 2200);
+    }
+
+    /* ---- 迷你杯型 SVG（对应 cocktail.glass：martini/highball/rocks/coupe） ---- */
+    function glassIcon(type) {
+      const L = "#bfe8ff", A = "#c86bff", B = "#2de2ff";
+      const svgs = {
+        martini: `<polygon points="8,10 44,10 26,28" fill="${A}" opacity=".85"/>
+          <polygon points="8,10 44,10 26,28" fill="none" stroke="${L}" stroke-width="2.5"/>
+          <rect x="24.5" y="28" width="3" height="12" fill="${L}"/>
+          <rect x="16" y="40" width="20" height="3" rx="1" fill="${L}"/>
+          <circle cx="34" cy="8" r="3.5" fill="#ff2d5e"/>`,
+        highball: `<rect x="15" y="14" width="22" height="28" fill="${B}" opacity=".7"/>
+          <rect x="15" y="10" width="22" height="4" fill="none"/>
+          <path d="M 15 8 L 15 42 L 37 42 L 37 8" fill="none" stroke="${L}" stroke-width="2.5"/>
+          <rect x="19" y="17" width="6" height="6" rx="1" fill="#cfeaff" opacity=".85"/>
+          <rect x="27" y="24" width="6" height="6" rx="1" fill="#cfeaff" opacity=".85"/>`,
+        rocks: `<rect x="12" y="22" width="28" height="18" fill="#ffb020" opacity=".75"/>
+          <path d="M 12 16 L 12 40 L 40 40 L 40 16" fill="none" stroke="${L}" stroke-width="2.5"/>
+          <rect x="10" y="39" width="32" height="3.5" rx="1" fill="${L}"/>
+          <rect x="18" y="25" width="7" height="7" rx="1" fill="#cfeaff" opacity=".85"/>`,
+        coupe: `<path d="M 9 9 L 43 9 L 41 17 Q 38 24 26 24 Q 14 24 11 17 Z" fill="${A}" opacity=".85"/>
+          <path d="M 9 9 L 43 9 L 41 17 Q 38 24 26 24 Q 14 24 11 17 Z" fill="none" stroke="${L}" stroke-width="2.5"/>
+          <rect x="24.5" y="24" width="3" height="14" fill="${L}"/>
+          <rect x="16" y="38" width="20" height="3" rx="1" fill="${L}"/>`,
+      };
+      const body = svgs[type] || svgs.martini;
+      return `<span class="cocktail-glass-icon" aria-hidden="true"><svg viewBox="0 0 52 52">${body}</svg></span>`;
+    }
+
     /* ---- 读路由 ---- */
     const userId = new URLSearchParams(location.search).get("id");
     const myId    = localStorage.getItem("ideal_userId");
@@ -336,8 +473,15 @@
       const moduleOrder = ["lover", "boss", "agent", "roommate", "teacher"];
       const filledModules = moduleOrder.filter(m => showcase[m]?.length);
 
+      // 给每条记录标一个全局 idx（后端 records 数组下标）：
+      // 后端按 push 顺序分组进 showcase，各模组内顺序即原始顺序；
+      // 若后端已返回 rec.idx 则优先用，否则按 ts 升序重建。
+      const allRecs = moduleOrder.flatMap(m => showcase[m] || []);
+      allRecs.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+      allRecs.forEach((rec, i) => { if (rec.idx == null) rec.idx = i; });
+
       const showcaseHtml = filledModules.length === 0
-        ? `<div class="empty"><span class="empty-icon">🫙</span>还没玩过，展示柜空着呢</div>`
+        ? `<div class="empty"><span class="empty-icon">🫙</span>柜子还空着。今晚的故事，得你自己喝出来。</div>`
         : filledModules.map(mod => {
             const records = [...showcase[mod]].reverse(); // 最新的在前
             const cardsHtml = records.map(rec => {
@@ -353,8 +497,13 @@
               const score = p.avgScore > 0
                 ? `<div class="record-score">场均 ${p.avgScore.toFixed(1)} 分</div>`
                 : "";
+              const hidden = !!rec.hidden;
+              const eye = isSelf
+                ? `<button class="record-eye" type="button" data-idx="${rec.idx}" title="${hidden ? "已隐藏，点击公开" : "公开中，点击隐藏"}" aria-label="切换这条记录的可见性">${hidden ? "🙈" : "👁"}</button>`
+                : "";
               return `
-                <div class="record-card">
+                <div class="record-card${hidden ? " is-hidden" : ""}" data-idx="${rec.idx}">
+                  ${eye}
                   ${portrait}
                   <span class="record-date">${fmtDate(rec.ts)}</span>
                   <div class="record-card-body">
@@ -378,12 +527,28 @@
         ? `<div class="action-bar"><a class="btn-lobby" href="/v2/lobby.html">进大厅再玩一局</a></div>`
         : "";
 
+      const cocktailHtml = data.cocktail?.name
+        ? `<div class="user-cocktail">
+            ${glassIcon(data.cocktail.glass)}
+            <span class="user-cocktail-text">今晚特调：${esc(data.cocktail.name)}</span>
+          </div>`
+        : "";
+
+      const dexEntry = `
+        <div class="dex-entry" role="note" aria-disabled="true">
+          <span class="dex-lock">🔒</span>
+          <div>
+            <div class="dex-name">图鉴</div>
+            <div class="dex-sub">这一柜还在酿。等它开封，你收过的每一型都排得上号。</div>
+          </div>
+        </div>`;
+
       $main.innerHTML = `
         <div class="user-card">
           ${avatarHtml}
           <div class="user-info">
             <div class="user-nick px-title">${esc(data.nick)}</div>
-            ${data.cocktail?.name ? `<div class="user-cocktail">今晚特调：${esc(data.cocktail.name)}</div>` : ""}
+            ${cocktailHtml}
             <div class="user-stats">
               <div class="stat">
                 <div class="stat-num">${data.playCount ?? 0}</div>
@@ -403,10 +568,51 @@
         </div>
 
         ${showcaseHtml}
+        ${dexEntry}
         ${actionBar}
       `;
 
+      if (isSelf) bindEyeToggles($main);
+
       document.title = `${data.nick} 的理想型档案`;
+    }
+
+    /* ---- 可见性切换 ---- */
+    function bindEyeToggles($root) {
+      $root.querySelectorAll(".record-eye").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const card = btn.closest(".record-card");
+          const idx = btn.dataset.idx;
+          const willHide = !card.classList.contains("is-hidden");
+
+          // 先本地切换 UI（不管后端成不成，体验不卡）
+          const apply = (hidden) => {
+            card.classList.toggle("is-hidden", hidden);
+            btn.textContent = hidden ? "🙈" : "👁";
+            btn.title = hidden ? "已隐藏，点击公开" : "公开中，点击隐藏";
+          };
+          apply(willHide);
+
+          const token = localStorage.getItem("ideal_token") || "";
+          try {
+            const res = await fetch(`/api/user/${userId}/records/${idx}/visibility`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ token, hidden: willHide }),
+            });
+            if (res.status === 404) {
+              toast("先记下了，稍后同步");
+            } else if (!res.ok) {
+              apply(!willHide);
+              toast("没改成，再点一次试试");
+            } else {
+              toast(willHide ? "这条收进柜子里层了，只有你看得见" : "这条摆出来了");
+            }
+          } catch {
+            toast("先记下了，稍后同步");
+          }
+        });
+      });
     }
 
     /* ---- 错误状态 ---- */
@@ -431,7 +637,11 @@
         location.replace("/v2/cocktail.html");
       }
     } else {
-      fetch(`/api/user/${userId}`)
+      // 本人视角带 token：后端会返回含隐藏记录的完整展示柜（每条带 hidden/idx）
+      const tokenQS = isSelf && localStorage.getItem("ideal_token")
+        ? `?token=${encodeURIComponent(localStorage.getItem("ideal_token"))}`
+        : "";
+      fetch(`/api/user/${userId}${tokenQS}`)
         .then(r => r.json())
         .then(data => {
           if (data.error) renderError(data.error);

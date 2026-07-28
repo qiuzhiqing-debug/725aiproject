@@ -1,5 +1,11 @@
 const BASE = "http://127.0.0.1:8787";
 
+// 生图 URL 拼法参考 public/ideal-profile.js buildIdealProfile：
+// 像素风 + 赛博朋克酒吧背景；必须带 referrer=idealtype 否则 429
+function pollinationsUrl(prompt, seed) {
+  return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=512&height=512&seed=${seed}&referrer=idealtype&nologo=true`;
+}
+
 const cr = await fetch(`${BASE}/api/user`, {
   method: "POST",
   headers: { "Content-Type": "application/json" },
@@ -22,7 +28,7 @@ await fetch(`${BASE}/api/user/${userId}/records`, {
       archetype: "忠犬守护者", title: "爱你不需要理由但要给你理由",
       mbti: "ENFJ", occupation: "咖啡师", avgScore: 7.8,
       summary: "嘴上说随便，心里有满分标准。跟这种人过日子，你得学会读空气。",
-      imageUrl: "",
+      imageUrl: pollinationsUrl("pixel art portrait of a handsome young man, warmth-focused, loyal guardian personality, cyberpunk neon bar background, vivid colors, detailed, 8-bit style", 13579),
     },
   }),
 }).then(r => r.json()).then(r => console.log("record1:", r));
@@ -37,7 +43,7 @@ await fetch(`${BASE}/api/user/${userId}/records`, {
       archetype: "甜心防火墙", title: "温柔是刀，笑着递过来",
       mbti: "INTJ", occupation: "产品经理", avgScore: 8.4,
       summary: "看起来好说话，但每件事都有自己的底线。老K说：这种人，认识要趁早。",
-      imageUrl: "",
+      imageUrl: pollinationsUrl("pixel art portrait of a stylish product manager, sweet but sharp personality, cyberpunk neon bar background, vivid colors, detailed, 8-bit style", 24680),
     },
   }),
 }).then(r => r.json()).then(r => console.log("record2:", r));
