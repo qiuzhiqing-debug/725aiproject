@@ -99,3 +99,23 @@
 - lobby 桌子 loading 反馈（点击后按钮禁用/弹幕提示）
 - desktop u.html 多列展示柜布局
 - aha 后立绘 imageUrl 为空时 u.html 卡片仍显示占位符（需 pollinations 实际出图才有）
+
+## 2026-07-29 凌晨（Fable PM 模式：六线并行大改版）
+
+### 流程
+Kim 定了 PM→Dev→QA 循环：零上下文子线程做真实体验 QA（第一轮 58/100）→ PM 拆解 Kim 深夜大反馈（docs/FEEDBACK-0729.md）→ 老K人设定稿（docs/LAOK-PERSONA.md）→ 六条开发线按文件所有权并行 → 集成 → QA 第二轮 → 部署新网址。
+
+### 六线交付（全部 commit 未 push）
+- A 后端 `1c31613`：桌子=固定房间（table-N 仲裁 DO，幂等）、公开/私密房+set_visibility、罚酒分差≥2、solo 1人全流程、展示柜记录 hidden 可见性端点、imageUrl/intro 白名单修补。smoke 125/125。
+- B 题库 `eff0692`+`64a9b59`：满分男梗调研（He's a 10 but… 溯源+18场景）、满分Agent模组 105 道、PRD增补（点单接轨四层映射、图鉴 16 原型论证）。Kim 红线返工：梦女题只扎"傲慢+无知"、海王浓度 2%、逐题维度探针标注。
+- C 调酒页 `8446117`：标语"差的那 1%，等的就是你"、老K开场自我介绍、六大基酒+无酒精彩蛋（448 组合校验）、cobbler 三段式 shaker+devicemotion 摇一摇、答题回退。
+- D 大厅 `cee6646`：吧台凳区、OPEN 24/7 挂墙、竖屏空白压缩、酒柜/吧镜/灯光精致化、桌子实时人数+满/空桌灯光、找朋友电话（房间码校验）、假弹幕清理。
+- E 游戏前端 `dfb49f9`：全站换肤 theme-v2（蓝白清零）、调酒身份带入（徽章+杯型预选）、solo 动线、?room 入座唯一主按钮、昵称同步修复（根因：建档请求被跳转打断）、aha 立绘 onload 后真实 URL 入柜、国王游戏渲染从零新建（烫金扑克牌）、"你老公来咯🪽🪽"、海报暗紫重制+QR 跳房间。
+- F 展示柜 `2dfe923`：真图入柜（seed 验证）、小眼睛可见性端到端、特调杯型 SVG、desktop 网格、图鉴锁定占位。
+- PM `1825ae6`：logo.svg 删"别急，好东西都压轴"居中 LOADING 99%、老K立绘重设计（夜班调酒师）纳入。
+
+### 事故记录
+- 两次子线程集体阵亡：403 账户余额不足（Kim 切模型后恢复）、上游 524 超时（120s 冷却后断点续跑）。断点续跑有效，未丢工作量。
+
+### 待办
+- QA 第二轮报告 → 修复 → wrangler deploy --config wrangler.new.jsonc（新网址 ideal-type-loading，不碰 manfen-nan）→ 公网双视口 QA → push GitHub。
