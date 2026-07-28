@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>理想型档案</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/theme-v2.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bar-bg);
+      color: var(--ink-hi);
+      font-family: var(--font-sans);
+      min-height: 100dvh;
+    }
+
+    /* ---- 顶部导航 ---- */
+    .nav {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line-soft);
+      background: var(--bar-bg-deep);
+    }
+    .nav-logo { height: 28px; width: auto; }
+    .nav-back {
+      margin-left: auto;
+      color: var(--neon-cyan-soft);
+      text-decoration: none;
+      font-size: 14px;
+      font-family: var(--font-pixel);
+      opacity: .85;
+    }
+    .nav-back:hover { opacity: 1; text-shadow: var(--neon-text-cyan); }
+
+    /* ---- 用户卡片 ---- */
+    .user-card {
+      margin: 20px 16px 0;
+      padding: 20px;
+      background: var(--panel);
+      border: 1px solid var(--line-soft);
+      border-radius: var(--radius-card);
+      box-shadow: var(--shadow-panel);
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+    .avatar {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid var(--neon-purple);
+      box-shadow: 0 0 12px var(--glow-purple-45);
+      flex-shrink: 0;
+      background: var(--bar-bg-raise);
+    }
+    .avatar-placeholder {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      border: 2px solid var(--neon-purple);
+      box-shadow: 0 0 12px var(--glow-purple-45);
+      flex-shrink: 0;
+      background: var(--bar-bg-raise);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+    }
+    .user-info { flex: 1; min-width: 0; }
+    .user-nick {
+      font-family: var(--font-pixel);
+      font-size: 20px;
+      color: var(--ink-hi);
+    }
+    .user-cocktail {
+      margin-top: 6px;
+      font-size: 13px;
+      color: var(--neon-amber);
+      font-style: italic;
+    }
+    .user-stats {
+      margin-top: 10px;
+      display: flex;
+      gap: 16px;
+    }
+    .stat { text-align: center; }
+    .stat-num {
+      font-family: var(--font-pixel);
+      font-size: 18px;
+      color: var(--neon-cyan-soft);
+    }
+    .stat-label { font-size: 11px; color: var(--ink-dim); margin-top: 2px; }
+
+    /* ---- 展示柜标题 ---- */
+    .cabinet-head {
+      margin: 24px 16px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .cabinet-title {
+      font-family: var(--font-pixel);
+      font-size: 14px;
+      color: var(--ink-dim);
+      letter-spacing: .08em;
+    }
+    .cabinet-line {
+      flex: 1;
+      height: 1px;
+      background: var(--line-soft);
+    }
+
+    /* ---- 模组行 ---- */
+    .module-section { margin: 0 16px 24px; }
+    .module-label {
+      font-family: var(--font-pixel);
+      font-size: 12px;
+      color: var(--neon-purple);
+      letter-spacing: .1em;
+      margin-bottom: 8px;
+      text-shadow: var(--neon-text-purple);
+    }
+
+    /* ---- 档案卡片（横向滚动行） ---- */
+    .card-row {
+      display: flex;
+      gap: 12px;
+      overflow-x: auto;
+      padding-bottom: 6px;
+      scrollbar-width: none;
+    }
+    .card-row::-webkit-scrollbar { display: none; }
+
+    .record-card {
+      flex-shrink: 0;
+      width: 200px;
+      background: var(--bar-bg-raise);
+      border: 1px solid var(--line-neon);
+      border-radius: var(--radius-card);
+      overflow: hidden;
+      position: relative;
+    }
+    .record-card-portrait {
+      width: 100%;
+      height: 130px;
+      object-fit: cover;
+      display: block;
+      background: var(--bar-bg-deep);
+    }
+    .record-card-portrait-placeholder {
+      width: 100%;
+      height: 130px;
+      background: linear-gradient(135deg, var(--bar-bg-deep), var(--bar-bg-wall));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 40px;
+    }
+    .record-card-body { padding: 10px 12px 12px; }
+    .record-archetype {
+      font-family: var(--font-pixel);
+      font-size: 13px;
+      color: var(--neon-pink-hot);
+      text-shadow: var(--neon-text-pink);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .record-title {
+      font-size: 11px;
+      color: var(--ink-mid);
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .record-tags {
+      margin-top: 6px;
+      display: flex;
+      gap: 5px;
+      flex-wrap: wrap;
+    }
+    .tag {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: var(--radius-pill);
+      border: 1px solid var(--line-neon);
+      color: var(--ink-mid);
+      white-space: nowrap;
+    }
+    .tag-mbti {
+      border-color: var(--neon-cyan);
+      color: var(--neon-cyan-soft);
+    }
+    .record-summary {
+      margin-top: 8px;
+      font-size: 11px;
+      color: var(--ink-dim);
+      line-height: 1.5;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .record-score {
+      margin-top: 8px;
+      font-family: var(--font-pixel);
+      font-size: 12px;
+      color: var(--neon-amber);
+    }
+    .record-date {
+      position: absolute;
+      top: 6px;
+      right: 8px;
+      font-size: 10px;
+      color: var(--ink-ghost);
+      background: rgba(18,10,28,.7);
+      padding: 2px 5px;
+      border-radius: 4px;
+    }
+
+    /* ---- 空状态 ---- */
+    .empty {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--ink-dim);
+      font-size: 14px;
+    }
+    .empty-icon { font-size: 40px; display: block; margin-bottom: 12px; }
+
+    /* ---- 404/错误 ---- */
+    .error-wrap {
+      text-align: center;
+      padding: 60px 24px;
+    }
+    .error-icon { font-size: 48px; display: block; margin-bottom: 16px; }
+    .error-msg {
+      font-family: var(--font-pixel);
+      font-size: 16px;
+      color: var(--neon-pink-hot);
+    }
+    .error-sub { margin-top: 8px; color: var(--ink-dim); font-size: 13px; }
+
+    /* ---- 进大厅按钮（自己看自己档案时才显示） ---- */
+    .action-bar {
+      padding: 16px;
+      display: flex;
+      gap: 10px;
+    }
+    .btn-lobby {
+      flex: 1;
+      padding: 14px;
+      background: var(--neon-pink);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-btn);
+      font-family: var(--font-pixel);
+      font-size: 15px;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      display: block;
+      box-shadow: var(--neon-box-pink);
+    }
+    .btn-lobby:hover { opacity: .9; }
+
+    /* ---- 加载骨架 ---- */
+    .loading {
+      text-align: center;
+      padding: 80px 24px;
+      font-family: var(--font-pixel);
+      color: var(--ink-dim);
+      font-size: 14px;
+    }
+    @keyframes blink { 50% { opacity: .3 } }
+    .loading { animation: blink 1.4s ease-in-out infinite; }
+  </style>
+</head>
+<body>
+
+  <nav class="nav">
+    <img class="nav-logo" src="/assets-v2/logo.svg" alt="理想型·加载中" />
+    <a class="nav-back" href="/v2/lobby.html">← 回大厅</a>
+  </nav>
+
+  <div id="main"><div class="loading">加载档案中…</div></div>
+
+  <script type="module">
+    /* ---- 工具 ---- */
+    function esc(s) {
+      return String(s ?? "").replace(/[&<>"']/g, c =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+      );
+    }
+
+    const MODULE_NAMES = {
+      lover: "满分爱人",
+      boss: "满分老板",
+      agent: "满分 Agent",
+      roommate: "满分室友",
+      teacher: "满分老师",
+    };
+
+    function fmtDate(ts) {
+      if (!ts) return "";
+      const d = new Date(ts);
+      return `${d.getMonth() + 1}/${d.getDate()}`;
+    }
+
+    /* ---- 读路由 ---- */
+    const userId = new URLSearchParams(location.search).get("id");
+    const myId    = localStorage.getItem("ideal_userId");
+    const isSelf  = userId && userId === myId;
+
+    /* ---- 渲染档案 ---- */
+    function renderProfile(data) {
+      const $main = document.getElementById("main");
+
+      // 头像：cocktail imageUrl 或 pollinations 生成的小像
+      const avatarUrl = data.cocktail?.imageUrl
+        || (data.avatarSeed
+          ? `https://image.pollinations.ai/prompt/cute+pixel+avatar+${encodeURIComponent(data.avatarSeed)}?width=72&height=72&seed=42&nologo=true&referrer=idealtype`
+          : null);
+
+      const avatarHtml = avatarUrl
+        ? `<img class="avatar" src="${esc(avatarUrl)}" alt="${esc(data.nick)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><div class="avatar-placeholder" style="display:none">🍸</div>`
+        : `<div class="avatar-placeholder">🍸</div>`;
+
+      // 展示柜
+      const showcase = data.showcase || {};
+      const moduleOrder = ["lover", "boss", "agent", "roommate", "teacher"];
+      const filledModules = moduleOrder.filter(m => showcase[m]?.length);
+
+      const showcaseHtml = filledModules.length === 0
+        ? `<div class="empty"><span class="empty-icon">🫙</span>还没玩过，展示柜空着呢</div>`
+        : filledModules.map(mod => {
+            const records = [...showcase[mod]].reverse(); // 最新的在前
+            const cardsHtml = records.map(rec => {
+              const p = rec.profile || {};
+              const portrait = p.imageUrl
+                ? `<img class="record-card-portrait" src="${esc(p.imageUrl)}" alt="${esc(p.archetype)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><div class="record-card-portrait-placeholder" style="display:none">✨</div>`
+                : `<div class="record-card-portrait-placeholder">✨</div>`;
+              const tags = [
+                p.mbti ? `<span class="tag tag-mbti">${esc(p.mbti)}</span>` : "",
+                p.occupation ? `<span class="tag">${esc(p.occupation)}</span>` : "",
+                rec.role === "host" ? `<span class="tag">房主局</span>` : "",
+              ].filter(Boolean).join("");
+              const score = p.avgScore > 0
+                ? `<div class="record-score">场均 ${p.avgScore.toFixed(1)} 分</div>`
+                : "";
+              return `
+                <div class="record-card">
+                  ${portrait}
+                  <span class="record-date">${fmtDate(rec.ts)}</span>
+                  <div class="record-card-body">
+                    <div class="record-archetype">${esc(p.archetype || "神秘原型")}</div>
+                    ${p.title ? `<div class="record-title">${esc(p.title)}</div>` : ""}
+                    ${tags ? `<div class="record-tags">${tags}</div>` : ""}
+                    ${p.summary ? `<div class="record-summary">${esc(p.summary)}</div>` : ""}
+                    ${score}
+                  </div>
+                </div>`;
+            }).join("");
+
+            return `
+              <div class="module-section">
+                <div class="module-label">${esc(MODULE_NAMES[mod] || mod)}</div>
+                <div class="card-row">${cardsHtml}</div>
+              </div>`;
+          }).join("");
+
+      const actionBar = isSelf
+        ? `<div class="action-bar"><a class="btn-lobby" href="/v2/lobby.html">进大厅再玩一局</a></div>`
+        : "";
+
+      $main.innerHTML = `
+        <div class="user-card">
+          ${avatarHtml}
+          <div class="user-info">
+            <div class="user-nick px-title">${esc(data.nick)}</div>
+            ${data.cocktail?.name ? `<div class="user-cocktail">今晚特调：${esc(data.cocktail.name)}</div>` : ""}
+            <div class="user-stats">
+              <div class="stat">
+                <div class="stat-num">${data.playCount ?? 0}</div>
+                <div class="stat-label">上桌次数</div>
+              </div>
+              <div class="stat">
+                <div class="stat-num">${filledModules.length}</div>
+                <div class="stat-label">解锁模组</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="cabinet-head">
+          <span class="cabinet-title">理想型展示柜</span>
+          <span class="cabinet-line"></span>
+        </div>
+
+        ${showcaseHtml}
+        ${actionBar}
+      `;
+
+      document.title = `${data.nick} 的理想型档案`;
+    }
+
+    /* ---- 错误状态 ---- */
+    function renderError(msg) {
+      document.getElementById("main").innerHTML = `
+        <div class="error-wrap">
+          <span class="error-icon">🍺</span>
+          <div class="error-msg">找不到这份档案</div>
+          <div class="error-sub">${esc(msg)}</div>
+          <div style="margin-top:24px">
+            <a href="/v2/lobby.html" style="color:var(--neon-cyan-soft);font-size:14px">← 去大厅开一局</a>
+          </div>
+        </div>`;
+    }
+
+    /* ---- 入口 ---- */
+    if (!userId) {
+      // 没有 ?id= 参数，尝试跳到自己的档案；如果自己也没有，去调酒
+      if (myId) {
+        location.replace("/u.html?id=" + myId);
+      } else {
+        location.replace("/v2/cocktail.html");
+      }
+    } else {
+      fetch(`/api/user/${userId}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.error) renderError(data.error);
+          else renderProfile(data);
+        })
+        .catch(() => renderError("网络错误，稍后再试"));
+    }
+  </script>
+
+</body>
+</html>
