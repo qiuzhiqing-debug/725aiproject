@@ -305,12 +305,18 @@ html, body {
   filter: drop-shadow(0 0 18px rgba(0, 0, 0, 0.6));
 }
 .bartender-tag {
+  /* 名牌加深色底衬（小吊牌），从酒瓶架里衬出来 */
   position: absolute;
   left: 50%;
-  transform: translateX(calc(-50% + 100px));
-  bottom: calc(var(--counter-bottom) + var(--counter-h) + 40px);
+  transform: translateX(calc(-50% + 104px));
+  bottom: calc(var(--counter-bottom) + var(--counter-h) + 34px);
   z-index: 2;
-  font-size: 15px;
+  font-size: 13px;
+  padding: 3px 10px;
+  background: var(--panel-deep);
+  border: var(--stroke-thin) solid var(--neon-cyan);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 0 8px var(--glow-cyan-16), 0 4px 10px rgba(8, 3, 15, 0.5);
   pointer-events: none;
 }
 
@@ -624,6 +630,21 @@ html, body {
   transition: transform 0.15s ease-out;
 }
 .table:hover, .table:active { transform: translate(-50%, -56%) scale(1.06); }
+.table::before {
+  /* 空桌头顶的冷光落地（可点击暗示），有人后让位给暖光 */
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  transform: translate(-50%, -50%);
+  width: calc(var(--tw, 120px) * 1.9);
+  height: calc(var(--tw, 120px) * 1.1);
+  background: radial-gradient(ellipse 50% 42% at 50% 55%,
+    var(--glow-cyan-16), transparent 72%);
+  pointer-events: none;
+  transition: opacity 0.7s;
+}
+.table.lit::before { opacity: 0; }
 .table-sign {
   font-family: var(--font-pixel);
   font-size: 17px;
@@ -642,19 +663,40 @@ html, body {
   border-color: var(--neon-pink);
   box-shadow: var(--neon-box-pink);
 }
-/* 空桌冷光：霓虹管没通电的样子（清晰但发暗），有人/悬停/带路中恢复通电 */
+/* 空桌冷光：低功率通电的青色霓虹（暗一档但一眼可辨），
+   带慢呼吸"点我"节奏；有人/悬停/带路中升到全亮本色 */
 .table:not(.lit):not(:hover):not(.loading) .table-sign {
-  color: var(--ink-dim);
-  text-shadow: none;
-  box-shadow: none;
-  border-color: var(--line-neon);
+  color: var(--neon-cyan-soft);
+  text-shadow: 0 0 5px var(--glow-cyan-40);
+  box-shadow: 0 0 12px var(--glow-cyan-16), inset 0 0 6px var(--glow-cyan-16);
+  border-color: var(--neon-cyan);
+  opacity: 0.85;
+  animation: sign-beckon 3.6s ease-in-out var(--sign-delay, 0s) infinite;
+}
+@keyframes sign-beckon {
+  0%, 100% { filter: brightness(0.88); }
+  50%      { filter: brightness(1.35); }
+}
+/* 空桌桌面：冷光轮廓（青色描边 + 轻雾光），和满桌的暖光区分 */
+.table:not(.lit) .table-top {
+  border-color: rgba(45, 226, 255, 0.45);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.55),
+    0 0 16px var(--glow-cyan-16),
+    inset 0 2px 0 rgba(159, 243, 255, 0.18);
+}
+.table:not(.lit):hover .table-top {
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.55),
+    0 0 30px var(--glow-cyan-40),
+    inset 0 2px 0 rgba(159, 243, 255, 0.3);
 }
 .table-top {
   width: var(--tw, 120px);
   height: calc(var(--tw, 120px) * 0.32);
   border-radius: 50%;
   background:
-    radial-gradient(ellipse at 50% 30%, #3a2417 0%, #2c1810 55%, #1c0e07 100%);
+    radial-gradient(ellipse at 50% 30%, #46301f 0%, #362015 55%, #241209 100%);
   border: 2px solid var(--line-counter);
   box-shadow:
     0 10px 24px rgba(0, 0, 0, 0.55),
@@ -703,9 +745,10 @@ html, body {
 }
 .table-seats {
   font-size: 12px;
-  color: var(--ink-dim);
+  color: var(--ink-mid);
   font-family: var(--font-pixel);
   letter-spacing: 0.1em;
+  text-shadow: 0 0 6px var(--glow-cyan-16), 0 1px 3px rgba(8, 3, 15, 0.9);
   transition: color 0.5s;
 }
 .table.lit .table-seats {
@@ -875,11 +918,13 @@ html, body {
   }
   .rotate-hint { display: inline-flex; }
   .marquee { width: min(300px, 78vw); top: 46px; }
-  .disco-wrap { left: 4%; top: 6px; transform: scale(0.62); transform-origin: top left; }
+  /* disco 球离开屏幕角，整球可见 */
+  .disco-wrap { left: 8%; top: 18px; transform: scale(0.62); transform-origin: top left; }
   .ceiling { height: 150px; }
   .hang-lamp { height: 86px; }
-  .hang-lamp.lamp-l { left: 66%; }
-  .hang-lamp.lamp-r { left: 88%; }
+  /* 竖屏标题几乎横贯全屏：左吊灯收起（左边有 disco 球），右吊灯让出"中"字 */
+  .hang-lamp.lamp-l { display: none; }
+  .hang-lamp.lamp-r { left: 92%; }
   .hang-lamp i::after { width: 130px; height: 170px; }
   .backwall {
     bottom: 47%;
@@ -908,4 +953,8 @@ html, body {
   .solo-seat { left: 58%; }
   .solo-label { font-size: 13px; }
   .quote { font-size: 12px; }
+  /* 桌子竖向脚印收紧：桌牌与相邻桌 0/8 拉开呼吸感 */
+  .table { gap: 4px; }
+  .table-sign { font-size: 15px; padding: 2px 9px; }
+  .table-seats { font-size: 11px; }
 }

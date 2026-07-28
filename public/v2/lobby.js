@@ -77,12 +77,12 @@ const LAYOUT_LANDSCAPE = [
   { n: 6, x: 14, y: 80, s: 126 },
 ];
 const LAYOUT_PORTRAIT = [
-  { n: 1, x: 27, y: 26, s: 86 },
-  { n: 2, x: 74, y: 29, s: 92 },
+  { n: 1, x: 27, y: 24, s: 86 },
+  { n: 2, x: 74, y: 27, s: 92 },
   { n: 3, x: 25, y: 55, s: 96 },
   { n: 4, x: 76, y: 58, s: 100 },
-  { n: 5, x: 27, y: 83, s: 98 },
-  { n: 6, x: 74, y: 86, s: 102 },
+  { n: 5, x: 27, y: 85, s: 98 },
+  { n: 6, x: 74, y: 88, s: 102 },
 ];
 
 (isPortrait ? LAYOUT_PORTRAIT : LAYOUT_LANDSCAPE).forEach(({ n, x, y, s }) => {
@@ -93,6 +93,8 @@ const LAYOUT_PORTRAIT = [
   btn.style.left = x + "%";
   btn.style.top = y + "%";
   btn.style.setProperty("--tw", s + "px");
+  // 桌牌"点我"呼吸错峰，避免 6 张桌同频闪
+  btn.style.setProperty("--sign-delay", (n - 1) * -0.6 + "s");
   btn.innerHTML = `
     <span class="table-sign">${n} 号桌</span>
     <span class="table-top" aria-hidden="true"></span>
