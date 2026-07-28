@@ -34,13 +34,33 @@ const DRINK_OPTIONS = [
   { id: "soft", label: "无酒精", emoji: "🫧" },
 ];
 
+// 调酒身份（/v2/cocktail.html 存的 ideal_cocktail）：跟人走，不让用户重选
+function readCocktail() {
+  try {
+    const c = JSON.parse(localStorage.getItem("ideal_cocktail") || "null");
+    return c && c.name ? c : null;
+  } catch {
+    return null;
+  }
+}
+
+// 杯型 → 最接近的酒杯 emoji（可改，只是默认预选）
+const GLASS_EMOJI = { martini: "🍸", highball: "🍹", rocks: "🥃", coupe: "🥂" };
+
+const PARAMS = new URLSearchParams(location.search);
+
 /* ---------- 本地状态 ---------- */
 const ui = {
   screen: "home", // home | game
   name: localStorage.getItem("mfn_name") || "",
-  emoji: localStorage.getItem("mfn_emoji") || "🍺",
+  emoji:
+    localStorage.getItem("mfn_emoji") ||
+    GLASS_EMOJI[readCocktail()?.glass] ||
+    "🍺",
   drink: localStorage.getItem("mfn_drink") || "beer",
-  code: new URLSearchParams(location.search).get("room") || "",
+  solo: PARAMS.get("solo") === "1",
+  table: /^[1-9]$/.test(PARAMS.get("table") || "") ? PARAMS.get("table") : "",
+  code: PARAMS.get("room") || "",
   state: null, // 服务端下发的房间视图
   slider: 5,
   submitted: false, // 我本轮是否已提交分数/猜分
@@ -106,17 +126,56 @@ function send(obj) {
 // 发送失败时统一提示，方便调用方 `if (!sendOrWarn(x)) { 回滚 }`
 function sendOrWarn(obj) {
   const ok = send(obj);
-  if (!ok) toast("网络断开，请重试");
+  if (!ok) toast("线断了，再点一下");
   return ok;
 }
 
 /* ---------- 连接 ---------- */
 
-async function createRoom() {
-  const res = await fetch("/api/room", { method: "POST" });
+async function createRoom({ solo = false } = {}) {
+  // solo:true 走同一入口，后端支持 1 人开局；后端未就绪时房间照建，开局报错再兜底
+  const res = await fetch("/api/room", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(solo ? { solo: true } : {}),
+  });
   const j = await res.json();
-  if (!j.code) throw new Error(j.error || "建房失败");
+  if (!j.code) throw new Error(j.error || "这会儿桌子不够用，稍等再试");
   return j.code;
+}
+
+/* ---------- 昵称/身份 → KV 档案同步 ----------
+   修复：调酒页建档时用户还没起昵称（档案=「匿名」），且建档请求可能被跳转打断。
+   入座成功后在这里兜底：有档案就更新昵称；没档案（或 token 失效）就现场补建一份。 */
+async function syncNickToProfile() {
+  if (!ui.name || PREVIEW) return;
+  const cocktail = readCocktail();
+  const post = (body) =>
+    fetch("/api/user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  try {
+    const kvId = localStorage.getItem("ideal_userId");
+    const kvToken = localStorage.getItem("ideal_token");
+    if (kvId && kvToken) {
+      const res = await post({ userId: kvId, token: kvToken, nick: ui.name });
+      if (res.ok) return;
+      if (res.status !== 403 && res.status !== 404) return; // 服务端一时不适，下次入座再同步
+    }
+    // 无档案或 token 失效 → 现场补建，把调酒身份一并带上
+    const created = await post({
+      nick: ui.name,
+      cocktail: cocktail
+        ? { name: cocktail.name, glass: cocktail.glass || "" }
+        : undefined,
+    }).then((r) => r.json());
+    if (created.userId && created.token) {
+      localStorage.setItem("ideal_userId", created.userId);
+      localStorage.setItem("ideal_token", created.token);
+    }
+  } catch {}
 }
 
 function connect(code, { silentFail = false } = {}) {
@@ -144,7 +203,7 @@ function connect(code, { silentFail = false } = {}) {
     if (ui.screen === "game") scheduleReconnect();
   };
   ws.onerror = () => {
-    if (!silentFail && ui.screen !== "game") toast("连接失败，检查房间码");
+    if (!silentFail && ui.screen !== "game") toast("这桌没接上线。对一下房间码。");
   };
 }
 
@@ -185,7 +244,7 @@ function reconnectBar() {
 
 function showReconnectBar(retrying = false) {
   const el = reconnectBar();
-  el.textContent = retrying ? "连接断开，正在重连…" : "已断线，点此重连";
+  el.textContent = retrying ? "线断了，我在给你重新接…" : "断线了。点这里回桌。";
   el.classList.toggle("retrying", retrying);
   el.classList.remove("hidden");
 }
@@ -200,25 +259,22 @@ function onMessage(msg) {
     localStorage.setItem("mfn_name", ui.name);
     localStorage.setItem("mfn_emoji", ui.emoji);
     localStorage.setItem("mfn_drink", ui.drink);
-    // 有 KV 档案时同步昵称（静默，不阻塞）
-    const kvId = localStorage.getItem("ideal_userId");
-    const kvToken = localStorage.getItem("ideal_token");
-    if (kvId && kvToken && ui.name) {
-      fetch("/api/user", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: kvId, token: kvToken, nick: ui.name }),
-      }).catch(() => {});
-    }
+    // 入座成功 → 静默同步昵称/身份到 KV 档案（不阻塞，失败下次再补）
+    syncNickToProfile();
     ui.screen = "game";
-    if (msg.reconnected) toast("已回到座位");
+    if (msg.reconnected) toast("回来了？位子给你留着。");
     const u = new URL(location.href);
     u.searchParams.set("room", ui.code);
     history.replaceState(null, "", u);
     return;
   }
   if (msg.type === "error") {
-    toast(msg.msg);
+    // solo 后端未就绪时的兜底：别硬卡，提示正常开桌
+    if (ui.solo && /至少 ?2 ?人/.test(msg.msg || "")) {
+      toast("单人桌还在备货。先按这桌叫个朋友，或过会儿再来。");
+    } else {
+      toast(msg.msg);
+    }
     if (msg.code === "name_taken" || msg.code === "game_started") {
       ui.screen = "home";
       render();
@@ -229,7 +285,7 @@ function onMessage(msg) {
     localStorage.removeItem("mfn_token_" + ui.code);
     ui.screen = "home";
     ui.state = null;
-    toast("你被房主请下桌了");
+    toast("房主请你先下桌了。门口坐会儿。");
     render();
     return;
   }
@@ -266,6 +322,9 @@ function onMessage(msg) {
         if (msg.state.phase === "drinking") sound.chug();
         ui.ahaStage = 0;
         ui.ahaSaved = false;
+        ui.ahaArtUrl = null; // 立绘确认可用后才写展示柜
+        clearTimeout(ui.ahaSaveTimer);
+        ui.ahaSaveTimer = null;
         ui.posterUrl = null;
         ui.stickDoneSent = false;
         if (msg.state.phase === "picking") {
@@ -321,7 +380,7 @@ function render() {
   } else {
     const s = ui.state;
     if (!s) {
-      $app.innerHTML = `<div class="boot glass">连接中…</div>`;
+      $app.innerHTML = `<div class="boot glass">给你找座位…</div>`;
     } else {
       switch (s.phase) {
         case "lobby": renderLobby(s); break;
@@ -330,6 +389,7 @@ function render() {
         case "answering": renderAnswering(s); break;
         case "reveal": renderReveal(s); break;
         case "drinking": renderDrinking(s); break;
+        case "king": renderKing(s); break;
         case "aha": renderAha(s, s.aha, false); break;
         case "finished": renderFinished(s); break;
       }
@@ -352,7 +412,7 @@ function render() {
 
 function header(s, sub) {
   return `<div class="row">
-    <div class="grow"><div class="brand-title"><img class="brand-mark" src="/favicon.svg" alt="" width="42" height="42" /><h1 class="neon">理想型<span class="amber">·</span>加载中</h1></div>
+    <div class="grow"><div class="brand-title"><span class="brand-mark" aria-hidden="true">K</span><h1 class="neon">理想型<span class="amber">·</span>加载中</h1></div>
     ${sub ? `<div class="dim">${sub}</div>` : ""}</div>
     <button class="btn ghost small" id="sndBtn">${sound.enabled ? "🔊" : "🔇"}</button>
   </div>`;
@@ -368,27 +428,48 @@ function bindSound() {
 
 /* --- 首页 --- */
 function renderHome() {
+  const cocktail = readCocktail();
+  const deepJoin = !ui.solo && /^\d{4}$/.test(ui.code); // ?room 深链：入座是唯一主按钮
+  const joinLabel = ui.table ? `在 ${esc(ui.table)} 号桌入座` : `在 ${esc(ui.code)} 桌入座`;
+  const sub = ui.solo ? "一个人喝，也算一桌" : "打分，猜分，罚酒";
   $app.innerHTML = `
-    ${header(null, "0-10 打分猜分 · 谁最懂 TA 谁免罚")}
+    ${header(null, sub)}
     <div class="glass stack">
-      <label class="dim">你的酒桌昵称</label>
+      ${cocktail ? `
+      <div class="cocktail-chip">
+        <span class="ck-glass">${GLASS_EMOJI[cocktail.glass] || "🍸"}</span>
+        <div class="grow"><b>你的今晚特调：${esc(cocktail.name)}</b>
+        <span>这杯跟着你上桌。杯子我按它配好了，不合手就换。</span></div>
+      </div>` : ""}
+      <label class="dim">怎么称呼你</label>
       <input type="text" id="nameIn" maxlength="12" placeholder="比如：嘉欣" value="${esc(ui.name)}" />
-      <label class="dim">选个酒杯</label>
+      <label class="dim">${cocktail ? "酒杯（按你的特调配的）" : "拿哪只杯子"}</label>
       <div class="emoji-grid" id="emojiGrid">
         ${EMOJIS.map((e) => `<button data-e="${e}" class="${e === ui.emoji ? "sel" : ""}">${e}</button>`).join("")}
       </div>
-      <label class="dim">今晚罚酒喝什么</label>
+      <label class="dim">罚酒喝什么，先说好</label>
       <div class="emoji-grid drink-choice-grid" id="drinkGrid">
         ${DRINK_OPTIONS.map((d) => `<button data-drink="${d.id}" class="${d.id === ui.drink ? "sel" : ""}" title="${d.label}">${d.emoji}<small>${d.label}</small></button>`).join("")}
       </div>
     </div>
+    ${ui.solo ? `
     <div class="glass stack">
-      <button class="btn" id="createBtn">🏮 开一桌（当房主）</button>
+      <div class="dim">一个人？也行。吧台这个位置视野最好，我陪你把流程走完。</div>
+      <button class="btn" id="createBtn">开一桌，一个人喝</button>
+    </div>` : deepJoin ? `
+    <div class="glass stack center">
+      <div class="dim">朋友把你带到这桌了。坐下就开始。</div>
+      <button class="btn" id="joinBtn">${joinLabel}</button>
+      <button class="link-btn" id="createBtn">这桌不合适？另开一桌</button>
+    </div>` : `
+    <div class="glass stack">
+      <button class="btn" id="createBtn">开一桌</button>
+      <div class="dim center">桌子我给你留，人你自己叫。</div>
       <div class="row">
         <input type="text" id="codeIn" inputmode="numeric" maxlength="4" placeholder="4 位房间码" value="${esc(ui.code)}" class="grow" />
         <button class="btn ghost small" id="joinBtn" style="padding:14px 18px">入座</button>
       </div>
-    </div>`;
+    </div>`}`;
   const nameIn = document.getElementById("nameIn");
   nameIn.addEventListener("input", () => (ui.name = nameIn.value.trim()));
   document.getElementById("emojiGrid").addEventListener("click", (ev) => {
@@ -405,22 +486,22 @@ function renderHome() {
   });
   const go = async (create) => {
     sound.unlock();
-    if (!ui.name) return toast("先起个昵称");
+    if (!ui.name) return toast("先留个称呼，我好记住你。");
     try {
-      let code = document.getElementById("codeIn").value.trim();
-      if (create) code = await createRoom();
+      let code = deepJoin ? ui.code : (document.getElementById("codeIn")?.value.trim() || ui.code);
+      if (create) code = await createRoom({ solo: ui.solo });
       else {
-        if (!/^\d{4}$/.test(code)) return toast("房间码是 4 位数字");
+        if (!/^\d{4}$/.test(code)) return toast("房间码是 4 位数字。");
         const chk = await fetch("/api/room/" + code).then((r) => r.json()).catch(() => null);
-        if (!chk?.exists) return toast("这桌还没开，检查房间码");
+        if (!chk?.exists) return toast("这桌还没开。再对一眼房间码。");
       }
       connect(code);
     } catch (e) {
       toast(e.message);
     }
   };
-  document.getElementById("createBtn").addEventListener("click", () => go(true));
-  document.getElementById("joinBtn").addEventListener("click", () => go(false));
+  document.getElementById("createBtn")?.addEventListener("click", () => go(true));
+  document.getElementById("joinBtn")?.addEventListener("click", () => go(false));
   bindSound();
 }
 
@@ -429,21 +510,30 @@ function renderLobby(s) {
   const me = s.you;
   const invite = `${location.origin}/?room=${s.code}`;
   const decks = renderLobby._decks;
+  const cocktail = readCocktail();
+  const soloTable = ui.solo && s.players.length === 1;
+  const canStart = decks && (s.players.length >= 2 || soloTable);
   $app.innerHTML = `
-    ${header(s, "把房间码甩到群里，人齐开局")}
+    ${header(s, soloTable ? "一个人的桌，我看着" : "桌子留好了，把人叫来吧")}
     <div class="glass center stack">
       <div class="roomcode">${s.code}</div>
       <div class="qr-wrap"><canvas id="qrCv" width="180" height="180"></canvas></div>
       <button class="btn ghost small" id="copyBtn">复制邀请链接</button>
+      ${cocktail ? `
+      <div class="cocktail-chip">
+        <span class="ck-glass">${GLASS_EMOJI[cocktail.glass] || "🍸"}</span>
+        <div class="grow"><b>今晚特调：${esc(cocktail.name)}</b>
+        <span>这是你的身份，端稳。</span></div>
+      </div>` : ""}
     </div>
     <div class="glass stack">
-      <h2>酒桌上（${s.players.length}人）</h2>
+      <h2>这桌坐了 ${s.players.length} 个人</h2>
       <div class="players">${s.players.map((p) => `
         <div class="player ${p.connected ? "" : "offline"}">
           <span>${esc(p.emoji)}</span><b>${esc(p.name)}</b>
-          <span class="dim">${esc(p.drink?.emoji || "🍺")} ${esc(p.drink?.label || "啤酒")}</span>
+          <span class="dim">${esc(p.drink?.emoji || "🍺")} ${esc(p.drink?.label || "啤酒")}${cocktail && p.name === me.name ? ` · ${esc(cocktail.name)}` : ""}</span>
           ${p.isHost ? `<span class="tag">房主</span>` : ""}
-          ${me.isHost && !p.isHost ? `<button class="btn ghost small kickBtn" data-t="${esc(p.token)}">踢</button>` : ""}
+          ${me.isHost && !p.isHost ? `<button class="btn ghost small kickBtn" data-t="${esc(p.token)}">请离</button>` : ""}
         </div>`).join("")}
       </div>
     </div>
@@ -460,19 +550,21 @@ function renderLobby(s) {
         <select id="deckSel" ${decks ? "" : "disabled"}>${decks
           ? Object.entries(decks).map(([k, d]) =>
               `<option value="${k}" ${k === s.settings.deck ? "selected" : ""}>${d.name}</option>`).join("")
-          : `<option>锅底加载中…</option>`}
+          : `<option>锅底还在灶上…</option>`}
         </select>
       </div>
-      <button class="btn" id="startBtn" ${s.players.length < 2 || !decks ? "disabled" : ""}>🍻 开局（≥2人）</button>
-    </div>` : `<div class="glass center dim">等房主开局…锅底：${esc(s.settings.deckName)}</div>`}`;
+      <button class="btn" id="startBtn" ${canStart ? "" : "disabled"}>${soloTable ? "开局，一个人喝" : "开局"}</button>
+      ${!canStart && decks && !ui.solo ? `<div class="dim center">凑够 2 个人，酒才有味道。</div>` : ""}
+    </div>` : `<div class="glass center dim">等房主开局。锅底：${esc(s.settings.deckName)}</div>`}`;
   const qrCanvas = document.getElementById("qrCv");
   loadQr().then(({ drawQR }) => {
     if (qrCanvas?.isConnected) {
-      drawQR(qrCanvas.getContext("2d"), invite, 0, 0, 180, { light: "#ffffff", dark: "#241333" });
+      const qrDark = (getComputedStyle(document.documentElement).getPropertyValue("--bar-bg-deep") || "").trim() || "#120a1c";
+      drawQR(qrCanvas.getContext("2d"), invite, 0, 0, 180, { light: "#ffffff", dark: qrDark });
     }
   }).catch(() => qrCanvas?.closest(".qr-wrap")?.classList.add("hidden"));
   document.getElementById("copyBtn").addEventListener("click", async () => {
-    try { await navigator.clipboard.writeText(invite); toast("链接已复制"); }
+    try { await navigator.clipboard.writeText(invite); toast("链接给你了，去叫人。"); }
     catch { toast(invite); }
   });
   if (me.isHost && !decks) {
@@ -508,21 +600,21 @@ function renderPicking(s) {
   const cur = s.current;
   const iShake = cur.youAreShaker;
   $app.innerHTML = `
-    ${header(s, "抽酒签 · 看看今晚谁上桌")}
+    ${header(s, "摇签。看今晚谁坐主位")}
     <div class="glass stick-stage">
       <div class="stick-cup" id="cup">
         <div class="stick s1"></div><div class="stick s2"></div><div class="stick s3"></div>
       </div>
       ${cur.drawn ? `
-        <div class="stick-out">🎋 今晚主角：${esc(cur.protagonist.emoji)} ${esc(cur.protagonist.name)}</div>
-        ${iShake ? `<button class="btn" id="doneBtn">就是 TA，上桌！</button>` : `<div class="dim">等 ${esc(cur.shaker)} 确认…</div>`}
+        <div class="stick-out">今晚主角：${esc(cur.protagonist.emoji)} ${esc(cur.protagonist.name)}</div>
+        ${iShake ? `<button class="btn" id="doneBtn">就是 TA，上桌</button>` : `<div class="dim">等 ${esc(cur.shaker)} 确认。</div>`}
       ` : iShake ? `
         <div class="progress" id="chargeBar">摇动进度 ${Math.round(ui.shakeCharge * 100)}%</div>
         <div class="progress-track"><div class="progress-fill" id="chargeFill" style="width:${Math.round(ui.shakeCharge * 100)}%"></div></div>
-        ${ui.shakeMode === null ? `<button class="btn" id="shakeBtn">📳 摇一摇抽签</button>` : ""}
-        ${ui.shakeMode === "motion" ? `<div class="dim center">使劲摇手机！签筒晃起来！</div>` : ""}
-        ${ui.shakeMode === "tap" ? `<button class="btn" id="tapBtn">👆 点按摇签（连点！）</button>` : ""}
-      ` : `<div class="dim center">${esc(cur.shaker)} 正在摇签，屏住呼吸…</div>`}
+        ${ui.shakeMode === null ? `<button class="btn" id="shakeBtn">摇一摇，抽签</button>` : ""}
+        ${ui.shakeMode === "motion" ? `<div class="dim center">使劲摇。签筒响了，人就快出来了。</div>` : ""}
+        ${ui.shakeMode === "tap" ? `<button class="btn" id="tapBtn">连点摇签</button>` : ""}
+      ` : `<div class="dim center">${esc(cur.shaker)} 在摇签。先把杯子端稳。</div>`}
     </div>`;
   bindSound();
   if (cur.drawn) {
@@ -559,7 +651,7 @@ function renderPicking(s) {
     });
     ui.shakeMode = ok ? "motion" : "tap";
     render();
-    if (!ok) toast("没摇动权限/传感器，改用点按摇签");
+    if (!ok) toast("你这手机摇不动签，改用连点。");
   });
 
   // 降级：点按/连点驱动同一套动画与出签
@@ -623,12 +715,12 @@ function renderSetup(s) {
   $app.innerHTML = `
     ${header(s, `今晚主角：${esc(p.emoji)} ${esc(p.name)}`)}
     <div class="glass stack center">
-      <h2>${cur.youAreProtagonist ? "你的理想型是？" : `等 ${esc(p.name)} 选理想型…`}</h2>
+      <h2>${cur.youAreProtagonist ? "你的理想型是？" : `等 ${esc(p.name)} 选理想型。`}</h2>
       ${cur.youAreProtagonist ? `
-        <button class="btn" data-g="m">满分男 🤵</button>
-        <button class="btn" data-g="f">满分女 💃</button>
-        <button class="btn ghost" data-g="n">都行 🌈</button>
-      ` : `<div class="dim">马上开拷</div>`}
+        <button class="btn" data-g="m">满分男</button>
+        <button class="btn" data-g="f">满分女</button>
+        <button class="btn ghost" data-g="n">都行</button>
+      ` : `<div class="dim">选完就开问。你先想想怎么猜。</div>`}
     </div>`;
   bindSound();
   $app.querySelectorAll("[data-g]").forEach((b) =>
@@ -648,14 +740,14 @@ function renderAnswering(s) {
     </div>
     <div class="glass stack center">
       ${ui.submitted ? `
-        <h2>已提交 ✅</h2>
+        <h2>你的分我收下了</h2>
         <div class="wait-list">已交卷：${waiting.map(esc).join("、") || "—"}${cur.submitted.protagonist ? "，主角已打分" : "，等主角打分"}</div>
       ` : `
-        <div class="dim">${me ? "你的真实打分（10=仍然满分，0=直接火化）" : `盲猜 ${esc(cur.protagonist.name)} 会打几分`}</div>
+        <div class="dim">${me ? "你的真实打分（10=仍然满分，0=直接火化）" : `盲猜 ${esc(cur.protagonist.name)} 会打几分。差 2 分以上，罚酒。`}</div>
         <div class="score-val" id="sv">${ui.slider}</div>
         <input type="range" id="slider" min="0" max="10" step="1" value="${ui.slider}" aria-label="打分" />
         <div class="slider-ticks">${Array.from({ length: 11 }, (_, i) => `<span>${i}</span>`).join("")}</div>
-        <button class="btn" id="submitBtn">${me ? "🔒 锁定我的分" : "🎯 就猜这个分"}</button>
+        <button class="btn" id="submitBtn">${me ? "锁定我的分" : "就猜这个分"}</button>
       `}
     </div>`;
   bindSound();
@@ -703,21 +795,21 @@ function renderReveal(s) {
     <div class="glass center stack">
       <div class="dim">${esc(rv.question)}</div>
       <div class="big-score ${fresh ? "seq-score" : ""}" ${fresh ? `style="--d:${scoreDelay.toFixed(2)}s"` : ""}>${rv.score}<span class="unit">分</span></div>
-      ${rv.comment ? `<div class="detail-item">💬 主角补刀：${esc(rv.comment)}</div>` : ""}
+      ${rv.comment ? `<div class="detail-item">主角补刀：${esc(rv.comment)}</div>` : ""}
     </div>
     <div class="glass stack">
       ${rv.results.map((x, i) => `
         <div class="reveal-row ${fresh ? "seq" : (x.drink ? "drink" : "") + " " + (x.exact ? "exact" : "")}" data-i="${i}" ${rowD(i)}>
           <span>${esc(x.emoji)}</span><b>${esc(x.name)}</b>
           ${x.exact ? `<span class="badge exact ${fresh ? "seq-pop" : ""}" ${badgeD(i)}>懂TA+1</span>` : ""}
-          ${x.drink ? `<span class="badge drink ${fresh ? "seq-pop" : ""}" ${badgeD(i)}>罚酒 🍺</span>` : ""}
+          ${x.drink ? `<span class="badge drink ${fresh ? "seq-pop" : ""}" ${badgeD(i)}>罚酒</span>` : ""}
           ${x.assigned ? `<span class="dim">指定 ${esc(x.assigned)} 喝</span>` : ""}
           <span class="g">${x.guess}</span>
         </div>`).join("")}
     </div>
     ${canAssign ? `
     <div class="glass stack">
-      <div class="dim">精确命中！指定一人喝：</div>
+      <div class="dim">分毫不差。这杯你有权转赠，指一个人替你喝：</div>
       <div class="row" style="flex-wrap:wrap">
         ${s.players.filter((p) => p.name !== me.name).map((p) =>
           `<button class="btn ghost small assignBtn" data-n="${esc(p.name)}">${esc(p.emoji)}${esc(p.name)}</button>`).join("")}
@@ -728,7 +820,7 @@ function renderReveal(s) {
       <input type="text" id="cmtIn" maxlength="100" placeholder="补刀一句（可选）" class="grow" value="${esc(ui.commentDraft)}" />
       <button class="btn ghost small" id="cmtBtn">发</button>
     </div>` : ""}
-    ${me.isHost ? `<button class="btn" id="nextBtn">${rv.results.some((x) => x.drink || x.assigned) ? "🥂 进入罚酒仪式" : (cur.roundIndex >= cur.totalRounds ? "🎴 看 TA 的理想型" : "➡️ 下一题")}</button>` : `<div class="dim center">等房主进下一步…</div>`}`;
+    ${me.isHost ? `<button class="btn" id="nextBtn">${rv.results.some((x) => x.drink || x.assigned) ? "进入罚酒仪式" : (cur.roundIndex >= cur.totalRounds ? "看 TA 的理想型" : "下一题")}</button>` : `<div class="dim center">等房主进下一步。</div>`}`;
   bindSound();
   if (fresh) {
     // 罚酒判定时刻：行底色/抖动/飘字/高光，一次性播放
@@ -776,26 +868,81 @@ function renderDrinking(s) {
     ${header(s, `罚酒仪式 · 第 ${cur.roundIndex}/${cur.totalRounds} 轮`)}
     <section class="chug-stage">
       <div class="chug-title">CHUG<br>CHUG<br>CHUG</div>
-      <div class="chug-beat">举杯 · 干杯！</div>
+      <div class="chug-beat">举杯。干了。</div>
       <div class="drinkers-grid">
         ${ceremony.drinkers.map((item) => `
           <div class="drinker-card ${item.done ? "done" : ""}">
             <div class="drink-cup">${esc(item.drink?.emoji || "🍺")}</div>
-            <div><b>${esc(item.emoji)} ${esc(item.name)}</b><div class="dim">${esc(item.drink?.label || "啤酒")} × ${item.cups} 杯</div></div>
+            <div><b>${esc(item.emoji)} ${esc(item.name)}</b><div class="dim">${esc(item.drink?.label || "啤酒")} × ${item.cups} 杯 · 差 2 分就是这个下场</div></div>
             <div class="drink-progress" style="--drink-progress:${item.done ? 100 : 18}%"></div>
           </div>`).join("")}
       </div>
-      <div class="center dim">已完成 ${ceremony.completed}/${ceremony.total}${ceremony.skipped ? " · 房主已跳过" : ""}</div>
+      <div class="center dim">已完成 ${ceremony.completed}/${ceremony.total}${ceremony.skipped ? " · 房主发话，这轮免了" : ""}</div>
       <div class="chug-actions">
-        ${ceremony.canConfirm ? `<button class="btn" id="drinkDoneBtn">我喝完了 ✓</button>` : ""}
-        ${s.you.isHost && !finished ? `<button class="btn ghost" id="skipDrinkBtn">跳过仪式</button>` : ""}
+        ${ceremony.canConfirm ? `<button class="btn" id="drinkDoneBtn">我喝完了</button>` : ""}
+        ${s.you.isHost && !finished ? `<button class="btn ghost" id="skipDrinkBtn">这轮我请，跳过</button>` : ""}
         ${s.you.isHost && finished ? `<button class="btn" id="nextBtn">${cur.roundIndex >= cur.totalRounds ? "看 TA 的理想型" : "下一题"}</button>` : ""}
       </div>
-      ${!s.you.isHost && !ceremony.canConfirm && !finished ? `<div class="center dim">等喝酒的人干杯…</div>` : ""}
+      ${!s.you.isHost && !ceremony.canConfirm && !finished ? `<div class="center dim">等他们把杯子放下。</div>` : ""}
     </section>`;
   bindSound();
   document.getElementById("drinkDoneBtn")?.addEventListener("click", () => sendOrWarn({ type: "drink_done" }));
   document.getElementById("skipDrinkBtn")?.addEventListener("click", () => sendOrWarn({ type: "skip_drinking" }));
+  document.getElementById("nextBtn")?.addEventListener("click", () => sendOrWarn({ type: "next" }));
+}
+
+/* --- 国王时刻（全员读心命中触发）：精绘扑克牌 --- */
+function renderKing(s) {
+  const k = s.king || {};
+  const kingP = k.king || { name: "？", emoji: "🍺" };
+  const iAmKing = !!k.youAreKing;
+  const order = k.order;
+  $app.innerHTML = `
+    ${header(s, "国王时刻")}
+    <div class="glass king-stage">
+      <div class="king-card">
+        <div class="kc-inner">
+          <div class="kc-watermark">K</div>
+          <div class="kc-corner tl"><b>K</b><span>♥</span></div>
+          <div class="kc-corner br"><b>K</b><span>♥</span></div>
+          <div class="kc-center">
+            <div class="kc-crown"></div>
+            <div class="kc-king-emoji">${esc(kingP.emoji || "🍺")}</div>
+            <div class="kc-king-name">${esc(kingP.name)}</div>
+            <div class="kc-sub">全桌读心命中 · 今晚由 TA 下旨</div>
+          </div>
+        </div>
+      </div>
+      ${order ? `
+        <div class="king-decree">${esc(order.text)}</div>
+        ${s.you.isHost
+          ? `<button class="btn" id="nextBtn">旨意办完，下一轮</button>`
+          : `<div class="dim center">照旨意办。办不到的，自罚一杯。</div>`}
+      ` : iAmKing ? `
+        <div class="dim center">你是国王。三道旨意挑一道，或者自己写。</div>
+        <div class="king-options">
+          ${(k.options || []).map((opt, i) =>
+            `<button class="king-option" data-idx="${i}">${esc(opt.text)}</button>`).join("")}
+        </div>
+        <div class="row" style="width:100%">
+          <input type="text" id="customIn" maxlength="60" placeholder="自己写道旨意（60 字内）" class="grow" />
+          <button class="btn ghost small" id="customBtn">下旨</button>
+        </div>
+      ` : `
+        <div class="dim center">整桌人把 ${esc(kingP.name)} 的心思猜了个正着。王冠归 TA，圣旨在写，谁都跑不掉。</div>
+      `}
+    </div>`;
+  bindSound();
+  $app.querySelectorAll(".king-option").forEach((b) =>
+    b.addEventListener("click", () => {
+      sound.unlock();
+      sendOrWarn({ type: "king_pick", idx: Number(b.dataset.idx) });
+    }));
+  document.getElementById("customBtn")?.addEventListener("click", () => {
+    const text = document.getElementById("customIn")?.value.trim();
+    if (!text) return toast("旨意还空着。");
+    sendOrWarn({ type: "king_custom", text });
+  });
   document.getElementById("nextBtn")?.addEventListener("click", () => sendOrWarn({ type: "next" }));
 }
 
@@ -813,8 +960,10 @@ function safeProfileColor(value, fallback) {
   return /^#[0-9a-f]{6}$/i.test(String(value || "")) ? value : fallback;
 }
 
-// 主角本人第一次看到自己的 aha 档案时，静默写入 KV 用户记录
-async function maybeSaveAhaProfile(s, aha, profile) {
+// 主角本人第一次看到自己的 aha 档案时，静默写入 KV 用户记录。
+// 展示柜修复：等立绘真实加载成功后再写（confirmedUrl=实际加载成功的 URL），
+// 避免展示柜里存一堆打不开的图；立绘 10s 还没消息就按默认 URL 兜底写入。
+async function maybeSaveAhaProfile(s, aha, profile, confirmedUrl) {
   if (ui.ahaSaved) return;
   if (!s.current?.youAreProtagonist) return;
   const userId = localStorage.getItem("ideal_userId");
@@ -839,7 +988,7 @@ async function maybeSaveAhaProfile(s, aha, profile) {
           mbti: card.mbti || "",
           occupation: card.occupation || "",
           avgScore: aha.stats?.avgScore ?? 0,
-          imageUrl: portrait.imageUrl || "",
+          imageUrl: confirmedUrl || portrait.imageUrl || aha.imageUrl || "",
           summary: rel.coreText || "",
         },
       }),
@@ -861,12 +1010,22 @@ function renderAha(s, aha, isFinal) {
     return;
   }
   const profile = resolveAhaProfile(aha);
-  maybeSaveAhaProfile(s, aha, profile); // 静默写 KV，不等 await
+  // 展示柜写入时机：立绘确认加载成功（ui.ahaArtUrl 有值）后带确认 URL 写；
+  // 若图迟迟不来，10s 兜底按默认 URL 写（异步生成场景不丢记录）。
+  if (ui.ahaArtUrl != null) {
+    maybeSaveAhaProfile(s, aha, profile, ui.ahaArtUrl); // 静默写 KV，不等 await
+  } else if (!ui.ahaSaveTimer && !ui.ahaSaved && s.current?.youAreProtagonist) {
+    ui.ahaSaveTimer = setTimeout(() => {
+      if (!ui.ahaSaved && ["aha", "finished"].includes(ui.state?.phase)) {
+        maybeSaveAhaProfile(s, aha, profile, "");
+      }
+    }, 10000);
+  }
   const card = profile.matchCard;
   const portrait = profile.portrait;
   const relationship = profile.relationship;
-  const primary = safeProfileColor(portrait.palette?.primary, "#075BFF");
-  const accent = safeProfileColor(portrait.palette?.accent, "#00C8FF");
+  const primary = safeProfileColor(portrait.palette?.primary, "#ff2d78");
+  const accent = safeProfileColor(portrait.palette?.accent, "#2de2ff");
   const stages = ["理想型亮相", "相亲人物档案", "相处细节"];
   const stage = Math.max(0, Math.min(2, ui.ahaStage || 0));
   const lt = aha.light || { burst: 0, off: 0, voted: 0, total: 0, mine: null, burstNames: [], offNames: [] };
@@ -884,7 +1043,8 @@ function renderAha(s, aha, isFinal) {
       </div>
       <div class="caption">
         <b class="ideal-name">${esc(card.archetype)}</b>
-        <div class="ideal-meta"><span>${esc(card.mbti)}</span><span>${esc(card.presentation)}</span><span>${esc(relationship.chemistry)}</span></div>
+        <div class="ideal-meta">${[card.mbti, card.presentation, relationship.chemistry]
+          .filter(Boolean).map((m) => `<span>${esc(m)}</span>`).join("")}</div>
         <div class="dim">${esc(aha.title)} · ${esc(aha.titleSub)}</div>
       </div>
     </div>` : stage === 1 ? `
@@ -923,19 +1083,19 @@ function renderAha(s, aha, isFinal) {
           <button class="btn light-burst grow ${mine === "burst" ? "selected" : ""}" id="burstBtn">${mine === "burst" ? "已爆灯" : "爆灯"}</button>
           <button class="btn light-off grow ${mine === "off" ? "selected" : ""}" id="offBtn">${mine === "off" ? "已灭灯" : "灭灯"}</button>
         </div>
-        <div class="dim">投票可改，最后一票计入分享海报</div>
+        <div class="dim">灯可以改，最后一票记进海报。</div>
       ` : s.current?.youAreProtagonist && !isFinal
-          ? `<div class="dim">全场正在为你的理想型亮灯…</div>`
+          ? `<div class="dim">全场在给你的理想型亮灯。别紧张，灯不咬人。</div>`
           : lt.burstNames?.length
             ? `<div class="dim">爆灯的人：${lt.burstNames.map(esc).join("、")}</div>`
             : ""}
     </div>
     ${ui.posterUrl
-      ? `<img class="poster-img" src="${ui.posterUrl}" alt="理想型海报" /><div class="dim center">长按图片保存 / 转发</div>`
-      : `<button class="btn ghost" id="posterBtn" ${ui.posterBusy ? "disabled" : ""}>${ui.posterBusy ? "海报合成中…" : "生成海报"}</button>`}
+      ? `<img class="poster-img" src="${ui.posterUrl}" alt="理想型海报" /><div class="dim center">长按保存。扫码的人直接进这桌。</div>`
+      : `<button class="btn ghost" id="posterBtn" ${ui.posterBusy ? "disabled" : ""}>${ui.posterBusy ? "海报在暗房里洗…" : "生成海报"}</button>`}
     ${!isFinal ? (me.isHost
       ? `<button class="btn" id="nextBtn">${s.players.some((p) => !p.done) ? "下一位主角" : "收局看总榜"}</button>`
-      : `<div class="dim center">等房主抽下一位…</div>`) : ""}`;
+      : `<div class="dim center">等房主抽下一位。</div>`) : ""}`;
   bindSound();
 
   const setStage = (next) => {
@@ -961,6 +1121,11 @@ function renderAha(s, aha, isFinal) {
     const artLoaded = () => {
       clearTimeout(fallbackTimer);
       artWrap?.classList.add("loaded");
+      // 立绘确认可用 → 用实际加载成功的 URL 写展示柜（含 fallback 场景）
+      ui.ahaArtUrl = artImg.currentSrc || artImg.src || "";
+      clearTimeout(ui.ahaSaveTimer);
+      ui.ahaSaveTimer = null;
+      maybeSaveAhaProfile(s, aha, profile, ui.ahaArtUrl);
     };
     const artFailed = () => {
       if (!triedFallback && portrait.fallbackUrl && artImg.src !== new URL(portrait.fallbackUrl, location.href).href) {
@@ -970,6 +1135,11 @@ function renderAha(s, aha, isFinal) {
       }
       artWrap?.classList.add("failed");
       artImg.remove();
+      // 图彻底没来：记录照写（不带图），展示柜显示原型占位而不是坏链
+      ui.ahaArtUrl = "";
+      clearTimeout(ui.ahaSaveTimer);
+      ui.ahaSaveTimer = null;
+      maybeSaveAhaProfile(s, aha, profile, "");
     };
     if (portrait.fallbackUrl) {
       fallbackTimer = setTimeout(() => {
@@ -992,7 +1162,7 @@ function renderAha(s, aha, isFinal) {
       const { renderPoster } = await loadPoster();
       ui.posterUrl = await renderPoster({ ...aha, profile }, `${location.origin}/?room=${s.code}`);
     } catch (e) {
-      toast("海报生成失败：" + e.message);
+      toast("海报没洗出来，再试一次。（" + e.message + "）");
     }
     ui.posterBusy = false;
     render();
@@ -1020,7 +1190,7 @@ function renderFinished(s) {
   if (renderFinished._idx == null) renderFinished._idx = 0;
   const list = s.ahaHistory || [];
   if (!list.length) {
-    $app.innerHTML = `${header(s)}<div class="glass center stack"><h2>散场了 🌙</h2>
+    $app.innerHTML = `${header(s)}<div class="glass center stack"><h2>散场。夜还长。</h2>
       <button class="btn" onclick="location.href='/'">再开一桌</button></div>`;
     bindSound();
     return;
@@ -1036,7 +1206,7 @@ function renderFinished(s) {
   $app.appendChild(bar);
   const again = document.createElement("button");
   again.className = "btn";
-  again.textContent = "🌙 散场，再开一桌";
+  again.textContent = "散场，再开一桌";
   again.onclick = () => location.href = "/";
   $app.appendChild(again);
   document.getElementById("prevAha").onclick = () => { renderFinished._idx = idx - 1; ui.posterUrl = null; ui.ahaStage = 0; render(); };
@@ -1061,7 +1231,7 @@ function renderFinished(s) {
     <button id="chatFab" class="chat-fab hidden">💬<span id="chatBadge" class="chat-badge hidden"></span></button>
     <div id="chatMask" class="chat-mask hidden"></div>
     <aside id="chatDrawer" class="chat-drawer">
-      <div class="chat-head"><b>🍻 桌边闲聊</b><button id="chatClose" class="chat-close">✕</button></div>
+      <div class="chat-head"><b>桌边闲聊</b><button id="chatClose" class="chat-close">✕</button></div>
       <div id="chatMsgs" class="chat-msgs"></div>
       <div class="chat-input">
         <input id="chatIn" type="text" maxlength="120" placeholder="唠一句…" />
@@ -1075,7 +1245,7 @@ function renderFinished(s) {
     const payload = danmakuPayload(text);
     if (!payload) return;
     const now = Date.now();
-    if (now - ui.lastDmSent < 3000) return toast("弹幕太密了，歇 3 秒再发");
+    if (now - ui.lastDmSent < 3000) return toast("弹幕太密。歇三秒。");
     ui.lastDmSent = now;
     sound.unlock();
     send(payload);
@@ -1244,7 +1414,7 @@ function updateOverlays() {
   const s = ui.state;
   const inGame = ui.screen === "game" && !!s;
   document.getElementById("chatFab")?.classList.toggle("hidden", !inGame);
-  const barOn = inGame && ["answering", "reveal", "drinking", "aha", "finished"].includes(s?.phase);
+  const barOn = inGame && ["answering", "reveal", "drinking", "king", "aha", "finished"].includes(s?.phase);
   document.getElementById("dmBar")?.classList.toggle("hidden", !barOn);
   if (!barOn) {
     document.getElementById("dmEmojiPanel")?.classList.add("hidden");
@@ -1261,19 +1431,20 @@ function updateOverlays() {
 /* ---------- 本地预览（mock 状态，仅本机） ---------- */
 
 function mockArt(emoji) {
+  // 预览占位图也走暗紫霓虹（与 theme-v2 同一气质）
   const cv = document.createElement("canvas");
   cv.width = 600; cv.height = 840;
   const c = cv.getContext("2d");
   const g = c.createLinearGradient(0, 0, 600, 840);
-  g.addColorStop(0, "#ffe9c4"); g.addColorStop(0.55, "#ffd9ec"); g.addColorStop(1, "#e6d4ff");
+  g.addColorStop(0, "#2c1a42"); g.addColorStop(0.55, "#1a1026"); g.addColorStop(1, "#120a1c");
   c.fillStyle = g; c.fillRect(0, 0, 600, 840);
-  c.fillStyle = "rgba(255,46,140,0.30)";
+  c.fillStyle = "rgba(255,45,120,0.28)";
   c.beginPath(); c.arc(460, 160, 180, 0, 7); c.fill();
-  c.fillStyle = "rgba(180,242,30,0.38)";
+  c.fillStyle = "rgba(45,226,255,0.22)";
   c.beginPath(); c.arc(120, 700, 200, 0, 7); c.fill();
   c.font = "220px serif"; c.textAlign = "center";
   c.fillText(emoji, 300, 480);
-  c.fillStyle = "rgba(36,19,51,0.55)"; c.font = "28px sans-serif";
+  c.fillStyle = "rgba(244,236,255,0.6)"; c.font = "28px sans-serif";
   c.fillText("预览立绘占位", 300, 620);
   return cv.toDataURL("image/png");
 }
@@ -1361,6 +1532,34 @@ function buildPreviewState(screen) {
             { name: "麦当劳", emoji: "🧉", guess: 3, exact: false, drink: false },
           ],
         } } };
+    case "king":
+      // 国王本人视角：选圣旨
+      return { ...base, phase: "king",
+        current: { protagonist, roundIndex: 2, totalRounds: 5 },
+        king: {
+          active: true,
+          youAreKing: true,
+          king: { name: "嘉欣", emoji: "🍷" },
+          options: [
+            { id: "kg-a", text: "指定一人用最深情的语气朗读自己最近一条外卖备注" },
+            { id: "kg-b", text: "指定一人现场给国王倒酒，动作必须像颁奖典礼" },
+            { id: "kg-c", text: "指定两人交换手机壁纸并保持到本局结束" },
+          ],
+          order: null,
+          exactGuessers: ["阿豪", "麦当劳"],
+        } };
+    case "kingOrder":
+      // 圣旨已下视角
+      return { ...base, phase: "king", you: { name: "阿豪", isHost: false },
+        current: { protagonist, roundIndex: 2, totalRounds: 5 },
+        king: {
+          active: false,
+          youAreKing: false,
+          king: { name: "嘉欣", emoji: "🍷" },
+          options: null,
+          order: { text: "指定一人用最深情的语气朗读自己最近一条外卖备注", custom: false },
+          exactGuessers: ["阿豪", "麦当劳"],
+        } };
     case "drinking":
       return { ...base, phase: "drinking", current: {
         protagonist, roundIndex: 2, totalRounds: 5,

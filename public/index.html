@@ -5,22 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>理想型 · 加载中</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <!-- theme.css 必须在 style.css 之前：它是配色/字体/圆角/阴影的唯一真源 -->
-  <link rel="stylesheet" href="/theme.css" />
+  <!-- theme-v2.css 必须在 style.css 之前：它是配色/字体/圆角/阴影的唯一真源（霓虹暗紫像素风） -->
+  <link rel="stylesheet" href="/theme-v2.css" />
   <link rel="stylesheet" href="/style.css" />
   <link rel="modulepreload" href="/fx.js" />
   <link rel="modulepreload" href="/social.js" />
 </head>
 <body>
   <div id="app" class="app">
-    <div class="boot glass">加载中…</div>
+    <div class="boot glass">推门进来，先找个座。</div>
   </div>
   <div id="toast" class="toast hidden"></div>
   <!-- V2 入场路由：无身份且非加入中 → 调酒仪式 -->
   <script>
     (function () {
       var p = new URLSearchParams(location.search);
-      if (!p.get("room") && !p.get("solo") && !localStorage.getItem("ideal_cocktail")) {
+      if (!p.get("room") && !p.get("solo") && !p.get("preview") && !localStorage.getItem("ideal_cocktail")) {
         location.replace("/v2/cocktail.html");
       }
     })();

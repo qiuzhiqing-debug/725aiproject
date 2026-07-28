@@ -227,9 +227,10 @@ export const sound = {
 
 /* ================= 高光粒子（纯 DOM/CSS，无外部资源） ================= */
 
-/* 彩带配色真源：public/theme.css 的 --fx-confetti-1..5。
-   样式同事改 theme.css 彩带就换色，读不到时回退到默认值。 */
-const CONFETTI_FALLBACK = ["#ff4081", "#ffb84d", "#ff77a9", "#fff3e0", "#ff7a45"];
+/* 彩带配色真源：public/theme-v2.css 的霓虹五色。
+   样式线改 theme-v2.css 彩带就换色，读不到时回退到默认值（= theme-v2 定稿）。 */
+const CONFETTI_VARS = ["--neon-pink", "--neon-cyan", "--neon-purple", "--neon-amber", "--neon-green"];
+const CONFETTI_FALLBACK = ["#ff2d78", "#2de2ff", "#a86bff", "#ffb648", "#58ff9b"];
 let confettiCache = null;
 
 function confettiColors() {
@@ -241,7 +242,7 @@ function confettiColors() {
     cs = null;
   }
   confettiCache = CONFETTI_FALLBACK.map((def, i) => {
-    const v = cs ? String(cs.getPropertyValue(`--fx-confetti-${i + 1}`) || "").trim() : "";
+    const v = cs ? String(cs.getPropertyValue(CONFETTI_VARS[i]) || "").trim() : "";
     return v || def;
   });
   return confettiCache;
