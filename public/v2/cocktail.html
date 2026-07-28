@@ -50,6 +50,13 @@
     </section>
 
   </div>
+  <!-- 整合钩子：调酒完成 → 存身份 → 进大厅 -->
+  <script type="module">
+    window.onCocktailDone = (cocktail) => {
+      localStorage.setItem("ideal_cocktail", JSON.stringify(cocktail));
+      location.href = "/v2/lobby.html";
+    };
+  </script>
   <script type="module" src="./cocktail.js"></script>
 </body>
 </html>

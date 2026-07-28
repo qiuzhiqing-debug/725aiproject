@@ -16,6 +16,15 @@
     <div class="boot glass">加载中…</div>
   </div>
   <div id="toast" class="toast hidden"></div>
+  <!-- V2 入场路由：无身份且非加入中 → 调酒仪式 -->
+  <script>
+    (function () {
+      var p = new URLSearchParams(location.search);
+      if (!p.get("room") && !p.get("solo") && !localStorage.getItem("ideal_cocktail")) {
+        location.replace("/v2/cocktail.html");
+      }
+    })();
+  </script>
   <script type="module" src="/app.js"></script>
 </body>
 </html>

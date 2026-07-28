@@ -61,6 +61,29 @@
     </div>
   </div>
 
+  <!-- 整合钩子：桌子/单人位 → 建房 → 跳转游戏 -->
+  <script type="module">
+    window.onTableClick = async (_n) => {
+      try {
+        const res = await fetch("/api/room", { method: "POST" });
+        const { code } = await res.json();
+        location.href = `/?room=${code}`;
+      } catch {
+        const t = document.getElementById("danmaku");
+        if (t) {
+          const el = document.createElement("span");
+          el.className = "danmaku-item hot";
+          el.textContent = "建房失败，请重试";
+          el.style.top = "50%";
+          t.appendChild(el);
+          setTimeout(() => el.remove(), 4000);
+        }
+      }
+    };
+    window.onSoloClick = () => {
+      location.href = "/?solo=1";
+    };
+  </script>
   <script type="module" src="./lobby.js"></script>
 </body>
 </html>

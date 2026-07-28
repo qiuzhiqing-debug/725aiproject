@@ -883,8 +883,8 @@ function renderAha(s, aha, isFinal) {
             : ""}
     </div>
     ${ui.posterUrl
-      ? `<img class="poster-img" src="${ui.posterUrl}" alt="理想型年度报告海报" /><div class="dim center">长按图片保存 / 转发</div>`
-      : `<button class="btn ghost" id="posterBtn" ${ui.posterBusy ? "disabled" : ""}>${ui.posterBusy ? "海报合成中…" : "生成年报海报"}</button>`}
+      ? `<img class="poster-img" src="${ui.posterUrl}" alt="理想型海报" /><div class="dim center">长按图片保存 / 转发</div>`
+      : `<button class="btn ghost" id="posterBtn" ${ui.posterBusy ? "disabled" : ""}>${ui.posterBusy ? "海报合成中…" : "生成海报"}</button>`}
     ${!isFinal ? (me.isHost
       ? `<button class="btn" id="nextBtn">${s.players.some((p) => !p.done) ? "下一位主角" : "收局看总榜"}</button>`
       : `<div class="dim center">等房主抽下一位…</div>`) : ""}`;
