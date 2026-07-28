@@ -11,9 +11,76 @@
   <div class="stage fx-vignette fx-scanlines fx-noise">
 
     <header class="head">
-      <img class="head-logo" src="../assets-v2/logo.svg" alt="理想型·加载中" />
-      <p class="head-sub px-title neon-cyan">先调一杯，再进场 —— 这杯就是你今晚的身份</p>
+      <!-- 霓虹招牌（内联版：LOADING…99% 进度条居中） -->
+      <svg class="head-sign" viewBox="0 0 720 268" role="img" aria-label="理想型·加载中 霓虹招牌">
+        <defs>
+          <filter id="ck-glowWide" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="9"/>
+          </filter>
+          <filter id="ck-glowMid" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="3.2"/>
+          </filter>
+          <filter id="ck-glowTight" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="1.1"/>
+          </filter>
+          <linearGradient id="ck-barFill" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stop-color="#2de2ff"/>
+            <stop offset="0.6" stop-color="#a86bff"/>
+            <stop offset="1" stop-color="#ff2d78"/>
+          </linearGradient>
+          <path id="ck-glassTube" d="M 30 6 L 102 6 L 66 52 L 66 88 M 46 88 L 86 88 M 42 20 L 90 20"
+                fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        </defs>
+
+        <!-- 左侧霓虹杯（青色管） -->
+        <g transform="translate(24,52)">
+          <use href="#ck-glassTube" stroke="#2de2ff" stroke-width="12" opacity="0.55" filter="url(#ck-glowWide)"/>
+          <use href="#ck-glassTube" stroke="#2de2ff" stroke-width="6" opacity="0.9" filter="url(#ck-glowMid)"/>
+          <use href="#ck-glassTube" stroke="#c9f7ff" stroke-width="2.6" filter="url(#ck-glowTight)"/>
+          <circle cx="66" cy="30" r="7" fill="#ff2d78" opacity="0.5" filter="url(#ck-glowWide)"/>
+          <circle cx="66" cy="30" r="4" fill="#ffb0cd" filter="url(#ck-glowTight)"/>
+        </g>
+
+        <!-- 主标题：理想型·加载中 -->
+        <g font-family="'Fusion Pixel 12px Proportional SC','Zpix','DotGothic16','PingFang SC','Microsoft YaHei',monospace"
+           font-size="76" font-weight="400" text-anchor="middle" letter-spacing="4">
+          <text x="416" y="128" fill="#ff2d78" opacity="0.6" filter="url(#ck-glowWide)">理想型·加载中</text>
+          <text x="416" y="128" fill="#ff2d78" opacity="0.95" filter="url(#ck-glowMid)">理想型·加载中</text>
+          <text x="416" y="128" fill="#ffd7e6" stroke="#ff6ea8" stroke-width="1.4" filter="url(#ck-glowTight)">理想型·加载中</text>
+        </g>
+
+        <!-- 加载条：停在 99%，整体居中（720 宽 → 条宽 452，x = 134） -->
+        <g transform="translate(134,176)">
+          <rect x="0" y="0" width="452" height="30" rx="6" fill="#160c22"
+                stroke="#a86bff" stroke-width="3" opacity="0.5" filter="url(#ck-glowMid)"/>
+          <rect x="0" y="0" width="452" height="30" rx="6" fill="#160c22"
+                stroke="#cfaaff" stroke-width="1.6"/>
+          <rect x="5" y="5" width="437" height="20" rx="3" fill="url(#ck-barFill)" opacity="0.55" filter="url(#ck-glowMid)"/>
+          <rect x="5" y="5" width="437" height="20" rx="3" fill="url(#ck-barFill)"/>
+          <!-- 最后 1% 永远空着 -->
+          <rect x="436" y="4" width="12" height="22" fill="#160c22"/>
+          <g fill="#160c22" opacity="0.35">
+            <rect x="41" y="5" width="4" height="20"/><rect x="83" y="5" width="4" height="20"/>
+            <rect x="125" y="5" width="4" height="20"/><rect x="167" y="5" width="4" height="20"/>
+            <rect x="209" y="5" width="4" height="20"/><rect x="251" y="5" width="4" height="20"/>
+            <rect x="293" y="5" width="4" height="20"/><rect x="335" y="5" width="4" height="20"/>
+            <rect x="377" y="5" width="4" height="20"/><rect x="419" y="5" width="4" height="20"/>
+          </g>
+        </g>
+        <g font-family="'Fusion Pixel 12px Proportional SC','Zpix','DotGothic16','PingFang SC','Microsoft YaHei',monospace"
+           font-size="26" text-anchor="middle">
+          <text x="360" y="248" fill="#2de2ff" opacity="0.6" filter="url(#ck-glowMid)">LOADING… 99%</text>
+          <text x="360" y="248" fill="#bdf2ff">LOADING… 99%</text>
+        </g>
+      </svg>
+      <p class="head-sub px-title neon-cyan">差的那 1%，等的就是你</p>
     </header>
+
+    <!-- 老K：第一次登场，自我引入 -->
+    <div class="host" id="host">
+      <div class="host-sprite" id="hostSprite" aria-hidden="true"></div>
+      <div class="host-bubble" id="hostLine">第一次来吧。我是老K，这个吧台归我管。</div>
+    </div>
 
     <!-- 问答区 -->
     <main class="quiz" id="quiz">
@@ -23,14 +90,60 @@
         <h2 class="quiz-title px-title neon-pink" id="questionTitle"></h2>
         <p class="quiz-hint" id="questionHint"></p>
         <div class="quiz-options" id="options"></div>
+        <button class="quiz-back hidden" id="backBtn" type="button">‹ 上一题，我重选</button>
       </div>
     </main>
 
     <!-- 调酒动画区（选完最后一题出现） -->
     <section class="mixing hidden" id="mixing">
+      <!-- Cobbler 三段式摇酒壶：小帽 + 滤网盖 + 壶身 -->
       <div class="mix-shaker" id="mixShaker" aria-hidden="true">
-        <div class="ms-cap"></div>
-        <div class="ms-body"><span class="ms-shine"></span><span class="ms-band"></span></div>
+        <svg viewBox="0 0 120 196">
+          <defs>
+            <linearGradient id="ck-metal" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0"    stop-color="#2b2140"/>
+              <stop offset="0.28" stop-color="#8f83b8"/>
+              <stop offset="0.46" stop-color="#f6f2ff"/>
+              <stop offset="0.58" stop-color="#cfc6ea"/>
+              <stop offset="0.82" stop-color="#5b4d85"/>
+              <stop offset="1"    stop-color="#1d1330"/>
+            </linearGradient>
+            <linearGradient id="ck-metal-dark" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0"    stop-color="#241536"/>
+              <stop offset="0.4"  stop-color="#a99dc5"/>
+              <stop offset="0.52" stop-color="#e6dfF8"/>
+              <stop offset="0.75" stop-color="#4a3d6e"/>
+              <stop offset="1"    stop-color="#171026"/>
+            </linearGradient>
+          </defs>
+          <!-- ① 小帽（量酒盖） -->
+          <path d="M 47 16 Q 47 7 60 7 Q 73 7 73 16 L 73 26 L 47 26 Z"
+                fill="url(#ck-metal)" stroke="#120a1c" stroke-width="2"/>
+          <rect x="44" y="25" width="32" height="6" rx="2.5"
+                fill="url(#ck-metal-dark)" stroke="#120a1c" stroke-width="1.6"/>
+          <!-- ② 滤网盖（带肩弧的收口段） -->
+          <path d="M 42 62 L 42 48 Q 42 32 60 32 Q 78 32 78 48 L 78 62 Z"
+                fill="url(#ck-metal)" stroke="#120a1c" stroke-width="2"/>
+          <!-- 滤网孔暗示：肩上三粒 -->
+          <circle cx="53" cy="42" r="1.6" fill="#241536" opacity="0.85"/>
+          <circle cx="60" cy="40" r="1.6" fill="#241536" opacity="0.85"/>
+          <circle cx="67" cy="42" r="1.6" fill="#241536" opacity="0.85"/>
+          <rect x="38" y="60" width="44" height="7" rx="3"
+                fill="url(#ck-metal-dark)" stroke="#120a1c" stroke-width="1.6"/>
+          <!-- ③ 壶身（上宽下收，小底座） -->
+          <path d="M 36 70 L 44 176 Q 45 184 53 184 L 67 184 Q 75 184 76 176 L 84 70 Z"
+                fill="url(#ck-metal)" stroke="#120a1c" stroke-width="2.4"/>
+          <rect x="46" y="183" width="28" height="7" rx="3"
+                fill="url(#ck-metal-dark)" stroke="#120a1c" stroke-width="1.6"/>
+          <!-- 高光 -->
+          <path d="M 52 76 L 55 172" stroke="#ffffff" stroke-width="4"
+                stroke-linecap="round" opacity="0.65"/>
+          <!-- 店标霓虹腰封 -->
+          <path d="M 39 106 L 81 106 L 80 126 L 40 126 Z" fill="#160c22"
+                stroke="#ff2d78" stroke-width="1.8"/>
+          <text x="60" y="121" text-anchor="middle" font-size="12" fill="#ff6ea8"
+                font-family="'Fusion Pixel 12px Proportional SC','Zpix','DotGothic16',monospace">99%</text>
+        </svg>
       </div>
       <div class="pour-stream" id="pourStream" aria-hidden="true"></div>
 
@@ -38,13 +151,20 @@
         <!-- 杯子由 cocktail.js 按 resolveCocktail 结果生成 -->
       </div>
 
-      <div class="mix-caption px-title neon-amber" id="mixCaption">摇匀中…</div>
+      <!-- 摇一摇交互层 -->
+      <div class="shake-ui" id="shakeUI">
+        <div class="shake-bar" aria-hidden="true"><i id="shakeFill"></i></div>
+        <button class="shake-btn px-title" id="shakeBtn" type="button">拿起来摇</button>
+      </div>
+
+      <div class="mix-caption px-title neon-amber" id="mixCaption"></div>
     </section>
 
     <!-- 结果卡 -->
     <section class="result hidden" id="result">
-      <p class="result-eyebrow px-title neon-cyan">你的今晚特调</p>
+      <p class="result-eyebrow px-title neon-cyan">—— 调好了</p>
       <h2 class="result-name px-title neon-pink" id="resultName"></h2>
+      <p class="result-recipe" id="resultRecipe"></p>
       <p class="result-intro" id="resultIntro"></p>
       <button class="result-go px-title" id="resultGo" type="button">端着它进场 →</button>
     </section>

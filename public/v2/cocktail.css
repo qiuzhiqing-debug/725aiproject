@@ -1,6 +1,7 @@
 /* ==========================================================================
    调酒仪式 cocktail.css （pixel-bar 风 · 竖屏优先）
-   流程：4 道快问 → 摇壶+分层倒酒+落冰动画(~3s) → 杯子发光定格 → 结果卡
+   流程：老K开场 → 4 道快问（可回退）→ 摇一摇（devicemotion / 连点降级）
+         → 分层倒酒 + 落冰动画 → 杯子发光定格 → 结果卡
    ========================================================================== */
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -26,30 +27,80 @@ html, body {
     linear-gradient(180deg, var(--bar-bg-deep) 0%, var(--bar-bg) 45%, var(--bar-floor) 100%);
 }
 
-/* ---------- 头部 ---------- */
+/* ---------- 头部：内联霓虹招牌（LOADING…99% 居中） ---------- */
 .head {
   width: min(420px, 92vw);
   text-align: center;
   z-index: 2;
 }
-.head-logo { width: 78%; max-width: 320px; }
+.head-sign {
+  display: block;
+  width: 86%;
+  max-width: 340px;
+  margin: 0 auto;
+}
 .head-sub {
-  margin-top: 2px;
+  margin-top: 4px;
   font-size: 13px;
-  opacity: 0.9;
+  letter-spacing: 0.14em;
+  opacity: 0.92;
+}
+
+/* ---------- 老K 登场 ---------- */
+.host {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(440px, 94vw);
+  margin-top: 16px;
+  z-index: 2;
+}
+.host-sprite {
+  flex: 0 0 76px;
+  width: 76px;
+  height: 76px;
+  background: var(--panel-solid);
+  border: var(--stroke-thin) solid var(--line-neon);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-panel);
+  overflow: hidden;
+}
+.host-bubble {
+  position: relative;
+  flex: 1;
+  background: var(--panel);
+  border: var(--stroke-thin) solid var(--line-soft);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-panel);
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-hi);
+}
+.host-bubble::before {
+  content: "";
+  position: absolute;
+  left: -7px;
+  top: 30px;
+  width: 12px;
+  height: 12px;
+  background: var(--panel);
+  border-left: var(--stroke-thin) solid var(--line-soft);
+  border-bottom: var(--stroke-thin) solid var(--line-soft);
+  transform: rotate(45deg);
 }
 
 /* ---------- 问答卡 ---------- */
 .quiz {
   width: min(440px, 94vw);
-  margin-top: 22px;
+  margin-top: 14px;
   z-index: 2;
 }
 .quiz-progress {
   display: flex;
   gap: 8px;
   justify-content: center;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 .quiz-progress i {
   width: 34px;
@@ -72,7 +123,7 @@ html, body {
   border: var(--stroke-thin) solid var(--line-neon);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-panel);
-  padding: 22px 20px 20px;
+  padding: 22px 20px 16px;
   animation: card-in 0.3s ease-out;
 }
 @keyframes card-in {
@@ -87,8 +138,8 @@ html, body {
   margin-bottom: 8px;
 }
 .quiz-title {
-  font-size: 21px;
-  line-height: 1.4;
+  font-size: 20px;
+  line-height: 1.45;
   margin-bottom: 6px;
   /* 小字号收窄光晕，避免糊字 */
   text-shadow:
@@ -108,7 +159,7 @@ html, body {
   align-items: baseline;
   gap: 10px;
   text-align: left;
-  padding: 13px 14px;
+  padding: 12px 14px;
   background: var(--panel-solid);
   border: var(--stroke-thin) solid var(--line-soft);
   border-radius: var(--radius-btn);
@@ -117,7 +168,7 @@ html, body {
   font-size: 14.5px;
   line-height: 1.45;
   cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s, opacity 0.2s;
 }
 .quiz-option b {
   font-family: var(--font-pixel);
@@ -125,6 +176,7 @@ html, body {
   color: var(--neon-cyan-soft);
   white-space: nowrap;
 }
+.quiz-option span { flex: 1; }
 .quiz-option small { color: var(--ink-mid); display: block; }
 .quiz-option:hover,
 .quiz-option:focus-visible {
@@ -133,11 +185,47 @@ html, body {
   outline: none;
 }
 .quiz-option:active { transform: scale(0.98); }
+
+/* 选中反馈：选中项亮 + 打勾，其余压暗（420ms 后切题） */
 .quiz-option.picked {
   border-color: var(--neon-pink);
   box-shadow: var(--neon-box-pink);
+  animation: pick-pop 0.3s ease-out;
 }
 .quiz-option.picked b { color: var(--neon-pink-hot); }
+.quiz-option.picked::after {
+  content: "✓";
+  font-family: var(--font-pixel);
+  color: var(--neon-pink-hot);
+  text-shadow: 0 0 8px var(--glow-pink-70);
+  margin-left: 6px;
+}
+@keyframes pick-pop {
+  0%   { transform: scale(0.97); }
+  55%  { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}
+.quiz-options.locking { pointer-events: none; }
+.quiz-options.locking .quiz-option:not(.picked) { opacity: 0.35; }
+
+/* 上一题：低调文字按钮 */
+.quiz-back {
+  display: block;
+  margin: 14px auto 0;
+  padding: 6px 14px;
+  background: none;
+  border: none;
+  color: var(--ink-dim);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.quiz-back:hover,
+.quiz-back:focus-visible {
+  color: var(--neon-cyan-soft);
+  outline: none;
+}
 
 /* ---------- 调酒动画区 ---------- */
 .hidden { display: none !important; }
@@ -145,78 +233,64 @@ html, body {
 .mixing {
   position: relative;
   width: min(360px, 92vw);
-  height: 430px;
+  height: 470px;
   margin-top: 6px;
   z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
+  transition: height 0.45s ease;
 }
+/* 出酒后收起摇壶占位，杯子上移，别留空洞 */
+.mixing.done { height: 300px; }
+.mixing.done .mix-shaker,
+.mixing.done .pour-stream { display: none; }
+.mixing.done .glass-zone { top: 24px; }
 
-/* 摇壶（CSS 绘制，先摇后倾倒） */
+/* Cobbler 三段式摇酒壶（SVG 在 HTML 里，这里管布局与动作） */
 .mix-shaker {
   position: absolute;
   top: 0;
   left: 50%;
-  width: 84px;
-  height: 120px;
+  width: 94px;
+  height: 154px;
   transform: translateX(-50%);
-  transform-origin: 50% 80%;
+  transform-origin: 50% 78%;
   z-index: 3;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.45));
 }
-.mix-shaker.shake { animation: mx-shake 0.42s ease-in-out infinite; }
+.mix-shaker svg { width: 100%; height: 100%; display: block; }
+
+/* 摇动：振幅/角度由 JS 按传感器强度写入 --amp / --rot */
+.mix-shaker.shake { animation: mx-shake 0.3s ease-in-out infinite; }
 @keyframes mx-shake {
   0%, 100% { transform: translateX(-50%) rotate(0); }
-  25%      { transform: translateX(-58%) rotate(-14deg); }
-  75%      { transform: translateX(-42%) rotate(12deg); }
+  25% {
+    transform: translateX(calc(-50% - var(--amp, 10px)))
+               translateY(calc(var(--amp, 10px) * -0.35))
+               rotate(calc(-1 * var(--rot, 10deg)));
+  }
+  75% {
+    transform: translateX(calc(-50% + var(--amp, 10px)))
+               translateY(calc(var(--amp, 10px) * -0.35))
+               rotate(var(--rot, 10deg));
+  }
 }
 .mix-shaker.tilt {
   animation: none;
-  transform: translateX(-118%) translateY(6px) rotate(-64deg);
+  transform: translateX(-118%) translateY(4px) rotate(-64deg);
   transition: transform 0.4s ease-in;
-}
-.ms-cap {
-  width: 46px;
-  height: 22px;
-  margin: 0 auto;
-  border-radius: 6px 6px 2px 2px;
-  background: linear-gradient(90deg, #4a3d6e, #cfc6ea 45%, #f2edff 52%, #6f6494);
-  border: 2px solid var(--bar-bg-deep);
-}
-.ms-body {
-  position: relative;
-  width: 84px;
-  height: 96px;
-  border-radius: 6px 6px 16px 16px;
-  background: linear-gradient(90deg, #2b2140, #6f6494 30%, #f2edff 48%, #b0a5d6 60%, #241536);
-  border: 2px solid var(--bar-bg-deep);
-  overflow: hidden;
-}
-.ms-shine {
-  position: absolute;
-  left: 30%; top: 10%;
-  width: 8px; height: 70%;
-  background: rgba(255, 255, 255, 0.75);
-}
-.ms-band {
-  position: absolute;
-  left: 8%; right: 8%; top: 40%;
-  height: 20px;
-  border-radius: 4px;
-  background: var(--bar-bg-deep);
-  border: 1.5px solid var(--neon-pink);
-  box-shadow: 0 0 8px var(--glow-pink-40);
 }
 
 /* 酒线（从壶口落进杯口） */
 .pour-stream {
   position: absolute;
-  top: 96px;
+  top: 122px;
   left: 50%;
   transform: translateX(-50%) scaleY(0);
   transform-origin: top;
   width: 6px;
-  height: 96px;
+  height: 92px;
   z-index: 2;
   background: linear-gradient(180deg, var(--pour-color, var(--neon-amber)), transparent 96%);
   box-shadow: 0 0 8px var(--glow-amber-25);
@@ -227,7 +301,8 @@ html, body {
 /* 杯区 */
 .glass-zone {
   position: absolute;
-  top: 178px;
+  top: 170px;
+  transition: top 0.45s ease;
   left: 50%;
   transform: translateX(-50%);
   width: 220px;
@@ -243,6 +318,48 @@ html, body {
   image-rendering: pixelated;
   shape-rendering: crispEdges;
 }
+
+/* 摇一摇交互层：进度条 + 手势按钮 */
+.shake-ui {
+  position: absolute;
+  bottom: 34px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  z-index: 4;
+}
+.shake-bar {
+  width: 210px;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: var(--panel-deep);
+  border: var(--stroke-thin) solid var(--line-neon);
+  overflow: hidden;
+}
+.shake-bar i {
+  display: block;
+  width: 0%;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, var(--neon-cyan), var(--neon-pink));
+  box-shadow: 0 0 10px var(--glow-pink-40);
+  transition: width 0.18s ease-out;
+}
+.shake-btn {
+  font-size: 15px;
+  padding: 12px 26px;
+  color: var(--bar-bg-deep);
+  background: linear-gradient(180deg, var(--neon-cyan-soft), var(--neon-cyan));
+  border: var(--stroke) solid var(--neon-cyan);
+  border-radius: var(--radius-btn);
+  box-shadow: var(--neon-box-cyan);
+  cursor: pointer;
+  transition: transform 0.12s, opacity 0.2s;
+}
+.shake-btn:hover { transform: scale(1.04); }
+.shake-btn:active { transform: scale(0.96); }
+.shake-btn:disabled { opacity: 0.55; cursor: default; transform: none; }
 
 /* 分层酒液：scaleY 0→1，JS 依次加 .rise */
 .liquid-layer {
@@ -285,6 +402,8 @@ html, body {
 .mix-caption {
   position: absolute;
   bottom: 0;
+  width: 100%;
+  text-align: center;
   font-size: 15px;
   letter-spacing: 0.1em;
 }
@@ -303,7 +422,13 @@ html, body {
   margin-bottom: 8px;
 }
 .result-name {
-  font-size: 30px;
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+.result-recipe {
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  color: var(--ink-dim);
   margin-bottom: 12px;
 }
 .result-intro {
@@ -330,10 +455,11 @@ html, body {
 .result-go:hover { transform: scale(1.04); }
 .result-go:active { transform: scale(0.97); }
 
-/* 横屏：问答与杯并排空间足够时略放大 */
+/* 横屏：空间紧时整体收一点 */
 @media (orientation: landscape) and (max-height: 500px) {
   .stage { padding-top: 8px; }
-  .head-logo { max-width: 200px; }
+  .head-sign { max-width: 200px; }
+  .host { margin-top: 8px; }
   .quiz { margin-top: 8px; }
-  .mixing { height: 340px; transform: scale(0.82); transform-origin: top center; }
+  .mixing { height: 420px; transform: scale(0.82); transform-origin: top center; }
 }
