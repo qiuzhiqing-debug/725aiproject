@@ -190,24 +190,27 @@ function glassSVG(type, [c1, c2, c3], iceCount, garnishIdx) {
     }
     return s;
   };
-  const garnishes = (cx, rimY) => {
+  // 装饰物统一锚在杯口右缘 (rimX, rimY)：贴沿不悬空，每种杯型传自己的杯沿坐标
+  const garnishes = (rimX, rimY) => {
     switch (garnishIdx) {
-      case 0: // 樱桃
-        return `<g class="garnish"><circle cx="${cx + 34}" cy="${rimY - 6}" r="8" fill="#ff2d5e"/>
-          <rect x="${cx + 33}" y="${rimY - 30}" width="2.5" height="18" fill="#58ff9b"/></g>`;
-      case 1: // 柠檬片
-        return `<g class="garnish"><circle cx="${cx + 40}" cy="${rimY - 4}" r="12" fill="#ffd84d" stroke="#e0a010" stroke-width="3"/>
-          <circle cx="${cx + 40}" cy="${rimY - 4}" r="5" fill="#fff3b0"/></g>`;
-      case 2: // 小纸伞
+      case 0: // 樱桃：坐在杯沿上，梗朝上
         return `<g class="garnish">
-          <polygon points="${cx + 30},${rimY - 34} ${cx + 62},${rimY - 34} ${cx + 46},${rimY - 52}" fill="#ff6ea8"/>
-          <polygon points="${cx + 36},${rimY - 34} ${cx + 56},${rimY - 34} ${cx + 46},${rimY - 46}" fill="#ffd7e6"/>
-          <rect x="${cx + 45}" y="${rimY - 34}" width="2.5" height="28" fill="#d8c9a6"/></g>`;
-      default: // 荧光搅拌棒
-        return `<g class="garnish"><rect x="${cx + 26}" y="${rimY - 44}" width="5" height="52" rx="2"
-          fill="#58ff9b" transform="rotate(14 ${cx + 28} ${rimY})"/>
-          <rect x="${cx + 26}" y="${rimY - 44}" width="5" height="14" rx="2" fill="#c0ffdc"
-          transform="rotate(14 ${cx + 28} ${rimY})"/></g>`;
+          <rect x="${rimX - 2.5}" y="${rimY - 24}" width="2.5" height="16" fill="#58ff9b"/>
+          <circle cx="${rimX - 1}" cy="${rimY - 6}" r="8" fill="#ff2d5e"/>
+          <circle cx="${rimX - 4}" cy="${rimY - 9}" r="2.2" fill="#ffb0cd"/></g>`;
+      case 1: // 柠檬片：卡在杯沿上（半内半外）
+        return `<g class="garnish">
+          <circle cx="${rimX}" cy="${rimY}" r="12" fill="#ffd84d" stroke="#e0a010" stroke-width="3"/>
+          <circle cx="${rimX}" cy="${rimY}" r="5" fill="#fff3b0"/></g>`;
+      case 2: // 小纸伞：伞杆插进杯里，斜靠杯沿
+        return `<g class="garnish" transform="rotate(-14 ${rimX - 12} ${rimY + 8})">
+          <rect x="${rimX - 13.2}" y="${rimY - 28}" width="2.5" height="36" fill="#d8c9a6"/>
+          <polygon points="${rimX - 28},${rimY - 28} ${rimX + 4},${rimY - 28} ${rimX - 12},${rimY - 46}" fill="#ff6ea8"/>
+          <polygon points="${rimX - 22},${rimY - 28} ${rimX - 2},${rimY - 28} ${rimX - 12},${rimY - 40}" fill="#ffd7e6"/></g>`;
+      default: // 荧光搅拌棒：插在杯里，斜搭杯沿
+        return `<g class="garnish" transform="rotate(16 ${rimX - 9.5} ${rimY + 8})">
+          <rect x="${rimX - 12}" y="${rimY - 36}" width="5" height="44" rx="2" fill="#58ff9b"/>
+          <rect x="${rimX - 12}" y="${rimY - 36}" width="5" height="13" rx="2" fill="#c0ffdc"/></g>`;
     }
   };
   const GLASS_LINE = "#bfe8ff";
@@ -222,7 +225,7 @@ function glassSVG(type, [c1, c2, c3], iceCount, garnishIdx) {
       <polygon points="40,32 180,32 110,98" fill="none" stroke="${GLASS_LINE}" stroke-width="${LW}"/>
       <rect x="107" y="98" width="6" height="66" fill="${GLASS_LINE}"/>
       <rect x="72" y="164" width="76" height="6" rx="2" fill="${GLASS_LINE}"/>
-      ${garnishes(110, 34)}
+      ${garnishes(176, 32)}
     </svg>`;
   }
   if (type === "highball") {
@@ -232,7 +235,7 @@ function glassSVG(type, [c1, c2, c3], iceCount, garnishIdx) {
       ${layers(66, 88, 170, 128)}
       ${ices(110, 44, iceCount)}
       <path d="M 66 28 L 66 170 L 154 170 L 154 28" fill="none" stroke="${GLASS_LINE}" stroke-width="${LW}"/>
-      ${garnishes(110, 30)}
+      ${garnishes(152, 28)}
     </svg>`;
   }
   if (type === "rocks") {
@@ -243,7 +246,7 @@ function glassSVG(type, [c1, c2, c3], iceCount, garnishIdx) {
       ${ices(110, 92, iceCount)}
       <path d="M 56 82 L 56 168 L 164 168 L 164 82" fill="none" stroke="${GLASS_LINE}" stroke-width="${LW}"/>
       <rect x="52" y="166" width="116" height="8" rx="2" fill="${GLASS_LINE}"/>
-      ${garnishes(110, 84)}
+      ${garnishes(162, 82)}
     </svg>`;
   }
   // coupe 浅碟杯：碗区 y 40..92
@@ -255,7 +258,7 @@ function glassSVG(type, [c1, c2, c3], iceCount, garnishIdx) {
       fill="none" stroke="${GLASS_LINE}" stroke-width="${LW}"/>
     <rect x="107" y="92" width="6" height="70" fill="${GLASS_LINE}"/>
     <rect x="74" y="162" width="72" height="6" rx="2" fill="${GLASS_LINE}"/>
-    ${garnishes(110, 42)}
+    ${garnishes(174, 40)}
   </svg>`;
 }
 
@@ -446,6 +449,7 @@ if (typeof document !== "undefined" && document.getElementById("quiz")) {
     const caption = $("mixCaption");
 
     zone.innerHTML = glassSVG(cocktail.glass, cocktail.palette, cocktail.ice, cocktail.garnish);
+    zone.className = `glass-zone glass--${cocktail.glass}`; // 杯口高度按杯型对齐摇壶
 
     // 1) 摇一摇（物理交互；preview=result 时跳过）
     if (!opts.skipShake) {
@@ -493,12 +497,18 @@ if (typeof document !== "undefined" && document.getElementById("quiz")) {
     $("resultGo").addEventListener("click", () => window.onCocktailDone(cocktail), { once: true });
   }
 
-  /* ---- QA 直达参数 ---- */
-  const preview = new URLSearchParams(location.search).get("preview");
+  /* ---- QA 直达参数（可选 &a=基酒,辅料,装饰,冰 覆盖默认答案，方便验各杯型） ---- */
+  const qs = new URLSearchParams(location.search);
+  const preview = qs.get("preview");
+  const aRaw = (qs.get("a") || "").split(",").map((n) => parseInt(n, 10));
+  let previewAnswers = [3, 1, 0, 1];
+  if (aRaw.length === 4 && aRaw.every(Number.isInteger)) {
+    try { resolveCocktail(aRaw); previewAnswers = aRaw; } catch { /* 非法就用默认 */ }
+  }
   if (preview === "shake") {
-    startMixing(resolveCocktail([3, 1, 0, 1]));
+    startMixing(resolveCocktail(previewAnswers));
   } else if (preview === "result") {
-    startMixing(resolveCocktail([3, 1, 0, 1]), { skipShake: true, fast: true });
+    startMixing(resolveCocktail(previewAnswers), { skipShake: true, fast: true });
   } else {
     renderQuestion();
   }

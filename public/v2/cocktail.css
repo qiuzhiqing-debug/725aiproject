@@ -233,7 +233,7 @@ html, body {
 .mixing {
   position: relative;
   width: min(360px, 92vw);
-  height: 470px;
+  height: 430px;
   margin-top: 6px;
   z-index: 2;
   display: flex;
@@ -301,7 +301,7 @@ html, body {
 /* 杯区 */
 .glass-zone {
   position: absolute;
-  top: 170px;
+  top: 153px; /* martini 基准：杯口(viewBox y32)落在摇壶正下方 */
   transition: top 0.45s ease;
   left: 50%;
   transform: translateX(-50%);
@@ -311,6 +311,11 @@ html, body {
   align-items: flex-end;
   justify-content: center;
 }
+/* 按杯型抬高杯区，让杯口统一落在摇壶正下方（rimY 各不相同），
+   消掉摇壶和矮杯之间的死空间；JS 渲染杯子时加 glass--类型 */
+.glass-zone.glass--highball { top: 157px; }
+.glass-zone.glass--coupe    { top: 145px; }
+.glass-zone.glass--rocks    { top: 103px; }
 .glass-zone svg {
   width: 100%;
   height: 100%;
@@ -322,7 +327,7 @@ html, body {
 /* 摇一摇交互层：进度条 + 手势按钮 */
 .shake-ui {
   position: absolute;
-  bottom: 34px;
+  bottom: 30px;
   display: flex;
   flex-direction: column;
   align-items: center;

@@ -25,7 +25,16 @@
       border-bottom: 1px solid var(--line-soft);
       background: var(--bar-bg-deep);
     }
-    .nav-logo { height: 28px; width: auto; }
+    /* 小尺寸下用纯文字 logo：完整招牌 SVG 缩到 28px 时进度条会糊成一团 */
+    .nav-logo-text {
+      font-family: var(--font-pixel);
+      font-size: 17px;
+      letter-spacing: .06em;
+      color: #ffd7e6;
+      text-shadow: 0 0 1px #fff, 0 0 6px var(--neon-pink-hot);
+      white-space: nowrap;
+      text-decoration: none;
+    }
     .nav-back {
       margin-left: auto;
       color: var(--neon-cyan-soft);
@@ -131,11 +140,13 @@
     .module-section { margin: 0 16px 24px; }
     .module-label {
       font-family: var(--font-pixel);
-      font-size: 12px;
-      color: var(--neon-purple);
+      font-size: 13px;
+      font-weight: 600;
+      color: #d9beff;
       letter-spacing: .1em;
       margin-bottom: 8px;
-      text-shadow: var(--neon-text-purple);
+      /* 小字号收紧光晕，避免发虚 */
+      text-shadow: 0 0 1px #fff, 0 0 5px var(--glow-purple-45);
     }
 
     /* ---- 档案卡片（横向滚动行） ---- */
@@ -340,6 +351,7 @@
       color: var(--neon-pink-hot);
     }
     .error-sub { margin-top: 8px; color: var(--ink-dim); font-size: 13px; }
+    .error-raw { margin-top: 14px; color: var(--ink-ghost); font-size: 11px; }
 
     /* ---- 进大厅按钮（自己看自己档案时才显示） ---- */
     .action-bar {
@@ -379,11 +391,11 @@
 <body>
 
   <nav class="nav">
-    <img class="nav-logo" src="/assets-v2/logo.svg" alt="理想型·加载中" />
+    <span class="nav-logo-text" aria-label="理想型·加载中">理想型·加载中</span>
     <a class="nav-back" href="/v2/lobby.html">← 回大厅</a>
   </nav>
 
-  <div id="main"><div class="loading">加载档案中…</div></div>
+  <div id="main"><div class="loading">稍等，我去里屋把档案翻出来。</div></div>
 
   <script type="module">
     /* ---- 工具 ---- */
@@ -615,13 +627,14 @@
       });
     }
 
-    /* ---- 错误状态 ---- */
+    /* ---- 错误状态（老K口吻包一层，服务端原文放小字） ---- */
     function renderError(msg) {
       document.getElementById("main").innerHTML = `
         <div class="error-wrap">
           <span class="error-icon">🍺</span>
-          <div class="error-msg">找不到这份档案</div>
-          <div class="error-sub">${esc(msg)}</div>
+          <div class="error-msg">这份档案我翻不着。</div>
+          <div class="error-sub">要么码不对，要么它还没写成。</div>
+          <div class="error-raw">${esc(msg)}</div>
           <div style="margin-top:24px">
             <a href="/v2/lobby.html" style="color:var(--neon-cyan-soft);font-size:14px">← 去大厅开一局</a>
           </div>
