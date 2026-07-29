@@ -73,13 +73,13 @@
           <text x="360" y="248" fill="#bdf2ff">LOADING… 99%</text>
         </g>
       </svg>
-      <p class="head-sub px-title neon-cyan">差的那 1%，等的就是你</p>
+      <p class="head-sub px-title neon-cyan">卡在 99%？剩下的 1% 没丢，它在路上，赶得比你想的急。</p>
     </header>
 
     <!-- 老K：第一次登场，自我引入 -->
     <div class="host" id="host">
       <div class="host-sprite" id="hostSprite" aria-hidden="true"></div>
-      <div class="host-bubble" id="hostLine">第一次来吧。我是老K，这个吧台归我管。</div>
+      <div class="host-bubble" id="hostLine">来了？我是老K，这店归我管。</div>
     </div>
 
     <!-- 问答区 -->
@@ -96,65 +96,18 @@
 
     <!-- 调酒动画区（选完最后一题出现） -->
     <section class="mixing hidden" id="mixing">
-      <!-- Cobbler 三段式摇酒壶：小帽 + 滤网盖 + 壶身 -->
-      <div class="mix-shaker" id="mixShaker" aria-hidden="true">
-        <svg viewBox="0 0 120 196">
-          <defs>
-            <linearGradient id="ck-metal" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0"    stop-color="#2b2140"/>
-              <stop offset="0.28" stop-color="#8f83b8"/>
-              <stop offset="0.46" stop-color="#f6f2ff"/>
-              <stop offset="0.58" stop-color="#cfc6ea"/>
-              <stop offset="0.82" stop-color="#5b4d85"/>
-              <stop offset="1"    stop-color="#1d1330"/>
-            </linearGradient>
-            <linearGradient id="ck-metal-dark" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0"    stop-color="#241536"/>
-              <stop offset="0.4"  stop-color="#a99dc5"/>
-              <stop offset="0.52" stop-color="#e6dfF8"/>
-              <stop offset="0.75" stop-color="#4a3d6e"/>
-              <stop offset="1"    stop-color="#171026"/>
-            </linearGradient>
-          </defs>
-          <!-- ① 小帽（量酒盖） -->
-          <path d="M 47 16 Q 47 7 60 7 Q 73 7 73 16 L 73 26 L 47 26 Z"
-                fill="url(#ck-metal)" stroke="#120a1c" stroke-width="2"/>
-          <rect x="44" y="25" width="32" height="6" rx="2.5"
-                fill="url(#ck-metal-dark)" stroke="#120a1c" stroke-width="1.6"/>
-          <!-- ② 滤网盖（带肩弧的收口段） -->
-          <path d="M 42 62 L 42 48 Q 42 32 60 32 Q 78 32 78 48 L 78 62 Z"
-                fill="url(#ck-metal)" stroke="#120a1c" stroke-width="2"/>
-          <!-- 滤网孔暗示：肩上三粒 -->
-          <circle cx="53" cy="42" r="1.6" fill="#241536" opacity="0.85"/>
-          <circle cx="60" cy="40" r="1.6" fill="#241536" opacity="0.85"/>
-          <circle cx="67" cy="42" r="1.6" fill="#241536" opacity="0.85"/>
-          <rect x="38" y="60" width="44" height="7" rx="3"
-                fill="url(#ck-metal-dark)" stroke="#120a1c" stroke-width="1.6"/>
-          <!-- ③ 壶身（上宽下收，小底座） -->
-          <path d="M 36 70 L 44 176 Q 45 184 53 184 L 67 184 Q 75 184 76 176 L 84 70 Z"
-                fill="url(#ck-metal)" stroke="#120a1c" stroke-width="2.4"/>
-          <rect x="46" y="183" width="28" height="7" rx="3"
-                fill="url(#ck-metal-dark)" stroke="#120a1c" stroke-width="1.6"/>
-          <!-- 高光 -->
-          <path d="M 52 76 L 55 172" stroke="#ffffff" stroke-width="4"
-                stroke-linecap="round" opacity="0.65"/>
-          <!-- 店标霓虹腰封 -->
-          <path d="M 39 106 L 81 106 L 80 126 L 40 126 Z" fill="#160c22"
-                stroke="#ff2d78" stroke-width="1.8"/>
-          <text x="60" y="121" text-anchor="middle" font-size="12" fill="#ff6ea8"
-                font-family="'Fusion Pixel 12px Proportional SC','Zpix','DotGothic16',monospace">99%</text>
-        </svg>
-      </div>
+      <!-- Cobbler 三段式摇酒壶：美术线定稿 assets-v2/shaker.svg，
+           由 cocktail.js fetch 后 inline 注入（分组 shaker-all/body/strainer/cap 供动画） -->
+      <div class="mix-shaker" id="mixShaker" aria-hidden="true"></div>
       <div class="pour-stream" id="pourStream" aria-hidden="true"></div>
 
       <div class="glass-zone" id="glassZone">
         <!-- 杯子由 cocktail.js 按 resolveCocktail 结果生成 -->
       </div>
 
-      <!-- 摇一摇交互层 -->
+      <!-- 摇一摇交互层：只留进度条，交互靠摇/点壶本身（R2.5：不写文字提示） -->
       <div class="shake-ui" id="shakeUI">
         <div class="shake-bar" aria-hidden="true"><i id="shakeFill"></i></div>
-        <button class="shake-btn px-title" id="shakeBtn" type="button">拿起来摇</button>
       </div>
 
       <div class="mix-caption px-title neon-amber" id="mixCaption"></div>
@@ -168,6 +121,56 @@
       <p class="result-intro" id="resultIntro"></p>
       <button class="result-go px-title" id="resultGo" type="button">端着它进场 →</button>
     </section>
+
+    <!-- 注册段：告诉老K你是谁（出酒后、进大厅前；老客跳过） -->
+    <section class="register hidden" id="register">
+      <p class="register-eyebrow px-title neon-cyan">—— 落座之前</p>
+      <h2 class="register-title px-title neon-pink">酒调完了，该认识一下了</h2>
+      <p class="register-lead">两件事我得知道，别的不问：你是谁，想看什么样的人。</p>
+      <form class="register-card" id="registerForm" novalidate>
+        <label class="reg-label" for="regName">怎么称呼你</label>
+        <input class="reg-input" id="regName" type="text" maxlength="12"
+               placeholder="比如：coco（这儿没人用真名）" autocomplete="off" />
+        <label class="reg-label" for="regPass">留个暗号（4–6 个数字）</label>
+        <input class="reg-input" id="regPass" type="tel" inputmode="numeric" maxlength="6"
+               placeholder="&#9679;&#9679;&#9679;&#9679;" autocomplete="off" />
+        <p class="reg-note">给自己留个暗号。下次来，换了手机我也认得你。</p>
+        <p class="reg-label">你是——</p>
+        <div class="reg-choice" id="regGender">
+          <button type="button" data-v="m"><i>♠</i><span>男</span></button>
+          <button type="button" data-v="f"><i>♥</i><span>女</span></button>
+          <button type="button" data-v="x"><i>♣</i><span>不方便说</span></button>
+        </div>
+        <p class="reg-label">今晚想看什么样的人</p>
+        <div class="reg-choice" id="regSeeking">
+          <button type="button" data-v="m"><i>♦</i><span>满分男</span></button>
+          <button type="button" data-v="f"><i>♥</i><span>满分女</span></button>
+          <button type="button" data-v="x"><i>★</i><span>都行</span></button>
+        </div>
+        <p class="reg-msg hidden" id="regMsg"></p>
+        <button class="reg-submit px-title" id="regSubmit" type="submit">就这么定</button>
+      </form>
+    </section>
+
+    <!-- 老客找回入口：不显眼的一行字（新客答题/注册期间可见） -->
+    <button class="recover-link hidden" id="recoverLink" type="button">我来过，对暗号</button>
+
+    <!-- 对暗号面板（换设备找回身份） -->
+    <div class="recover hidden" id="recover">
+      <div class="recover-card">
+        <h3 class="recover-title px-title neon-cyan">换手机了？</h3>
+        <p class="recover-lead">报上称呼和暗号。我认人，从来不看设备。</p>
+        <input class="reg-input" id="rcName" type="text" maxlength="12"
+               placeholder="当时的称呼" autocomplete="off" />
+        <input class="reg-input" id="rcPass" type="tel" inputmode="numeric" maxlength="6"
+               placeholder="你的暗号" autocomplete="off" />
+        <p class="reg-msg hidden" id="rcMsg"></p>
+        <div class="recover-actions">
+          <button class="reg-submit px-title" id="rcGo" type="button">对暗号</button>
+          <button class="recover-close" id="rcClose" type="button">算了，先调酒</button>
+        </div>
+      </div>
+    </div>
 
   </div>
   <!-- 整合钩子：调酒完成 → 存身份 + 建 KV 档案 → 进大厅 -->

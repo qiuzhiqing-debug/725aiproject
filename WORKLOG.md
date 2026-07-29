@@ -125,3 +125,34 @@ Kim 定了 PM→Dev→QA 循环：零上下文子线程做真实体验 QA（第�
 - 三条修复线交付：G `52e8ce7`（契约补全+全字段防御+按 aha.id 判重+国王/罚酒/进桌/锅底→"今晚的酒劲"文案+solo 裁剪+CDP 真跑 solo 全流程零报错海报出图）；H `7cce5db`（空桌冷光呼吸脉冲可点性+老K名牌底衬+竖屏叠压修正）；I `8075626`（摇酒紧凑构图+四杯型装饰贴沿+u.html 文字logo/老K错误文案）。
 - 集成 smoke 125/125 → **部署新 Worker：https://ideal-type-loading.kimnin-iup.workers.dev（Version edebd93d-41de-42a7-84b0-02a35f20dcd1）**，旧 manfen-nan 未动。
 - 公网验证：桌子幂等（两次 join 同码 9273）、/api/tables 正常、双视口截图 qa/prod-*-390/1400.jpg 人工核对通过（调酒/大厅/游戏页全暗紫霓虹，零蓝白）。
+
+## 2026-07-30 凌晨（R2+R2.5：Kim 大反馈重构，七线并行）
+需求真源 docs/FEEDBACK-0729-R2.md（含 R2.5 追加段 + 修订后国王契约）。元规则已落记忆：收到反馈先改 PRD 再动手。
+
+### Kim 反馈要点
+- Logo=霓虹马天尼杯（非字母K）；店名不叫"老K的酒吧"→定为「99%」（差的那1%得是活人）。
+- 老K人设重蒸馏（"还没抓住"→知世故而不世故、接话优先、见过所以不惊讶）+ 立绘重画（脸不沧桑）+ 摇酒壶真三段式 cobbler。
+- 全流程重构：进站→老K自介→选酒→注册(昵称查重+口令+性别+取向)→选桌→选卡组→游戏→海报"进入我的主页"。
+- 老K=游戏内每题锐评NPC（实时API+兜底）；爆灯灭灯做进每题；国王游戏只每题触发、终局大国王删除。
+- R2.5：国王改**匿名发号+报号**（不点人，"7号5号斗鸡"）；理想型生图低精度、人物低精度背景高精度；老K脸不沧桑；占位名 coco（非嘉欣）；签筒/摇壶去文字提示（手机摇/电脑点）。
+
+### 七线交付（文件所有权并行）
+- P 文案/人设：docs/LAOK-PERSONA/COPY-PACK-R2/LAOK-PROMPT + public/laok-lines.js（预写池9场景80句 + KING_ORDERS 12张双号对抗指令卡）。
+- A 后端 src/worker.js：/api/register+recover(昵称查重+4-6位口令跨设备找回)、/api/laok(text.pollinations 5s超时降级兜底池，永不5xx)、deck卡组、**匿名国王重做**(Fisher-Yates每题重发号 seat 1..N、king_chance{winners有序,questionIdx,seatCount}、king_order{nums,orderId}、多国王轮流报号)、handleUserGet 补 gender/seeking。smoke 158/0。
+- R 美术：public/assets-v2/shaker.svg(三段式cobbler) + public/v2/bartender.js(低精度人物16px格/高精度霓虹酒柜背景/暖笑不沧桑)。
+- D 大厅 public/v2/lobby.*：solo文案"一个人？那你和我聊"、"我的主页"入口、卡组徽章。
+- C 调酒页 public/v2/cocktail.*：老K自介三句(店名99%)、shaker.svg接入、摇壶去文字提示、注册段(coco占位+口令+性别取向)、老客识别+对暗号找回。
+- F 主页 public/u.html：对暗号找回、seeking徽章、无死路导航。
+- E 游戏前端 public/index+app+style+poster+ideal-profile：**号码国王UI**(号码牌只本人可见/报两号+甲乙指令卡/揭晓X号是谁)、低精度生图prompt、coco占位、马天尼logo替换K、卡组选择、每题爆灯灭灯、老K NPC框、solo、手机修复。
+
+### QA（零上下文子线程，真实用户体验）+ 修复
+- 三轮 QA：A多人全流程 / B solo+老客+溢出扫8页 / **C双客户端真多人局**（房间4071，两独立Edge实例）。
+- C 硬验证号码国王 R2.5 全通过：king_chance分毫不差触发、号码牌跨端隔离、报两号+甲乙对抗卡(非点人)、揭晓"1号是甲2号是乙"、每题爆灯灭灯两端可投(主角不可投)、老K锐评6题12次全非空(4s内)、终局无大国王、多人揭晓页全≤390、零console报错。
+- QA 揪出 4 P0/P1 → E-fix 修复：①solo开牌页横向溢出490→390(根因 scoreSlam动画+backdrop-filter，html overflow-x:clip + .glass overflow:hidden)；②海报底部补"进入我的主页"按钮(goMyPage)；③签筒去"连点摇签/摇一摇"文字、签筒本体直接可点可摇；④老K锐评每题即时兜底(同步取LAOK_POOL)+LLM回来淡入替换。复验 158/0、solo reveal==390、四张截图人工核对。
+
+### 事故
+- QA-C 与多个生成线程撞上 api.aigocode.com 524 网关超时(原点过载)：120-130s 退避后 SendMessage 断点续跑，未丢工作量。
+
+### 上线
+- 部署新 Worker：**https://ideal-type-loading.kimnin-iup.workers.dev**（Version 091e6e0c-559a-4d92-9481-737be33232f4），旧 manfen-nan 未动。
+- 公网验证：全页200、无扩展名路由正常、/api/laok池兜底、register往返返userId+token(真worker KV写入OK)、前门双视口截图 qa/pub-front-390/1400.jpg 人工核对通过(马天尼logo/店名99%/老K低精度立绘/六大基酒/零溢出)。公网全流程手机 QA 进行中。

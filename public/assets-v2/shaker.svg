@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 360" role="img" aria-label="三段式摇酒壶">
+  <!-- Cobbler 三段式摇酒壶（真实结构参照）：
+       ① shaker-body    壶身 tin：平底、下 2/3 微鼓、向底部略收，口沿有卷边
+       ② shaker-strainer 滤网盖：裙边"套在"壶身口沿外（比壶口略宽 → 可见叠接缝），
+                          肩部圆拱收窄成短颈，肩上有滤孔
+       ③ shaker-cap     小顶盖（兼量酒杯）：圆帽，帽裙再"套住"滤盖的颈口
+       比例 身:滤:盖 ≈ 5:2:1。分组供前端做摇动/开盖动画：
+       #shaker-all > #shaker-body / #shaker-strainer / #shaker-cap
+       金属反霓虹光：主高光偏白，左缘反 #ff2d78 粉、右缘反 #a86bff 紫。 -->
+  <defs>
+    <!-- 主金属：暗紫环境里的不锈钢圆柱明暗 -->
+    <linearGradient id="shakerSteel" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0"    stop-color="#2a1630"/>
+      <stop offset="0.07" stop-color="#d4568c"/>
+      <stop offset="0.16" stop-color="#6f6494"/>
+      <stop offset="0.30" stop-color="#cfc6ea"/>
+      <stop offset="0.38" stop-color="#f8f4ff"/>
+      <stop offset="0.48" stop-color="#d8cff0"/>
+      <stop offset="0.66" stop-color="#8a7ab8"/>
+      <stop offset="0.82" stop-color="#7a56b0"/>
+      <stop offset="0.93" stop-color="#43336a"/>
+      <stop offset="1"    stop-color="#1d1330"/>
+    </linearGradient>
+    <!-- 接缝带 / 卷边圈：整体压暗一档的金属 -->
+    <linearGradient id="shakerSteelDark" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0"    stop-color="#1c1028"/>
+      <stop offset="0.09" stop-color="#a5416f"/>
+      <stop offset="0.30" stop-color="#9c90c4"/>
+      <stop offset="0.40" stop-color="#e9e2fa"/>
+      <stop offset="0.55" stop-color="#a99dc5"/>
+      <stop offset="0.80" stop-color="#553f85"/>
+      <stop offset="1"    stop-color="#160d24"/>
+    </linearGradient>
+    <filter id="shakerGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="2.6"/>
+    </filter>
+  </defs>
+
+  <g id="shaker-all">
+
+    <!-- ① 壶身：口宽 120，腰最宽 132（下 2/3 微鼓），底收到 96，平底 + 底圈 -->
+    <g id="shaker-body">
+      <path d="M 40 134 L 160 134
+               C 163 158, 166 186, 166 212
+               C 166 262, 153 306, 149 326
+               Q 147.5 334, 139 334
+               L 61 334
+               Q 52.5 334, 51 326
+               C 47 306, 34 262, 34 212
+               C 34 186, 37 158, 40 134 Z"
+            fill="url(#shakerSteel)" stroke="#120a1c" stroke-width="3"/>
+      <!-- 口沿卷边（rolled lip）：滤盖裙边就扣在这圈上 -->
+      <path d="M 38 128 L 162 128 L 163 141 L 37 141 Z"
+            fill="url(#shakerSteelDark)" stroke="#120a1c" stroke-width="2.4"/>
+      <!-- 底圈（平底微外凸） -->
+      <path d="M 52 330 L 148 330 Q 152 336, 146 341 L 54 341 Q 48 336, 52 330 Z"
+            fill="url(#shakerSteelDark)" stroke="#120a1c" stroke-width="2.4"/>
+      <!-- 壶身高光带：主白高光 + 左粉右紫的霓虹反射 -->
+      <path d="M 73 150 C 70 200, 71 260, 76 320" stroke="#ffffff" stroke-width="7"
+            stroke-linecap="round" fill="none" opacity="0.75"/>
+      <path d="M 88 156 C 86 205, 87 258, 90 312" stroke="#f1e9ff" stroke-width="3"
+            stroke-linecap="round" fill="none" opacity="0.4"/>
+      <path d="M 46 158 C 42 210, 44 268, 52 322" stroke="#ff2d78" stroke-width="4"
+            stroke-linecap="round" fill="none" opacity="0.5" filter="url(#shakerGlow)"/>
+      <path d="M 152 156 C 157 210, 152 270, 144 322" stroke="#a86bff" stroke-width="5"
+            stroke-linecap="round" fill="none" opacity="0.5" filter="url(#shakerGlow)"/>
+      <!-- 腰部微鼓的暗示：一条极淡的环向反光 -->
+      <path d="M 40 212 Q 100 220, 160 212" stroke="#f8f4ff" stroke-width="1.6"
+            fill="none" opacity="0.18"/>
+    </g>
+
+    <!-- ② 滤网盖：裙边(比壶口宽→叠接缝) + 圆拱肩 + 短颈，肩上滤孔 -->
+    <g id="shaker-strainer">
+      <!-- 肩部圆拱收到颈 -->
+      <path d="M 36 122 C 36 98, 54 84, 70 80
+               L 70 64 L 130 64 L 130 80
+               C 146 84, 164 98, 164 122 L 164 130 L 36 130 Z"
+            fill="url(#shakerSteel)" stroke="#120a1c" stroke-width="3"/>
+      <!-- 裙边：套在壶身卷边外，是三段结构最关键的一条接缝 -->
+      <path d="M 33 118 L 167 118 L 167 136 Q 167 140, 162 140 L 38 140 Q 33 140, 33 136 Z"
+            fill="url(#shakerSteelDark)" stroke="#120a1c" stroke-width="2.6"/>
+      <!-- 裙边与肩的接缝线 -->
+      <path d="M 36 118 L 164 118" stroke="#120a1c" stroke-width="1.6" opacity="0.8"/>
+      <!-- 颈口收窄处的接缝线 -->
+      <path d="M 70 80 L 130 80" stroke="#120a1c" stroke-width="1.6" opacity="0.7"/>
+      <!-- 滤孔：真实 cobbler 的滤孔在颈口下沿一圈（盖子摘掉才看见的那圈），
+           不是撒在肩上——只在颈根部排一行，避免像盐瓶 -->
+      <g fill="#1c1028" opacity="0.85">
+        <circle cx="78"  cy="87" r="1.9"/>
+        <circle cx="89"  cy="88" r="1.9"/>
+        <circle cx="100" cy="88.5" r="1.9"/>
+        <circle cx="111" cy="88" r="1.9"/>
+        <circle cx="122" cy="87" r="1.9"/>
+      </g>
+      <!-- 肩部高光 + 霓虹反射 -->
+      <path d="M 66 112 C 70 96, 80 88, 90 85" stroke="#ffffff" stroke-width="4.5"
+            stroke-linecap="round" fill="none" opacity="0.7"/>
+      <path d="M 46 120 Q 47 104, 56 94" stroke="#ff2d78" stroke-width="3"
+            stroke-linecap="round" fill="none" opacity="0.45" filter="url(#shakerGlow)"/>
+      <path d="M 154 120 Q 153 102, 142 92" stroke="#a86bff" stroke-width="3.6"
+            stroke-linecap="round" fill="none" opacity="0.5" filter="url(#shakerGlow)"/>
+    </g>
+
+    <!-- ③ 小顶盖：圆帽 + 帽裙（套住滤盖颈口 → 第二条叠接缝） -->
+    <g id="shaker-cap">
+      <!-- 圆帽拱顶 -->
+      <path d="M 64 58 C 64 36, 79 26, 100 26 C 121 26, 136 36, 136 58 L 136 62 L 64 62 Z"
+            fill="url(#shakerSteel)" stroke="#120a1c" stroke-width="3"/>
+      <!-- 帽裙：比颈口略宽，压住颈的上沿 -->
+      <path d="M 61 58 L 139 58 L 139 70 Q 139 74, 134 74 L 66 74 Q 61 74, 61 70 Z"
+            fill="url(#shakerSteelDark)" stroke="#120a1c" stroke-width="2.6"/>
+      <!-- 帽顶高光 + 霓虹反射 -->
+      <path d="M 78 52 C 79 42, 86 35, 94 33" stroke="#ffffff" stroke-width="4"
+            stroke-linecap="round" fill="none" opacity="0.8"/>
+      <path d="M 70 56 Q 70 46, 75 40" stroke="#ff2d78" stroke-width="2.6"
+            stroke-linecap="round" fill="none" opacity="0.45" filter="url(#shakerGlow)"/>
+      <path d="M 129 54 Q 129 43, 122 37" stroke="#a86bff" stroke-width="3"
+            stroke-linecap="round" fill="none" opacity="0.5" filter="url(#shakerGlow)"/>
+    </g>
+
+  </g>
+</svg>

@@ -30,10 +30,11 @@ async function waitUntil(predicate, ms = 5000) {
 }
 
 class Player {
-  constructor(name, emoji, drink = "beer") {
+  constructor(name, emoji, drink = "beer", seeking = null) {
     this.name = name;
     this.emoji = emoji;
     this.drink = drink;
+    this.seeking = seeking;
     this.token = null;
     this.state = null;
     this.lastError = null;
@@ -48,7 +49,7 @@ class Player {
     this.ws = new WebSocket(`${WS_BASE}/api/room/${code}/ws`);
     return new Promise((res, rej) => {
       this.ws.on("open", () => {
-        this.ws.send(JSON.stringify({ type: "join", name: this.name, emoji: this.emoji, drink: this.drink, token }));
+        this.ws.send(JSON.stringify({ type: "join", name: this.name, emoji: this.emoji, drink: this.drink, seeking: this.seeking, token }));
       });
       this.ws.on("message", (raw) => {
         const m = JSON.parse(raw.toString());
@@ -59,7 +60,7 @@ class Player {
         if (m.type === "danmaku") this.danmakus.push(m);
         if (m.type === "quick_reaction") this.quickReactions.push(m);
         if (m.type === "light_fx") this.lightFx.push(m);
-        if (["king_game", "king_order", "player_left", "player_away", "player_back", "host_transfer", "force_next", "left", "kicked"].includes(m.type)) {
+        if (["king_game", "king_order", "king_chance", "king_result", "player_left", "player_away", "player_back", "host_transfer", "force_next", "left", "kicked"].includes(m.type)) {
           this.events.push(m);
         }
       });
@@ -769,6 +770,200 @@ async function main() {
   });
   const introView = await (await fetch(`${BASE}/api/user/${created.userId}`)).json();
   ok(introView.cocktail?.intro === "先苦后甜，像极了暗恋", "cocktail.intro 通过白名单保存");
+
+  /* ================= R2：注册 + 找回（昵称全局查重 + 4-6 位口令） ================= */
+  console.log("\n-- R2 注册/找回 --");
+
+  const JSON_HEADERS = { "content-type": "application/json" };
+  const regName = ("K客" + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-3)).slice(0, 12);
+  const regRes = await fetch(BASE + "/api/register", {
+    method: "POST", headers: JSON_HEADERS,
+    body: JSON.stringify({ name: regName, passcode: "1234", gender: "m", seeking: "f" }),
+  });
+  const reg = await regRes.json();
+  ok(regRes.status === 201 && reg.userId && reg.token, `POST /api/register → 201 userId=${reg.userId}`);
+
+  const dupRes2 = await fetch(BASE + "/api/register", {
+    method: "POST", headers: JSON_HEADERS,
+    body: JSON.stringify({ name: "  " + regName.toUpperCase() + "  ", passcode: "5678", gender: "f", seeking: "m" }),
+  });
+  const dupBody = await dupRes2.json();
+  ok(dupRes2.status === 409 && dupBody.error === "name_taken", "重名（大小写+空格归一）→ 409 name_taken");
+
+  const badPass1 = await fetch(BASE + "/api/register", {
+    method: "POST", headers: JSON_HEADERS,
+    body: JSON.stringify({ name: regName + "b", passcode: "123", gender: "m", seeking: "f" }),
+  });
+  ok(badPass1.status === 400, "口令 3 位 → 400");
+  const badPass2 = await fetch(BASE + "/api/register", {
+    method: "POST", headers: JSON_HEADERS,
+    body: JSON.stringify({ name: regName + "c", passcode: "12ab", gender: "m", seeking: "f" }),
+  });
+  ok(badPass2.status === 400, "口令带字母 → 400");
+  const badGender = await fetch(BASE + "/api/register", {
+    method: "POST", headers: JSON_HEADERS,
+    body: JSON.stringify({ name: regName + "d", passcode: "1234", gender: "z", seeking: "f" }),
+  });
+  ok(badGender.status === 400, "gender 非 m|f|x → 400");
+
+  const recOk = await fetch(BASE + "/api/recover", {
+    method: "POST", headers: JSON_HEADERS,
+    body: JSON.stringify({ name: regName, passcode: "1234" }),
+  });
+  const rec = await recOk.json();
+  ok(recOk.status === 200 && rec.userId === reg.userId && rec.token === reg.token,
+    "POST /api/recover 昵称+口令 → 200 找回同一 userId/token");
+  const recWrong = await fetch(BASE + "/api/recover", {
+    method: "POST", headers: JSON_HEADERS,
+    body: JSON.stringify({ name: regName, passcode: "9999" }),
+  });
+  ok(recWrong.status === 403, "口令错 → 403");
+  const recMiss = await fetch(BASE + "/api/recover", {
+    method: "POST", headers: JSON_HEADERS,
+    body: JSON.stringify({ name: "查无此人" + Math.random().toString(36).slice(2, 6), passcode: "1234" }),
+  });
+  ok(recMiss.status === 404, "名字不存在 → 404");
+
+  const regProfile = await (await fetch(`${BASE}/api/user/${reg.userId}`)).json();
+  ok(regProfile.nick === regName && regProfile.token === undefined,
+    "注册档案沿用现有 user 结构（GET /api/user/:id 可读、不泄 token）");
+  ok(regProfile.seeking === "f" && regProfile.gender === "m",
+    "GET /api/user/:id 带 gender/seeking（F 线主页想看方向徽标）");
+
+  /* ================= R2：老K LLM 代理 /api/laok（永不 5xx + 降级） ================= */
+  console.log("\n-- R2 老K代理 /api/laok --");
+
+  const laokCtx = encodeURIComponent(JSON.stringify({ question: "满分男但吵架只用AI回复", score: 7 }));
+  const laok1Res = await fetch(`${BASE}/api/laok?scene=round_reveal&ctx=${laokCtx}`);
+  const laok1 = await laok1Res.json();
+  ok(laok1Res.status === 200 && typeof laok1.text === "string" && laok1.text.length > 0
+    && ["llm", "pool"].includes(laok1.source),
+    `GET /api/laok → 200（source=${laok1.source}）：${laok1.text.slice(0, 20)}…`);
+  const laok2 = await (await fetch(`${BASE}/api/laok?scene=round_reveal&ctx=${laokCtx}`)).json();
+  ok(laok2.text === laok1.text && laok2.source === laok1.source, "相同 scene+ctx 60s 内命中缓存（防刷）");
+  const laokBadRes = await fetch(`${BASE}/api/laok?scene=&ctx=%7Bnot-json`);
+  const laokBad = await laokBadRes.json();
+  ok(laokBadRes.status === 200 && laokBad.text && ["llm", "pool"].includes(laokBad.source),
+    "垃圾参数照样 200 + 有文案（永不 5xx，降级可用）");
+
+  /* ================= R2：卡组 deck + 每题国王 + 每题爆灯 + 终局无大国王 ================= */
+  console.log("\n-- R2 卡组 + 每题国王/爆灯 --");
+
+  const deckRoom = await (await fetch(BASE + "/api/room", {
+    method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ deck: "woman" }),
+  })).json();
+  ok(/^\d{4}$/.test(deckRoom.code) && deckRoom.deck === "woman", "建房 body.deck=woman 生效");
+  const defDeckRoom = await (await fetch(BASE + "/api/room", { method: "POST" })).json();
+  ok(defDeckRoom.deck === "man", "deck 缺省 = man");
+  const tablesR2 = await (await fetch(BASE + "/api/tables")).json();
+  ok(tablesR2.tables.every((t) => "deck" in t), "/api/tables 每桌返回带 deck 字段");
+
+  const K1 = new Player("国一", "🍺", "beer", "f"), K2 = new Player("国二", "🍷", "wine", "m"), K3 = new Player("国三", "🥃", "soft", "x");
+  await K1.connect(deckRoom.code); await K2.connect(deckRoom.code); await K3.connect(deckRoom.code);
+  const kt = [K1, K2, K3];
+  await waitUntil(() => K1.state?.players?.length === 3);
+  ok(K1.state.deck === "woman", "房间 state 广播带 deck");
+  ok(K1.state.you.seeking === "f" && K2.state.you.seeking === "m" && K3.state.you.seeking === "x",
+    "join 透传 seeking → state.you.seeking");
+
+  K1.send({ type: "start", rounds: 3, questions: v2Questions });
+  await K1.waitPhase("picking");
+  const kShaker = kt.find((p) => p.state.current.youAreShaker);
+  kShaker.send({ type: "draw_stick" });
+  await waitUntil(() => K1.state?.current?.drawn === true);
+  kShaker.send({ type: "stick_done" });
+  await K1.waitPhase("protagonist_setup");
+  const kHero = kt.find((p) => p.state.current.youAreProtagonist);
+  const kGuessers = kt.filter((p) => p !== kHero);
+  kHero.send({ type: "set_gender", gender: "m" });
+  await K1.waitPhase("answering");
+
+  // 答题期爆灯（每题一次）；主角对自己爆灯应被忽略
+  kGuessers[0].send({ type: "light", value: "burst" });
+  kHero.send({ type: "light", value: "burst" });
+
+  kHero.send({ type: "score", v: 7 });
+  kGuessers[0].send({ type: "guess", v: 7 }); // 分毫不差
+  kGuessers[1].send({ type: "guess", v: 7 }); // 也分毫不差 → 双国王
+  await Promise.all(kt.map((p) => p.waitPhase("reveal")));
+  const kIds = Object.fromEntries(K1.state.players.map((p) => [p.name, p.id]));
+  const kReveal = K1.state.current.reveal;
+  ok(Array.isArray(kReveal.exact) && kReveal.exact.length === 2
+    && kReveal.exact.includes(kIds[kGuessers[0].name]) && kReveal.exact.includes(kIds[kGuessers[1].name]),
+    "reveal.exact = 全部分毫不差玩家 id 数组（双国王）");
+  await waitUntil(() => kt.every((p) => p.events.some((e) => e.type === "king_chance")));
+  const kChance = K1.events.find((e) => e.type === "king_chance");
+  ok(kChance.winners.length === 2 && kChance.seatCount === 3 && kChance.questionIdx === 0,
+    "king_chance{winners,questionIdx,seatCount:N} 广播（双国王）");
+
+  // 每客户端只从 state.you.seatNo 读到自己的匿名号；号 1..N 每人唯一（每题重洗）
+  await waitUntil(() => kt.every((p) => Number.isInteger(p.state?.you?.seatNo)));
+  const seatNos = kt.map((p) => p.state.you.seatNo);
+  ok(seatNos.every((n) => n >= 1 && n <= 3) && new Set(seatNos).size === 3,
+    `匿名号 1..N 每人唯一：${seatNos.join(",")}`);
+  const seatOfId = {}; kt.forEach((p) => { seatOfId[p.state.you.id] = p.state.you.seatNo; });
+  const seatToName = {}; kt.forEach((p) => { seatToName[p.state.you.seatNo] = p.name; });
+  ok(seatOfId[kChance.winners[0]] < seatOfId[kChance.winners[1]], "king_chance.winners 按座次升序");
+
+  // reveal 期灭灯 → 随 reveal.lights 带出
+  kGuessers[1].send({ type: "light", value: "off" });
+  await waitUntil(() => K1.state?.current?.reveal?.lights?.[kIds[kGuessers[1].name]] === "off");
+  const kLights = K1.state.current.reveal.lights;
+  ok(kLights[kIds[kGuessers[1].name]] === "off" && !(kIds[kHero.name] in kLights),
+    "reveal.lights = {playerId: burst|off}（主角自灯无效）");
+
+  // 号码轮报：确定当前轮到谁、下一个是谁（按座次）
+  const kcView = () => K1.state.current.kingChance;
+  await waitUntil(() => kcView()?.currentKing);
+  const king1Id = kcView().currentKing;
+  const king2Id = kChance.winners.find((w) => w !== king1Id);
+  const king1 = kt.find((p) => p.state.you.id === king1Id);
+  const king2 = kt.find((p) => p.state.you.id === king2Id);
+  ok(king1Id === kChance.winners[0], "currentKing = 座次最前的国王（轮报起点）");
+
+  // 非 winner（主角）报号无效
+  kHero.send({ type: "king_order", nums: [1, 2], orderId: "ko-1" });
+  await sleep(250);
+  ok(!kt.some((p) => p.events.some((e) => e.type === "king_result")), "非 winner 报号无效");
+  // 未轮到的第二国王抢先报号无效
+  king2.send({ type: "king_order", nums: [1, 2], orderId: "ko-1" });
+  await sleep(250);
+  ok(!kt.some((p) => p.events.some((e) => e.type === "king_result")), "未轮到的国王抢先报号无效");
+  // 非法号：相同 / 越界 无效
+  king1.send({ type: "king_order", nums: [2, 2], orderId: "ko-1" });
+  king1.send({ type: "king_order", nums: [1, 9], orderId: "ko-1" });
+  king1.send({ type: "king_order", nums: [1], orderId: "ko-1" });
+  await sleep(250);
+  ok(!kt.some((p) => p.events.some((e) => e.type === "king_result")), "号相同/越界/数量不足报号无效");
+
+  // 第一个国王合法报号 → king_result 公布号背后真名
+  king1.send({ type: "king_order", nums: [1, 2], orderId: "ko-1" });
+  await waitUntil(() => kt.every((p) => p.events.some((e) => e.type === "king_result")));
+  const r1 = K1.events.find((e) => e.type === "king_result");
+  ok(r1.king === king1Id && Array.isArray(r1.nums) && r1.nums.length === 2
+    && r1.orderId === "ko-1" && r1.questionIdx === 0,
+    "king_result{king,nums,orderId,questionIdx} 广播全桌");
+  ok(r1.names[0] === seatToName[r1.nums[0]] && r1.names[1] === seatToName[r1.nums[1]],
+    "king_result.names 公布 X号背后是谁");
+
+  // 轮到第二个国王，流程尚未结束
+  await waitUntil(() => kcView()?.currentKing === king2Id);
+  ok(kcView().currentKing === king2Id && kcView().done === false,
+    "第一个国王报完 → 按座次轮到下一个国王，done=false");
+  king2.send({ type: "king_order", nums: [2, 3], orderId: "ko-2" });
+  await waitUntil(() => K1.events.filter((e) => e.type === "king_result").length === 2);
+  ok(K1.events.filter((e) => e.type === "king_result").length === 2, "双国王各报一组号（惩罚可叠加）");
+  await waitUntil(() => kcView()?.done === true);
+  ok(kcView().done === true, "全部国王报完 → done=true，流程继续");
+
+  // 终局无大国王：finished 阶段 king 恒为 null（字段保留兼容旧前端）
+  const kHost = () => kt.find((p) => p.state?.you?.isHost);
+  kHost().send({ type: "finish_game" });
+  await K1.waitPhase("aha");
+  kHost().send({ type: "finish_game" });
+  await Promise.all(kt.map((p) => p.waitPhase("finished")));
+  ok(K1.state.phase === "finished" && K1.state.king === null, "finished 阶段无终局大国王（state.king=null）");
+  kt.forEach((p) => { try { p.ws.close(); } catch {} });
 
   console.log(`\n== 结果：${passed} 通过 / ${failed} 失败`);
   process.exit(failed ? 1 : 0);

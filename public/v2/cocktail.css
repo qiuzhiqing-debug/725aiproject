@@ -247,12 +247,12 @@ html, body {
 .mixing.done .pour-stream { display: none; }
 .mixing.done .glass-zone { top: 24px; }
 
-/* Cobbler 三段式摇酒壶（SVG 在 HTML 里，这里管布局与动作） */
+/* Cobbler 三段式摇酒壶（美术线 shaker.svg inline，viewBox 200×360 → 比例 5:9） */
 .mix-shaker {
   position: absolute;
   top: 0;
   left: 50%;
-  width: 94px;
+  width: 86px;
   height: 154px;
   transform: translateX(-50%);
   transform-origin: 50% 78%;
@@ -260,6 +260,23 @@ html, body {
   filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.45));
 }
 .mix-shaker svg { width: 100%; height: 100%; display: block; }
+
+/* 邀请交互：整体极缓呼吸脉冲（视觉，无文字提示） */
+.mix-shaker.invite { animation: mx-invite 1.6s ease-in-out infinite; }
+@keyframes mx-invite {
+  0%, 100% { transform: translateX(-50%) scale(1); }
+  50%      { transform: translateX(-50%) scale(1.045); }
+}
+
+/* 出酒开盖：顶盖弹起外翻 */
+.mix-shaker #shaker-cap {
+  transition: transform 0.4s cubic-bezier(0.3, 1.4, 0.5, 1);
+  transform-box: fill-box;
+  transform-origin: 100% 100%;
+}
+.mix-shaker.pouring #shaker-cap {
+  transform: translate(26px, -46px) rotate(38deg);
+}
 
 /* 摇动：振幅/角度由 JS 按传感器强度写入 --amp / --rot */
 .mix-shaker.shake { animation: mx-shake 0.3s ease-in-out infinite; }
@@ -459,6 +476,202 @@ html, body {
 }
 .result-go:hover { transform: scale(1.04); }
 .result-go:active { transform: scale(0.97); }
+
+/* ---------- 注册段：告诉老K你是谁 ---------- */
+.register {
+  width: min(420px, 92vw);
+  margin-top: 10px;
+  text-align: center;
+  z-index: 2;
+  animation: card-in 0.4s ease-out;
+}
+.register-eyebrow {
+  font-size: 13px;
+  letter-spacing: 0.3em;
+  margin-bottom: 8px;
+}
+.register-title {
+  font-size: 22px;
+  margin-bottom: 8px;
+}
+.register-lead {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-mid);
+  margin-bottom: 16px;
+}
+.register-card {
+  text-align: left;
+  background: var(--panel);
+  border: var(--stroke-thin) solid var(--line-neon);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-panel);
+  padding: 20px 18px 18px;
+}
+.reg-label {
+  display: block;
+  font-size: 13px;
+  color: var(--neon-cyan-soft);
+  letter-spacing: 0.06em;
+  margin: 14px 0 6px;
+}
+.register-card > .reg-label:first-child { margin-top: 0; }
+.reg-input {
+  width: 100%;
+  padding: 12px 14px;
+  background: var(--panel-solid);
+  border: var(--stroke-thin) solid var(--line-soft);
+  border-radius: var(--radius-btn);
+  color: var(--ink-hi);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.reg-input::placeholder { color: var(--ink-ghost); }
+.reg-input:focus {
+  outline: none;
+  border-color: var(--neon-cyan);
+  box-shadow: var(--neon-box-cyan);
+}
+#regPass, #rcPass { letter-spacing: 0.4em; }
+.reg-note {
+  font-size: 12px;
+  color: var(--ink-dim);
+  margin-top: 6px;
+  line-height: 1.5;
+}
+
+/* 火柴盒/杯垫按钮：性别 + 取向三选，不用生硬单选框 */
+.reg-choice {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.reg-choice button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 6px;
+  background: var(--panel-solid);
+  border: var(--stroke) solid var(--line-soft);
+  border-radius: var(--radius-btn);
+  color: var(--ink-mid);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s, color 0.15s;
+}
+.reg-choice button i {
+  font-style: normal;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--neon-cyan-soft);
+  transition: color 0.15s, text-shadow 0.15s;
+}
+.reg-choice button:hover { border-color: var(--neon-cyan); }
+.reg-choice button:active { transform: scale(0.97); }
+.reg-choice button.on {
+  border-color: var(--neon-pink);
+  box-shadow: var(--neon-box-pink);
+  color: var(--ink-hi);
+}
+.reg-choice button.on i {
+  color: var(--neon-pink-hot);
+  text-shadow: 0 0 8px var(--glow-pink-70);
+}
+.reg-msg {
+  margin-top: 14px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--neon-amber);
+  background: var(--panel-solid);
+  border: var(--stroke-thin) solid var(--line-soft);
+  border-radius: var(--radius-btn);
+}
+.reg-submit {
+  display: block;
+  width: 100%;
+  margin-top: 18px;
+  font-size: 16px;
+  padding: 13px 0;
+  color: var(--bar-bg-deep);
+  background: linear-gradient(180deg, var(--neon-pink-hot), var(--neon-pink));
+  border: var(--stroke) solid var(--neon-pink);
+  border-radius: var(--radius-btn);
+  box-shadow: var(--neon-box-pink);
+  cursor: pointer;
+  transition: transform 0.12s, opacity 0.2s;
+}
+.reg-submit:hover { transform: scale(1.02); }
+.reg-submit:active { transform: scale(0.98); }
+.reg-submit:disabled { opacity: 0.6; cursor: default; transform: none; }
+
+/* ---------- 老客找回：不显眼入口 + 对暗号面板 ---------- */
+.recover-link {
+  margin: 14px auto 0;
+  background: none;
+  border: none;
+  color: var(--ink-dim);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  z-index: 2;
+  transition: color 0.15s;
+}
+.recover-link:hover { color: var(--neon-cyan-soft); }
+
+.recover {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(8, 4, 14, 0.78);
+  backdrop-filter: blur(3px);
+}
+.recover-card {
+  width: min(360px, 92vw);
+  background: var(--panel);
+  border: var(--stroke) solid var(--line-neon);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-panel);
+  padding: 22px 20px;
+  animation: card-in 0.3s ease-out;
+}
+.recover-title { font-size: 20px; margin-bottom: 8px; }
+.recover-lead {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-mid);
+  margin-bottom: 14px;
+}
+.recover-card .reg-input { margin-bottom: 10px; }
+.recover-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+.recover-actions .reg-submit { margin-top: 0; }
+.recover-close {
+  background: none;
+  border: none;
+  color: var(--ink-dim);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 6px;
+  transition: color 0.15s;
+}
+.recover-close:hover { color: var(--neon-cyan-soft); }
 
 /* 横屏：空间紧时整体收一点 */
 @media (orientation: landscape) and (max-height: 500px) {

@@ -353,6 +353,141 @@
     .error-sub { margin-top: 8px; color: var(--ink-dim); font-size: 13px; }
     .error-raw { margin-top: 14px; color: var(--ink-ghost); font-size: 11px; }
 
+    /* ---- 想看的方向 徽标 ---- */
+    .seek-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 8px;
+      padding: 3px 11px;
+      border-radius: var(--radius-pill);
+      border: 1px solid var(--line-neon);
+      background: var(--bar-bg-raise);
+      font-size: 11px;
+      color: var(--neon-cyan-soft);
+      font-family: var(--font-pixel);
+      letter-spacing: .04em;
+    }
+    .seek-badge .seek-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--neon-cyan-soft);
+      box-shadow: 0 0 5px var(--neon-cyan);
+      flex-shrink: 0;
+    }
+
+    /* ---- 找回身份 / 选择屏 ---- */
+    .auth-wrap {
+      max-width: 460px;
+      margin: 40px auto 0;
+      padding: 0 20px 60px;
+    }
+    .auth-hero { text-align: center; margin-bottom: 8px; }
+    .auth-hero-ico { font-size: 44px; display: block; margin-bottom: 14px; }
+    .auth-title {
+      font-family: var(--font-pixel);
+      font-size: 20px;
+      color: var(--ink-hi);
+    }
+    .auth-sub {
+      margin-top: 10px;
+      color: var(--ink-dim);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .auth-choices {
+      margin-top: 26px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .auth-card {
+      text-align: left;
+      padding: 16px 18px;
+      border-radius: var(--radius-card);
+      border: 1px solid var(--line-soft);
+      background: var(--panel);
+      cursor: pointer;
+      color: inherit;
+      text-decoration: none;
+      display: block;
+      width: 100%;
+      font-family: inherit;
+    }
+    .auth-card:hover { border-color: var(--line-neon); }
+    .auth-card-title {
+      font-family: var(--font-pixel);
+      font-size: 15px;
+      color: var(--ink-hi);
+    }
+    .auth-card-sub {
+      margin-top: 5px;
+      font-size: 12px;
+      color: var(--ink-dim);
+      line-height: 1.5;
+    }
+
+    /* ---- 找回表单 ---- */
+    .recover-form { margin-top: 24px; display: none; }
+    .recover-form.show { display: block; }
+    .field { margin-bottom: 14px; }
+    .field label {
+      display: block;
+      font-size: 12px;
+      color: var(--ink-mid);
+      margin-bottom: 6px;
+      font-family: var(--font-pixel);
+      letter-spacing: .04em;
+    }
+    .field input {
+      width: 100%;
+      padding: 13px 14px;
+      background: var(--bar-bg-raise);
+      border: 1px solid var(--line-soft);
+      border-radius: var(--radius-btn);
+      color: var(--ink-hi);
+      font-size: 15px;
+      font-family: inherit;
+    }
+    .field input:focus {
+      outline: none;
+      border-color: var(--neon-cyan);
+      box-shadow: 0 0 0 2px var(--glow-purple-45);
+    }
+    .recover-err {
+      min-height: 18px;
+      margin: -2px 0 12px;
+      font-size: 12px;
+      color: var(--neon-pink-hot);
+      line-height: 1.5;
+    }
+    .btn-recover {
+      width: 100%;
+      padding: 14px;
+      background: var(--neon-pink);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-btn);
+      font-family: var(--font-pixel);
+      font-size: 15px;
+      cursor: pointer;
+      box-shadow: var(--neon-box-pink);
+    }
+    .btn-recover:hover { opacity: .92; }
+    .btn-recover:disabled { opacity: .5; cursor: default; }
+    .recover-back {
+      display: block;
+      text-align: center;
+      margin-top: 16px;
+      color: var(--neon-cyan-soft);
+      font-size: 13px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      width: 100%;
+      font-family: inherit;
+    }
+    .recover-back:hover { text-shadow: var(--neon-text-cyan); }
+
     /* ---- 进大厅按钮（自己看自己档案时才显示） ---- */
     .action-bar {
       padding: 16px;
@@ -412,6 +547,9 @@
       roommate: "满分室友",
       teacher: "满分老师",
     };
+
+    // 想看的方向（seeking：m|f|x）→ COPY-PACK 三选文案；别把 m/f/x 原文露给用户
+    const SEEK_LABEL = { m: "满分男", f: "满分女", x: "都行" };
 
     function fmtDate(ts) {
       if (!ts) return "";
@@ -546,6 +684,11 @@
           </div>`
         : "";
 
+      // 想看的方向徽标：后端返回 seeking（m|f|x）时才显示，用三选文案
+      const seekBadge = SEEK_LABEL[data.seeking]
+        ? `<div class="seek-badge"><span class="seek-dot"></span>想看 ${esc(SEEK_LABEL[data.seeking])}</div>`
+        : "";
+
       const dexEntry = `
         <div class="dex-entry" role="note" aria-disabled="true">
           <span class="dex-lock">🔒</span>
@@ -560,6 +703,7 @@
           ${avatarHtml}
           <div class="user-info">
             <div class="user-nick px-title">${esc(data.nick)}</div>
+            ${seekBadge}
             ${cocktailHtml}
             <div class="user-stats">
               <div class="stat">
@@ -628,26 +772,130 @@
     }
 
     /* ---- 错误状态（老K口吻包一层，服务端原文放小字） ---- */
-    function renderError(msg) {
+    function renderError(msg, offerRecover) {
+      const recoverBtn = offerRecover
+        ? `<div style="margin-top:14px"><button type="button" id="errRecover" class="recover-back" style="margin-top:0">换了设备？对暗号找回 →</button></div>`
+        : "";
       document.getElementById("main").innerHTML = `
         <div class="error-wrap">
           <span class="error-icon">🍺</span>
           <div class="error-msg">这份档案我翻不着。</div>
           <div class="error-sub">要么码不对，要么它还没写成。</div>
           <div class="error-raw">${esc(msg)}</div>
+          ${recoverBtn}
           <div style="margin-top:24px">
             <a href="/v2/lobby.html" style="color:var(--neon-cyan-soft);font-size:14px">← 去大厅开一局</a>
           </div>
         </div>`;
+      const $r = document.getElementById("errRecover");
+      if ($r) $r.addEventListener("click", renderAuthChoice);
+    }
+
+    /* ---- 无身份 / 找回：对暗号 or 第一次来 ---- */
+    function renderAuthChoice() {
+      const $main = document.getElementById("main");
+      $main.innerHTML = `
+        <div class="auth-wrap">
+          <div class="auth-hero">
+            <span class="auth-hero-ico">🍸</span>
+            <div class="auth-title">头回来，还是回头客？</div>
+            <div class="auth-sub">这台设备我还没认出你。你说一声，我就知道该翻哪本账。</div>
+          </div>
+          <div class="auth-choices">
+            <a class="auth-card" href="/v2/cocktail.html">
+              <div class="auth-card-title">第一次来</div>
+              <div class="auth-card-sub">先去吧台调杯酒，从头认识一下。</div>
+            </a>
+            <button class="auth-card" type="button" id="pickRecover">
+              <div class="auth-card-title">我来过，对暗号</div>
+              <div class="auth-card-sub">报上称呼和暗号，换了设备我照样认得你。</div>
+            </button>
+          </div>
+
+          <form class="recover-form" id="recoverForm" novalidate>
+            <div class="auth-title" style="font-size:16px;margin-bottom:6px">换手机了？</div>
+            <div class="auth-sub" style="margin:0 0 18px">报上称呼和暗号。我认人，从来不看设备。</div>
+            <div class="field">
+              <label for="rcName">怎么称呼你</label>
+              <input id="rcName" type="text" maxlength="12" autocomplete="off" placeholder="这儿没人用真名" />
+            </div>
+            <div class="field">
+              <label for="rcPass">你的暗号（4–6 个数字）</label>
+              <input id="rcPass" type="text" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="4 到 6 位数字" />
+            </div>
+            <div class="recover-err" id="rcErr" role="alert"></div>
+            <button class="btn-recover" type="submit" id="rcBtn">对暗号</button>
+            <button class="recover-back" type="button" id="rcBack">← 再想想，先不对</button>
+          </form>
+        </div>`;
+
+      const form = document.getElementById("recoverForm");
+      document.getElementById("pickRecover").addEventListener("click", () => {
+        form.classList.add("show");
+        form.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        document.getElementById("rcName").focus();
+      });
+      document.getElementById("rcBack").addEventListener("click", () => {
+        form.classList.remove("show");
+        document.getElementById("rcErr").textContent = "";
+      });
+      form.addEventListener("submit", onRecoverSubmit);
+      document.title = "对暗号 · 理想型档案";
+    }
+
+    async function onRecoverSubmit(e) {
+      e.preventDefault();
+      const $err = document.getElementById("rcErr");
+      const $btn = document.getElementById("rcBtn");
+      const name = document.getElementById("rcName").value.trim();
+      const passcode = document.getElementById("rcPass").value.trim();
+      $err.textContent = "";
+
+      if (!name) { $err.textContent = "先报个称呼，我才好翻账。"; return; }
+      if (!/^\d{4,6}$/.test(passcode)) {
+        $err.textContent = "暗号是 4 到 6 个数字。再敲一遍。";
+        return;
+      }
+
+      $btn.disabled = true;
+      const label = $btn.textContent;
+      $btn.textContent = "对着呢…";
+      try {
+        const res = await fetch("/api/recover", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, passcode }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          localStorage.setItem("ideal_userId", data.userId);
+          localStorage.setItem("ideal_token", data.token);
+          localStorage.setItem("mfn_name", name);
+          toast("对上了。柜子还是你那个柜子。");
+          setTimeout(() => location.replace("/u.html?id=" + data.userId), 800);
+          return;
+        }
+        // 403 口令不对 / 404 没这名字：COPY-PACK 合并为同一句老K口吻提示
+        if (res.status === 403 || res.status === 404) {
+          $err.textContent = "暗号对不上。再想想——实在想不起来，就回吧台重调一杯。";
+        } else {
+          $err.textContent = "线路的事，不赖你。歇一下再对一遍。";
+        }
+      } catch {
+        $err.textContent = "线路的事，不赖你。歇一下再对一遍。";
+      }
+      $btn.disabled = false;
+      $btn.textContent = label;
     }
 
     /* ---- 入口 ---- */
     if (!userId) {
-      // 没有 ?id= 参数，尝试跳到自己的档案；如果自己也没有，去调酒
       if (myId) {
+        // 有本地身份 → 直接看自己的档案
         location.replace("/u.html?id=" + myId);
       } else {
-        location.replace("/v2/cocktail.html");
+        // 无本地身份 → 对暗号找回 or 第一次来
+        renderAuthChoice();
       }
     } else {
       // 本人视角带 token：后端会返回含隐藏记录的完整展示柜（每条带 hidden/idx）
@@ -657,10 +905,11 @@
       fetch(`/api/user/${userId}${tokenQS}`)
         .then(r => r.json())
         .then(data => {
-          if (data.error) renderError(data.error);
+          // 档案翻不着：本人（身份可能失效）或匿名访客，给对暗号找回入口
+          if (data.error) renderError(data.error, isSelf || !myId);
           else renderProfile(data);
         })
-        .catch(() => renderError("网络错误，稍后再试"));
+        .catch(() => renderError("网络错误，稍后再试", isSelf || !myId));
     }
   </script>
 

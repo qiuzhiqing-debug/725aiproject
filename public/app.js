@@ -10,6 +10,7 @@ import {
   quickReactionPayload,
   socialModel,
 } from "./social.js";
+import { LAOK_POOL } from "./laok-lines.js";
 
 const $app = document.getElementById("app");
 const $toast = document.getElementById("toast");
@@ -23,6 +24,8 @@ const loadQuestions = () => lazyImport("questions", "./questions.js");
 const loadQr = () => lazyImport("qr", "./qrcode.js");
 const loadPoster = () => lazyImport("poster", "./poster.js");
 const loadIdealProfile = () => lazyImport("idealProfile", "./ideal-profile.js");
+// 老K立绘（v2 共用模块，只 import 不改）：锐评 NPC 的小头像
+const loadBartender = () => lazyImport("bartender", "./v2/bartender.js");
 let buildIdealProfileFn = null;
 
 const EMOJIS = ["🍺", "🍷", "🥃", "🍶", "🍸", "🍹", "🥂", "🍻", "🫗", "🧉"];
@@ -41,6 +44,75 @@ const DECK_DISPLAY = {
   "重口锅底": "上头款 · 后劲很大",
 };
 const deckLabel = (name) => DECK_DISPLAY[name] || name || "";
+
+/* ---------- 卡组（R2）：开桌时选「今晚聊什么」 ----------
+   随建房 POST /api/room body.deck 传后端；全桌以 state.deck 为准。
+   g = 该卡组的题面方向（protagonist_setup 阶段由前端自动代发 set_gender）。 */
+const ROOM_DECKS = {
+  man: { name: "满分男", g: "m", line: "给男人打分，从来没这么理直气壮过" },
+  woman: { name: "满分女", g: "f", line: "满分女的标准答案，今晚现场对" },
+  agent: { name: "满分Agent", g: "n", line: "反转局：今晚被打分的，是你的AI" },
+};
+const roomDeckName = (key) => ROOM_DECKS[key]?.name || "满分男";
+
+/* ---------- 每题国王（R2.5 号码对抗版）：指令卡池 ----------
+   正式池来自 public/laok-lines.js 的 KING_ORDERS（P 线交付，可能晚到）；
+   动态 import 失败 → 用内置 12 条兜底（后端在文件缺失时不校验 orderId，兜底可跑）。
+   卡面用 {a}{b} 占位，替换成国王报的两个号码——国王报号时并不知道号背后是谁。 */
+const FALLBACK_KING_ORDERS = [
+  { id: "ko-01", text: "{a}号和{b}号斗鸡眼对视十秒，先笑的喝一杯" },
+  { id: "ko-02", text: "{a}号和{b}号对喝一杯，谁慢谁再来一杯" },
+  { id: "ko-03", text: "{a}号和{b}号各说对方一句真心话，敷衍的那个喝" },
+  { id: "ko-04", text: "{a}号请{b}号喝一杯，理由现编，编不出自己喝" },
+  { id: "ko-05", text: "{a}号和{b}号猜拳三局，输的把赢的那杯也喝了" },
+  { id: "ko-06", text: "{a}号和{b}号碰杯，各夸对方一个优点，卡壳的喝" },
+  { id: "ko-07", text: "{a}号和{b}号同时指认桌上最能喝的人，指得不一样两个都喝" },
+  { id: "ko-08", text: "{a}号和{b}号背对背，同时答『谁先追的谁』，对不上一起喝" },
+  { id: "ko-09", text: "{a}号夸{b}号一句，{b}号必须信，不信就喝" },
+  { id: "ko-10", text: "{a}号和{b}号比相册照片谁多，少的那个喝" },
+  { id: "ko-11", text: "{a}号和{b}号对视敬酒，先眨眼的喝" },
+  { id: "ko-12", text: "{a}号和{b}号交换一句手机里的秘密，不换的喝" },
+];
+let kingOrdersCache = null; // [{id,text}]
+function normalizeKingOrders(raw) {
+  if (Array.isArray(raw)) {
+    const list = raw
+      .map((o, i) =>
+        typeof o === "string"
+          ? { id: o, text: o }
+          : { id: String(o?.id ?? `ko-${i}`), text: String(o?.text ?? o?.id ?? "") })
+      .filter((o) => o.id && o.text);
+    return list.length ? list : null;
+  }
+  if (raw && typeof raw === "object") {
+    const list = Object.entries(raw).map(([id, v]) => ({
+      id,
+      text: typeof v === "string" ? v : String(v?.text ?? id),
+    }));
+    return list.length ? list : null;
+  }
+  return null;
+}
+function loadKingOrders() {
+  if (kingOrdersCache) return Promise.resolve(kingOrdersCache);
+  return lazyImport("kingOrders", "./laok-lines.js")
+    .then((mod) => {
+      kingOrdersCache = normalizeKingOrders(mod?.KING_ORDERS) || FALLBACK_KING_ORDERS;
+      return kingOrdersCache;
+    })
+    .catch(() => {
+      kingOrdersCache = FALLBACK_KING_ORDERS;
+      return kingOrdersCache;
+    });
+}
+function kingOrderText(orderId, nums) {
+  const pool = kingOrdersCache || FALLBACK_KING_ORDERS;
+  let t = pool.find((o) => o.id === orderId)?.text || "";
+  if (Array.isArray(nums) && nums.length === 2) {
+    t = t.replace(/\{a\}/g, nums[0]).replace(/\{b\}/g, nums[1]);
+  }
+  return t;
+}
 
 // 调酒身份（/v2/cocktail.html 存的 ideal_cocktail）：跟人走，不让用户重选
 function readCocktail() {
@@ -66,6 +138,8 @@ const ui = {
     GLASS_EMOJI[readCocktail()?.glass] ||
     "🍺",
   drink: localStorage.getItem("mfn_drink") || "beer",
+  deck: ROOM_DECKS[localStorage.getItem("mfn_deck")] ? localStorage.getItem("mfn_deck") : "man",
+  seeking: null, // 注册档案「想看的取向」m|f|x（resolveSeeking 异步填充，join 时带上）
   solo: PARAMS.get("solo") === "1",
   table: /^[1-9]$/.test(PARAMS.get("table") || "") ? PARAMS.get("table") : "",
   code: PARAMS.get("room") || "",
@@ -91,6 +165,13 @@ const ui = {
   chatLastSeen: 0,
   pickerFor: null, // 正在挑 emoji 回应的消息 id
   lastDmSent: 0,
+  // R2 局内新体系
+  genderSentFor: null, // protagonist_setup 自动代发 set_gender 的判重键
+  lightSent: null, // 本题爆灯/灭灯已发出的判重键（乐观置灰）
+  kingPick: { nums: [], orderId: null }, // 每题国王（号码版）：我选的两个号 + 指令卡
+  kingSent: false,
+  kingOrderPage: 0,
+  laok: null, // 老K锐评 { key, text, loading }
 };
 
 let ws = null;
@@ -140,16 +221,53 @@ function sendOrWarn(obj) {
 
 /* ---------- 连接 ---------- */
 
-async function createRoom({ solo = false } = {}) {
-  // solo:true 走同一入口，后端支持 1 人开局；后端未就绪时房间照建，开局报错再兜底
+async function createRoom({ solo = false, deck = "man" } = {}) {
+  // solo:true 走同一入口，后端支持 1 人开局；deck = 今晚聊什么（R2 卡组）
   const res = await fetch("/api/room", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(solo ? { solo: true } : {}),
+    body: JSON.stringify({ deck, ...(solo ? { solo: true } : {}) }),
   });
   const j = await res.json();
   if (!j.code) throw new Error(j.error || "这会儿桌子不够用，稍等再试");
   return j.code;
+}
+
+/* ---------- seeking：注册档案「想看的取向」 ----------
+   join 时带给后端 → 主角结算时 buildIdealProfile 按它定画像方向。
+   来源优先级：localStorage 缓存（注册页写入）→ GET /api/user/:id?token= 的档案字段。 */
+let seekingPromise = null;
+function resolveSeeking() {
+  if (!seekingPromise) {
+    seekingPromise = (async () => {
+      const cached = localStorage.getItem("ideal_seeking");
+      if (["m", "f", "x"].includes(cached)) return cached;
+      const id = localStorage.getItem("ideal_userId");
+      const token = localStorage.getItem("ideal_token");
+      if (!id || !token || PREVIEW) return null;
+      try {
+        const j = await fetch(`/api/user/${id}?token=${encodeURIComponent(token)}`)
+          .then((r) => (r.ok ? r.json() : null));
+        if (j && ["m", "f", "x"].includes(j.seeking)) {
+          localStorage.setItem("ideal_seeking", j.seeking);
+          return j.seeking;
+        }
+      } catch {}
+      return null;
+    })().then((v) => (ui.seeking = v));
+  }
+  return seekingPromise;
+}
+
+// 主页入口（顶栏「我的」+ 海报底部按钮共用）
+function goMyPage() {
+  const id = localStorage.getItem("ideal_userId");
+  if (id) {
+    location.href = "/u.html?id=" + encodeURIComponent(id);
+  } else {
+    toast("还没建档。先去吧台报个名字，我记住你。");
+    setTimeout(() => (location.href = "/v2/cocktail.html"), 900);
+  }
 }
 
 /* ---------- 昵称/身份 → KV 档案同步 ----------
@@ -198,6 +316,7 @@ function connect(code, { silentFail = false } = {}) {
       name: ui.name,
       emoji: ui.emoji,
       drink: ui.drink,
+      seeking: ui.seeking || undefined,
       token: localStorage.getItem("mfn_token_" + code) || undefined,
     });
   };
@@ -309,6 +428,19 @@ function onMessage(msg) {
     playLightFx(msg);
     return;
   }
+  if (msg.type === "king_chance") {
+    // 有人分毫不差 → 国王牌出现（UI 由随后的 state 广播驱动，这里只做演出）
+    sound.riff();
+    return;
+  }
+  if (msg.type === "king_result") {
+    // R2.5：国王报号揭晓 —— 公布号背后是谁 + 执行哪条指令
+    const a = msg.names?.[0] || `${msg.nums?.[0] ?? "?"}号`;
+    const b = msg.names?.[1] || `${msg.nums?.[1] ?? "?"}号`;
+    sound.tick();
+    spawnDanmaku({ name: "", emoji: "", text: `👑 ${a} 撞上 ${b}`, special: "dm-burst" });
+    return;
+  }
   if (msg.type === "shake") {
     // 别人在摇签：同步动画 + 哗啦声
     animateCup(msg.intensity);
@@ -325,6 +457,11 @@ function onMessage(msg) {
       ui.submitPendingAt = 0;
       ui.commentSent = false;
       ui.assigned = false;
+      // R2：每题爆灯 / 每题国王的本地状态随题重置
+      ui.lightSent = null;
+      ui.kingPick = { nums: [], orderId: null };
+      ui.kingSent = false;
+      ui.kingOrderPage = 0;
       if (msg.state.phase !== ui.lastPhase) {
         if (msg.state.phase === "aha") sound.riff(); // 理想型入场 riff
         if (msg.state.phase === "drinking") sound.chug();
@@ -418,10 +555,22 @@ function render() {
   updateOverlays();
 }
 
+// 顶栏 logo：霓虹马天尼杯（从 assets-v2/logo.svg 的杯形 path 抽出内联，三层描边模拟霓虹管）
+const BRAND_MARK_SVG = `<svg viewBox="0 0 132 100" aria-hidden="true" focusable="false">
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 30 8 L 102 8 L 66 54 L 66 90 M 46 90 L 86 90 M 42 22 L 90 22" stroke="var(--neon-cyan)" stroke-width="15" opacity="0.32"/>
+    <path d="M 30 8 L 102 8 L 66 54 L 66 90 M 46 90 L 86 90 M 42 22 L 90 22" stroke="var(--neon-cyan)" stroke-width="7" opacity="0.9"/>
+    <path d="M 30 8 L 102 8 L 66 54 L 66 90 M 46 90 L 86 90 M 42 22 L 90 22" stroke="#c9f7ff" stroke-width="3"/>
+  </g>
+  <circle cx="66" cy="32" r="7" fill="var(--neon-pink)" opacity="0.55"/>
+  <circle cx="66" cy="32" r="4" fill="#ffb0cd"/>
+</svg>`;
+
 function header(s, sub) {
   return `<div class="row">
-    <div class="grow"><div class="brand-title"><span class="brand-mark" aria-hidden="true">K</span><h1 class="neon">理想型<span class="amber">·</span>加载中</h1></div>
+    <div class="grow"><div class="brand-title"><span class="brand-mark" aria-hidden="true">${BRAND_MARK_SVG}</span><h1 class="neon">理想型<span class="amber">·</span>加载中</h1></div>
     ${sub ? `<div class="dim">${sub}</div>` : ""}</div>
+    <button class="btn ghost small me-btn" id="meBtn" aria-label="进入我的主页">我的</button>
     <button class="btn ghost small" id="sndBtn">${sound.enabled ? "🔊" : "🔇"}</button>
   </div>`;
 }
@@ -432,6 +581,7 @@ function bindSound() {
     sound.toggle();
     render();
   });
+  document.getElementById("meBtn")?.addEventListener("click", goMyPage);
 }
 
 /* --- 首页 --- */
@@ -439,7 +589,20 @@ function renderHome() {
   const cocktail = readCocktail();
   const deepJoin = !ui.solo && /^\d{4}$/.test(ui.code); // ?room 深链：入座是唯一主按钮
   const joinLabel = ui.table ? `在 ${esc(ui.table)} 号桌入座` : `在 ${esc(ui.code)} 桌入座`;
-  const sub = ui.solo ? "一个人喝，也算一桌" : "打分，猜分，罚酒";
+  const sub = ui.solo ? "吧台第一个位子，留给一个人来的" : "打分，猜分，罚酒";
+  // 今晚聊什么（R2 卡组）：开桌才选；?room 深链跟桌走，不给选
+  const deckPickHtml = deepJoin ? "" : `
+    <div class="glass stack deck-pick">
+      <label class="dim">今晚聊什么</label>
+      <div class="deck-cards" id="deckCards">
+        ${Object.entries(ROOM_DECKS).map(([k, d]) => `
+        <button type="button" class="deck-card ${k === ui.deck ? "sel" : ""}" data-deck="${k}">
+          <span class="dc-kicker">TONIGHT'S MENU</span>
+          <b>${d.name}</b>
+          <span class="dc-line">${d.line}</span>
+        </button>`).join("")}
+      </div>
+    </div>`;
   $app.innerHTML = `
     ${header(null, sub)}
     <div class="glass stack">
@@ -450,7 +613,7 @@ function renderHome() {
         <span>这杯跟着你上桌。杯子我按它配好了，不合手就换。</span></div>
       </div>` : ""}
       <label class="dim">怎么称呼你</label>
-      <input type="text" id="nameIn" maxlength="12" placeholder="比如：嘉欣" value="${esc(ui.name)}" />
+      <input type="text" id="nameIn" maxlength="12" placeholder="比如：coco" value="${esc(ui.name)}" />
       <label class="dim">${cocktail ? "酒杯（按你的特调配的）" : "拿哪只杯子"}</label>
       <div class="emoji-grid" id="emojiGrid">
         ${EMOJIS.map((e) => `<button data-e="${e}" class="${e === ui.emoji ? "sel" : ""}">${e}</button>`).join("")}
@@ -460,10 +623,11 @@ function renderHome() {
         ${DRINK_OPTIONS.map((d) => `<button data-drink="${d.id}" class="${d.id === ui.drink ? "sel" : ""}" title="${d.label}">${d.emoji}<small>${d.label}</small></button>`).join("")}
       </div>
     </div>
+    ${deckPickHtml}
     ${ui.solo ? `
     <div class="glass stack">
-      <div class="dim">一个人？也行。吧台这个位置视野最好，我陪你把流程走完。</div>
-      <button class="btn" id="createBtn">开一桌，一个人喝</button>
+      <div class="dim">一个人？正好，吧台这个位置视野最好。今晚我陪你聊。</div>
+      <button class="btn" id="createBtn">坐下，跟老K喝一杯</button>
     </div>` : deepJoin ? `
     <div class="glass stack center">
       <div class="dim">${ui.table
@@ -494,12 +658,20 @@ function renderHome() {
     ui.drink = b.dataset.drink;
     renderHome();
   });
+  document.getElementById("deckCards")?.addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-deck]");
+    if (!b) return;
+    ui.deck = b.dataset.deck;
+    localStorage.setItem("mfn_deck", ui.deck);
+    renderHome();
+  });
   const go = async (create) => {
     sound.unlock();
     if (!ui.name) return toast("先留个称呼，我好记住你。");
     try {
+      await resolveSeeking(); // 有注册档案就把「想看的取向」带上桌
       let code = deepJoin ? ui.code : (document.getElementById("codeIn")?.value.trim() || ui.code);
-      if (create) code = await createRoom({ solo: ui.solo });
+      if (create) code = await createRoom({ solo: ui.solo, deck: ui.deck });
       else {
         if (!/^\d{4}$/.test(code)) return toast("房间码是 4 位数字。");
         const chk = await fetch("/api/room/" + code).then((r) => r.json()).catch(() => null);
@@ -516,17 +688,26 @@ function renderHome() {
 }
 
 /* --- 大厅 --- */
+// 按本桌卡组取题库：man/woman → DECKS（m/f 题面），agent → AGENT_MODULE.decks
+function decksForRoom(deckKey) {
+  const q = renderLobby._q;
+  if (!q) return null;
+  return deckKey === "agent" ? q.AGENT_MODULE.decks : q.DECKS;
+}
+
 function renderLobby(s) {
   const me = s.you;
   const invite = `${location.origin}/?room=${s.code}`;
-  const decks = renderLobby._decks;
+  const decks = decksForRoom(s.deck);
   const cocktail = readCocktail();
   const soloTable = ui.solo && s.players.length === 1;
   const canStart = decks && (s.players.length >= 2 || soloTable);
+  const deckMeta = ROOM_DECKS[s.deck] || ROOM_DECKS.man;
   $app.innerHTML = `
-    ${header(s, soloTable ? "一个人的桌，我看着" : "桌子留好了，把人叫来吧")}
+    ${header(s, soloTable ? "吧台位。就你，和我" : "桌子留好了，把人叫来吧")}
     <div class="glass center stack">
       <div class="roomcode">${s.code}</div>
+      <div class="deck-chip"><span class="dc-kicker">今晚聊</span><b>${esc(deckMeta.name)}</b><span class="dc-line">${esc(deckMeta.line)}</span></div>
       <div class="qr-wrap"><canvas id="qrCv" width="180" height="180"></canvas></div>
       <button class="btn ghost small" id="copyBtn">复制邀请链接</button>
       ${cocktail ? `
@@ -549,21 +730,21 @@ function renderLobby(s) {
     </div>
     ${me.isHost ? `
     <div class="glass stack">
-      <div class="row">
-        <label class="dim grow">每人轮数</label>
+      <div class="settings-row">
+        <label class="dim" for="roundsSel">${soloTable ? "跟我聊几题" : "每人几题"}</label>
         <select id="roundsSel">${[3,4,5,6,7,8].map((n) =>
-          `<option value="${n}" ${n === s.settings.rounds ? "selected" : ""}>${n} 轮</option>`).join("")}
+          `<option value="${n}" ${n === s.settings.rounds ? "selected" : ""}>${n} 题</option>`).join("")}
         </select>
       </div>
-      <div class="row">
-        <label class="dim grow">今晚的酒劲</label>
+      <div class="settings-row">
+        <label class="dim" for="deckSel">今晚的酒劲</label>
         <select id="deckSel" ${decks ? "" : "disabled"}>${decks
           ? Object.entries(decks).map(([k, d]) =>
               `<option value="${k}" ${k === s.settings.deck ? "selected" : ""}>${esc(deckLabel(d.name))}</option>`).join("")
-          : `<option>酒单还在老K手里…</option>`}
+          : `<option>酒单还在我手里…</option>`}
         </select>
       </div>
-      <button class="btn" id="startBtn" ${canStart ? "" : "disabled"}>${soloTable ? "开局，一个人喝" : "开局"}</button>
+      <button class="btn" id="startBtn" ${canStart ? "" : "disabled"}>${soloTable ? "开始，就我们俩" : "开局"}</button>
       ${!canStart && decks && !ui.solo ? `<div class="dim center">凑够 2 个人，酒才有味道。</div>` : ""}
     </div>` : `<div class="glass center dim">等房主开局。今晚的酒劲：${esc(deckLabel(s.settings.deckName))}</div>`}`;
   const qrCanvas = document.getElementById("qrCv");
@@ -577,11 +758,11 @@ function renderLobby(s) {
     try { await navigator.clipboard.writeText(invite); toast("链接给你了，去叫人。"); }
     catch { toast(invite); }
   });
-  if (me.isHost && !decks) {
-    loadQuestions().then(({ DECKS }) => {
-      renderLobby._decks = DECKS;
+  if (me.isHost && !renderLobby._q) {
+    loadQuestions().then(({ DECKS, AGENT_MODULE }) => {
+      renderLobby._q = { DECKS, AGENT_MODULE };
       if (ui.state?.phase === "lobby" && ui.state?.code === s.code) render();
-    }).catch(() => toast("题单半路洒了。刷新一下，我再拿一份。"));
+    }).catch(() => toast("酒单半路洒了。刷新一下，我再拿一份。"));
   }
   if (me.isHost && decks) {
     const roundsSel = document.getElementById("roundsSel");
@@ -597,7 +778,9 @@ function renderLobby(s) {
     document.getElementById("startBtn").addEventListener("click", () => {
       sound.unlock();
       const selectedDeck = decks[s.settings.deck] || decks.qingtang || Object.values(decks)[0];
-      send({ type: "start", questions: selectedDeck.questions });
+      const startMsg = { type: "start", questions: selectedDeck.questions };
+      if (s.deck === "agent") startMsg.noun = renderLobby._q.AGENT_MODULE.noun;
+      send(startMsg);
     });
   }
   $app.querySelectorAll(".kickBtn").forEach((b) =>
@@ -608,7 +791,7 @@ function renderLobby(s) {
 /* --- 抽酒签 --- */
 // 摇签过程播报：进度条配文案，老K在旁边看着
 function stickChargeText(pct) {
-  if (pct <= 0) return "签筒在你手里，先晃醒它";
+  if (pct <= 0) return "";
   if (pct < 40) return `签筒醒了 · ${pct}%`;
   if (pct < 80) return `签在筒里打架 · ${pct}%`;
   return `有一支要跳出来了 · ${pct}%`;
@@ -629,9 +812,6 @@ function renderPicking(s) {
       ` : iShake ? `
         <div class="progress" id="chargeBar">${stickChargeText(Math.round(ui.shakeCharge * 100))}</div>
         <div class="progress-track"><div class="progress-fill" id="chargeFill" style="width:${Math.round(ui.shakeCharge * 100)}%"></div></div>
-        ${ui.shakeMode === null ? `<button class="btn" id="shakeBtn">摇一摇，抽签</button>` : ""}
-        ${ui.shakeMode === "motion" ? `<div class="dim center">使劲摇。签筒响了，人就快出来了。</div>` : ""}
-        ${ui.shakeMode === "tap" ? `<button class="btn" id="tapBtn">连点摇签</button>` : ""}
       ` : `<div class="dim center">${esc(cur.shaker)} 在摇签。先把杯子端稳。</div>`}
     </div>`;
   bindSound();
@@ -684,6 +864,42 @@ function renderPicking(s) {
     if (ui.tapCharge >= 130) onCharged();
   });
 
+  // 签筒直接可点：首次点击触发摇动授权，失败自动降级为连点；后续点击在 tap 模式累加
+  document.getElementById("cup")?.addEventListener("click", async () => {
+    if (ui.shakeMode === null) {
+      sound.unlock();
+      shaker?.stop();
+      shaker = createShaker();
+      const ok = await shaker.requestAndStart({
+        onIntensity: (v) => {
+          onIntensity(v);
+          addCharge(0);
+          ui.shakeCharge = Math.min(1, shaker.charge() / 130);
+          updateChargeBar();
+        },
+        onCharged,
+      });
+      ui.shakeMode = ok ? "motion" : "tap";
+      if (!ok) {
+        // 降级后立即算第一次点击
+        const v = 0.7 + Math.random() * 0.3;
+        onIntensity(v);
+        ui.tapCharge += 16;
+        ui.shakeCharge = Math.min(1, ui.tapCharge / 130);
+        updateChargeBar();
+        if (ui.tapCharge >= 130) onCharged();
+      }
+    } else if (ui.shakeMode === "tap") {
+      sound.unlock();
+      const v = 0.7 + Math.random() * 0.3;
+      onIntensity(v);
+      ui.tapCharge += 16;
+      ui.shakeCharge = Math.min(1, ui.tapCharge / 130);
+      updateChargeBar();
+      if (ui.tapCharge >= 130) onCharged();
+    }
+  });
+
   function addCharge() {}
   function updateChargeBar() {
     const pct = Math.round(ui.shakeCharge * 100);
@@ -726,32 +942,112 @@ function animateCup(intensity) {
   step();
 }
 
-/* --- 主角设定 --- */
+/* --- 主角设定 ---
+   R2：题面方向由本桌卡组（state.deck）决定，不再让主角二选一。
+   主角端自动代发 set_gender（按题去重防重发），这屏只是过场。 */
 function renderSetup(s) {
   const cur = s.current;
   const p = cur.protagonist;
+  if (cur.youAreProtagonist) {
+    const key = `${s.code}:${p?.name || ""}:${cur.roundIndex}`;
+    if (ui.genderSentFor !== key) {
+      ui.genderSentFor = key;
+      send({ type: "set_gender", gender: ROOM_DECKS[s.deck]?.g || "m" });
+    }
+  }
   $app.innerHTML = `
     ${header(s, `今晚主角：${esc(p.emoji)} ${esc(p.name)}`)}
     <div class="glass stack center">
-      <h2>${cur.youAreProtagonist ? "你的理想型是？" : `等 ${esc(p.name)} 选理想型。`}</h2>
-      ${cur.youAreProtagonist ? `
-        <button class="btn" data-g="m">满分男</button>
-        <button class="btn" data-g="f">满分女</button>
-        <button class="btn ghost" data-g="n">都行</button>
-      ` : `<div class="dim">选完就开问。你先想想怎么猜。</div>`}
+      <h2>${cur.youAreProtagonist ? "主角是你。杯子端稳。" : `主角是 ${esc(p.name)}。`}</h2>
+      <div class="dim">${cur.youAreProtagonist
+        ? `今晚聊${esc(roomDeckName(s.deck))}。我去拿题，你先喝一口。`
+        : "题马上上桌。你先想想怎么猜。"}</div>
     </div>`;
   bindSound();
-  $app.querySelectorAll("[data-g]").forEach((b) =>
-    b.addEventListener("click", () => send({ type: "set_gender", gender: b.dataset.g })));
 }
+
+/* --- 老K锐评 NPC（R2）：/api/laok 非阻塞取词，到了再淡入，失败静默 --- */
+
+const laokMemo = new Map(); // key -> 文案（"" = 请求中或失败，失败即静默）
+
+// 从本地语录池随机取一条兜底文案（渲染期同步可用）
+function pickPool(scene) {
+  const pool = LAOK_POOL[scene] || LAOK_POOL.generic || [];
+  return pool.length ? pool[Math.floor(Math.random() * pool.length)] : "";
+}
+
+function laokFetch(scene, ctx, key) {
+  if (laokMemo.get(key) === "") return; // 已有请求在途，跳过
+  if (!laokMemo.has(key)) laokMemo.set(key, ""); // 首次：标记请求中（无兜底时置空防闪）
+  if (laokMemo.size > 60) laokMemo.delete(laokMemo.keys().next().value);
+  const params = new URLSearchParams({ scene, ctx: JSON.stringify(ctx || {}) });
+  fetch(`/api/laok?${params}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((j) => {
+      const text = String(j?.text || "");
+      if (!text) return;
+      laokMemo.set(key, text);
+      patchLaokBox(key);
+    })
+    .catch(() => {});
+}
+
+// 渲染期：该 key 已有文案才亮框；文案后到时由 patchLaokBox 现场淡入
+function laokBoxHtml(key) {
+  if (!laokMemo.has(key)) return "";
+  const text = laokMemo.get(key);
+  return `<div class="laok-box ${text ? "show" : ""}" data-laok-key="${esc(key)}">
+    <span class="laok-avatar" aria-hidden="true"></span>
+    <div class="laok-line"><b>老K</b><p class="laok-text">${esc(text)}</p></div>
+  </div>`;
+}
+
+function patchLaokBox(key) {
+  const box = document.querySelector(`.laok-box[data-laok-key="${CSS.escape(key)}"]`);
+  if (!box) return;
+  const p = box.querySelector(".laok-text");
+  const newText = laokMemo.get(key) || "";
+  if (p && newText && p.textContent !== newText) {
+    // 兜底 → LLM 文案：淡出换字再淡入
+    p.style.transition = "opacity 0.25s ease";
+    p.style.opacity = "0";
+    setTimeout(() => {
+      p.textContent = newText;
+      p.style.opacity = "";
+    }, 250);
+  } else if (p) {
+    p.textContent = newText;
+  }
+  if (newText) box.classList.add("show");
+  mountLaokAvatar();
+}
+
+function mountLaokAvatar() {
+  const slot = document.querySelector(".laok-box.show .laok-avatar");
+  if (!slot || slot.firstChild) return;
+  loadBartender()
+    .then(({ createBartender }) => {
+      if (slot.isConnected && !slot.firstChild) createBartender(slot, "idle");
+    })
+    .catch(() => {});
+}
+
 
 /* --- 打分 / 猜分 --- */
 function renderAnswering(s) {
   const cur = s.current;
   const me = cur.youAreProtagonist;
+  const solo = !!s.solo;
   const waiting = cur.submitted.guessers;
+  // solo 开局：老K先开口（solo_open），一局一次；先同步取兜底，再异步取 LLM 版
+  if (solo) {
+    const openKey = `open:${s.code}`;
+    if (!laokMemo.has(openKey)) laokMemo.set(openKey, pickPool("solo_open"));
+    laokFetch("solo_open", { deck: roomDeckName(s.deck), rounds: cur.totalRounds }, openKey);
+  }
   $app.innerHTML = `
-    ${header(s, `${esc(cur.protagonist.name)}的第 ${cur.roundIndex}/${cur.totalRounds} 轮`)}
+    ${header(s, solo ? `跟我聊的第 ${cur.roundIndex}/${cur.totalRounds} 题` : `${esc(cur.protagonist.name)}的第 ${cur.roundIndex}/${cur.totalRounds} 题`)}
+    ${solo ? laokBoxHtml(`open:${s.code}`) : ""}
     <div class="glass question-card">
       ${esc(cur.question.text)}
       <div class="spice">${"🌶️".repeat(spiceLevel(cur.question.spice))}</div>
@@ -759,9 +1055,11 @@ function renderAnswering(s) {
     <div class="glass stack center">
       ${ui.submitted ? `
         <h2>你的分我收下了</h2>
-        <div class="wait-list">已交卷：${waiting.map(esc).join("、") || "—"}${cur.submitted.protagonist ? "，主角已打分" : "，等主角打分"}</div>
+        ${solo ? "" : `<div class="wait-list">已交卷：${waiting.map(esc).join("、") || "—"}${cur.submitted.protagonist ? "，主角的分也锁了" : "，等主角锁分"}</div>`}
       ` : `
-        <div class="dim">${me ? "你的真实打分（10=仍然满分，0=直接火化）" : `盲猜 ${esc(cur.protagonist.name)} 会打几分。差 2 分以上，罚酒。`}</div>
+        <div class="dim">${me
+          ? (solo ? "跟我不用装。10=仍然满分，0=直接火化。" : "你的真实打分（10=仍然满分，0=直接火化）")
+          : `盲猜 ${esc(cur.protagonist.name)} 会打几分。差 2 分以上，罚酒。`}</div>
         <div class="score-val" id="sv">${ui.slider}</div>
         <input type="range" id="slider" min="0" max="10" step="1" value="${ui.slider}" aria-label="打分" />
         <div class="slider-ticks">${Array.from({ length: 11 }, (_, i) => `<span>${i}</span>`).join("")}</div>
@@ -769,6 +1067,7 @@ function renderAnswering(s) {
       `}
     </div>`;
   bindSound();
+  mountLaokAvatar();
   if (!ui.submitted) {
     const sl = document.getElementById("slider");
     sl.addEventListener("input", () => {
@@ -789,14 +1088,143 @@ function renderAnswering(s) {
   }
 }
 
+/* --- 每题国王（R2.5 匿名号码版）：分毫不差者当国王，报两个号 + 一张指令卡，不点人 ---
+   触发时全桌每人拿一张只有自己看得到的号码牌（state.you.seatNo，每题重洗）。
+   国王按座号轮流报号：报号时并不知道号背后是谁，揭晓才公布「几号是谁」。 */
+
+function kingResultLine(r) {
+  const a = r.names?.[0] || `${r.nums?.[0] ?? "?"}号`;
+  const b = r.names?.[1] || `${r.nums?.[1] ?? "?"}号`;
+  const text = kingOrderText(r.orderId, r.nums);
+  return `<div class="king-result-line">
+    <b>${r.nums?.[0]}号是 ${esc(a)}，${r.nums?.[1]}号是 ${esc(b)}</b>
+    <p class="king-order-text">${esc(text || "旨意他们自己听清了。照办。")}</p>
+  </div>`;
+}
+
+function kingChanceHtml(s) {
+  const cur = s.current;
+  const kc = cur?.kingChance;
+  if (!kc) return "";
+  const byId = Object.fromEntries((s.players || []).map((p) => [p.id, p]));
+  const me = s.you;
+  const myNum = me?.seatNo;
+  const N = kc.seatCount || 0;
+
+  // 号码牌：一人一张，只有本人看得到自己的号（发牌动效由 CSS 播）
+  const numCardHtml = `<div class="king-numcard" role="img" aria-label="你的匿名号码${myNum != null ? " " + myNum : ""}">
+    <span class="knc-kicker">你的号码牌</span>
+    <b class="knc-num">${myNum != null ? myNum : "—"}</b>
+    <span class="knc-hint">只有你看得到自己是几号</span>
+  </div>`;
+
+  // 已报的号（逐条揭晓）
+  const resultsHtml = (kc.results || []).length
+    ? `<div class="king-results">${(kc.results || []).map(kingResultLine).join("")}</div>`
+    : "";
+
+  const iReported = (kc.results || []).some((r) => r.king === me?.id) || ui.kingSent;
+  const iAmCurrent = kc.currentKing && kc.currentKing === me?.id && !iReported;
+  const currentP = byId[kc.currentKing];
+  const winnerNames = (kc.winners || []).map((id) => byId[id]?.name).filter(Boolean);
+
+  if (kc.done) {
+    return `<div class="glass king-chance-stage">
+      ${numCardHtml}
+      <div class="kc-head"><span class="kc-mini" aria-hidden="true"><b>K</b><span>♥</span></span><b>号都对上了</b></div>
+      ${resultsHtml}
+    </div>`;
+  }
+
+  if (iAmCurrent) {
+    // 我是当前国王：选两个号 + 一张指令卡
+    if (!kingOrdersCache) {
+      loadKingOrders().then(() => {
+        if (ui.state?.current?.kingChance && !ui.state.current.kingChance.done) render();
+      });
+    }
+    const pool = kingOrdersCache || FALLBACK_KING_ORDERS;
+    const pageSize = 3;
+    const pages = Math.max(1, Math.ceil(pool.length / pageSize));
+    const page = ui.kingOrderPage % pages;
+    const options = pool.slice(page * pageSize, page * pageSize + pageSize);
+    const picked = ui.kingPick.nums || [];
+    const [na, nb] = picked;
+    const numChips = Array.from({ length: N }, (_, i) => i + 1).map((n) => {
+      const sel = picked.includes(n);
+      const mineTag = n === myNum ? ` <small>(你)</small>` : "";
+      return `<button type="button" class="king-num ${sel ? "sel" : ""}" data-num="${n}">${n}${mineTag}</button>`;
+    }).join("");
+    const preview = (na && nb && ui.kingPick.orderId) ? kingOrderText(ui.kingPick.orderId, [na, nb]) : "";
+    const ready = na && nb && ui.kingPick.orderId && !ui.kingSent;
+    return `<div class="glass king-chance-stage king-report">
+      ${numCardHtml}
+      <div class="kc-head"><span class="kc-mini" aria-hidden="true"><b>K</b><span>♥</span></span><b>你是国王。报两个号，谁是谁你猜不到——这才好玩。</b></div>
+      ${resultsHtml}
+      <div class="dim">先点两个号${na && nb ? `：已选 ${na}、${nb}` : `（1 到 ${N}）`}</div>
+      <div class="king-nums" id="kingNums">${numChips}</div>
+      <div class="dim">再挑一道旨</div>
+      <div class="king-options" id="kingOrderList">
+        ${options.map((o) => `<button type="button" class="king-option ${ui.kingPick.orderId === o.id ? "sel" : ""}" data-oid="${esc(o.id)}">${esc(String(o.text).replace(/\{a\}/g, na || "甲").replace(/\{b\}/g, nb || "乙"))}</button>`).join("")}
+      </div>
+      ${pages > 1 ? `<button type="button" class="link-btn" id="kingMoreBtn">这几道不顺手？换一批</button>` : ""}
+      ${preview ? `<div class="king-order-preview">${esc(preview)}</div>` : ""}
+      <button class="btn" id="kingSendBtn" ${ready ? "" : "disabled"}>${ui.kingSent ? "报出去了" : "报号"}</button>
+    </div>`;
+  }
+
+  // 不是当前国王：已报过 / 排队中 / 不是 winner
+  const iWin = (kc.winners || []).includes(me?.id);
+  const waitLine = iReported
+    ? "你的号报了。看下一个国王。"
+    : iWin
+      ? `按座号轮流报。轮到 ${esc(currentP?.name || "上一个国王")} 了，一会儿到你。`
+      : `${esc(winnerNames.join("、") || "有人")} 猜得分毫不差，当国王报号。看看几号被点到。`;
+  return `<div class="glass king-chance-stage">
+    ${numCardHtml}
+    <div class="kc-head"><span class="kc-mini" aria-hidden="true"><b>K</b><span>♥</span></span><b>${currentP ? esc(currentP.name) + " 正在报号" : "国王报号中"}</b></div>
+    ${resultsHtml}
+    <div class="dim">${waitLine}</div>
+  </div>`;
+}
+
+function bindKingChance(s) {
+  document.getElementById("kingNums")?.addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-num]");
+    if (!b) return;
+    const n = Number(b.dataset.num);
+    const nums = ui.kingPick.nums || [];
+    if (nums.includes(n)) ui.kingPick.nums = nums.filter((x) => x !== n);
+    else if (nums.length < 2) ui.kingPick.nums = [...nums, n];
+    else ui.kingPick.nums = [nums[1], n]; // 满两个后替换最早选的
+    render();
+  });
+  document.getElementById("kingOrderList")?.addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-oid]");
+    if (!b) return;
+    ui.kingPick.orderId = b.dataset.oid;
+    render();
+  });
+  document.getElementById("kingMoreBtn")?.addEventListener("click", () => {
+    ui.kingOrderPage++;
+    render();
+  });
+  document.getElementById("kingSendBtn")?.addEventListener("click", () => {
+    const nums = ui.kingPick.nums || [];
+    if (nums.length !== 2 || !ui.kingPick.orderId || ui.kingSent) return;
+    sound.unlock();
+    if (!sendOrWarn({ type: "king_order", nums: [nums[0], nums[1]], orderId: ui.kingPick.orderId })) return;
+    ui.kingSent = true;
+    render();
+  });
+}
+
 /* --- 开牌 --- */
 function renderReveal(s) {
   const cur = s.current;
   const rv = cur.reveal;
   const me = s.you;
   const solo = !!s.solo;
-  const myRes = rv.results.find((x) => x.name === me.name);
-  const canAssign = !solo && myRes?.exact && !myRes.assigned && !ui.assigned;
 
   // 悬念节奏（只在首次进入本轮开牌时播）：先各人猜分逐个亮 → 主角真分砸出 → 罚酒判定逐条弹
   const revealKey = `${cur.roundIndex}-${esc(cur.protagonist?.name || "")}-${rv.score}`;
@@ -807,40 +1235,74 @@ function renderReveal(s) {
   const scoreDelay = n * 0.12 + 0.35;
   const verdictAt = scoreDelay + 0.55; // 秒
   const badgeD = (i) => (fresh ? `style="--d:${(verdictAt + i * 0.09).toFixed(2)}s"` : "");
-  const tailD = fresh ? `style="--d:${(verdictAt + n * 0.09 + 0.2).toFixed(2)}s"` : "";
+
+  // R2 每题爆灯：reveal.lights = {playerId: "burst"|"off"}
+  const lights = rv.lights || {};
+  const idByName = Object.fromEntries((s.players || []).map((p) => [p.name, p.id]));
+  const rowLamp = (name) => {
+    const v = lights[idByName[name]];
+    return v ? `<span class="row-lamp ${v === "burst" ? "on" : "dead"}" title="${v === "burst" ? "爆灯" : "灭灯"}"></span>` : "";
+  };
+  const myLight = lights[me.id] || null;
+  const lightLocked = !!myLight || ui.lightSent === revealKey;
+  const burstCount = Object.values(lights).filter((v) => v === "burst").length;
+  const offCount = Object.values(lights).filter((v) => v === "off").length;
+
+  // 老K锐评：先同步取一条兜底文案（立即可见），再非阻塞异步取 LLM 版到了后替换
+  const laokKey = `rv:${s.code}:${revealKey}`;
+  const avgDiff = n ? rv.results.reduce((a, x) => a + (Number(x.diff) || 0), 0) / n : 0;
+  const laokScene = solo
+    ? "solo_react"
+    : cur.kingChance ? "king_chance" : avgDiff <= 1 ? "reveal_close" : "reveal_far";
+  if (!laokMemo.has(laokKey)) laokMemo.set(laokKey, pickPool(laokScene));
+  laokFetch(laokScene, {
+    q: String(rv.question || "").slice(0, 48),
+    score: rv.score,
+    avgDiff: Math.round(avgDiff * 10) / 10,
+    drinks: rv.results.filter((x) => x.drink).length,
+    exact: rv.results.filter((x) => x.exact).length,
+  }, laokKey);
 
   $app.innerHTML = `
-    ${header(s, `开牌 · 第 ${cur.roundIndex}/${cur.totalRounds} 轮`)}
+    ${header(s, `开牌 · 第 ${cur.roundIndex}/${cur.totalRounds} 题`)}
     <div class="glass center stack">
       <div class="dim">${esc(rv.question)}</div>
       <div class="big-score ${fresh ? "seq-score" : ""}" ${fresh ? `style="--d:${scoreDelay.toFixed(2)}s"` : ""}>${rv.score}<span class="unit">分</span></div>
       ${rv.comment ? `<div class="detail-item">主角补刀：${esc(rv.comment)}</div>` : ""}
     </div>
+    ${laokBoxHtml(laokKey)}
     ${solo ? "" : `<div class="glass stack">
       ${rv.results.map((x, i) => `
         <div class="reveal-row ${fresh ? "seq" : (x.drink ? "drink" : "") + " " + (x.exact ? "exact" : "")}" data-i="${i}" ${rowD(i)}>
-          <span>${esc(x.emoji)}</span><b>${esc(x.name)}</b>
+          <span>${esc(x.emoji)}</span>${rowLamp(x.name)}<b>${esc(x.name)}</b>
           ${x.exact ? `<span class="badge exact ${fresh ? "seq-pop" : ""}" ${badgeD(i)}>懂TA+1</span>` : ""}
           ${x.drink ? `<span class="badge drink ${fresh ? "seq-pop" : ""}" ${badgeD(i)}>罚酒</span>` : ""}
-          ${x.assigned ? `<span class="dim">点了 ${esc(x.assigned)} 喝</span>` : ""}
           <span class="g">${x.guess}</span>
         </div>`).join("")}
     </div>`}
-    ${canAssign ? `
-    <div class="glass stack">
-      <div class="dim">猜得分毫不差。奖励到账：点一个人，这杯TA喝。</div>
-      <div class="row" style="flex-wrap:wrap">
-        ${s.players.filter((p) => p.name !== me.name).map((p) =>
-          `<button class="btn ghost small assignBtn" data-n="${esc(p.name)}">${esc(p.emoji)}${esc(p.name)}</button>`).join("")}
-      </div>
-    </div>` : ""}
+    ${solo ? "" : `<div class="glass stack center light-panel round-light-panel">
+      ${cur.youAreProtagonist
+        ? `<div class="light-count">这题的你：爆灯 <b>${burstCount}</b> · 灭灯 <b>${offCount}</b></div>
+           <div class="dim">灯是他们对这题的你亮的。别紧张，灯不咬人。</div>`
+        : lightLocked
+          ? `<div class="light-count">你这票：${myLight === "off" ? "🖤 灭灯" : "💗 爆灯"}</div>
+             <div class="dim">一题一盏灯，落了就不改。</div>`
+          : `<div class="dim">这题的 ${esc(cur.protagonist?.name || "主角")}，心动还是下头？一题只有一票。</div>
+             <div class="row light-btns">
+               <button class="btn light-burst grow" id="roundBurstBtn">💗 爆灯</button>
+               <button class="btn light-off grow" id="roundOffBtn">灭灯</button>
+             </div>`}
+    </div>`}
+    ${kingChanceHtml(s)}
     ${!solo && cur.youAreProtagonist && !ui.commentSent && !rv.comment ? `
     <div class="glass row">
       <input type="text" id="cmtIn" maxlength="100" placeholder="补刀一句（可选）" class="grow" value="${esc(ui.commentDraft)}" />
       <button class="btn ghost small" id="cmtBtn">发</button>
     </div>` : ""}
-    ${me.isHost ? `<button class="btn" id="nextBtn">${rv.results.some((x) => x.drink || x.assigned) ? "进入罚酒仪式" : (cur.roundIndex >= cur.totalRounds ? "看 TA 的理想型" : "下一题")}</button>` : `<div class="dim center">等房主进下一步。</div>`}`;
+    ${me.isHost ? `<button class="btn" id="nextBtn">${rv.results.some((x) => x.drink) ? "进入罚酒仪式" : (cur.roundIndex >= cur.totalRounds ? "看 TA 的理想型" : "下一题")}</button>` : `<div class="dim center">酒还没醒，房主手里的牌还没翻。稍等。</div>`}`;
   bindSound();
+  mountLaokAvatar();
+  bindKingChance(s);
   if (fresh) {
     // 罚酒判定时刻：行底色/抖动/飘字/高光，一次性播放
     rv.results.forEach((x, i) => {
@@ -863,11 +1325,18 @@ function renderReveal(s) {
       setTimeout(() => { celebrate(); sound.tick(); }, verdictAt * 1000 + 150);
     }
   }
-  $app.querySelectorAll(".assignBtn").forEach((b) =>
-    b.addEventListener("click", () => {
-      ui.assigned = true;
-      if (!sendOrWarn({ type: "assign_drink", target: b.dataset.n })) ui.assigned = false;
-    }));
+  const castRoundLight = (value) => {
+    sound.unlock();
+    if (!sendOrWarn(lightVotePayload(value))) return;
+    ui.lightSent = revealKey; // 乐观置灰；服务端 reveal.lights 广播为准
+    if (PREVIEW) {
+      rv.lights = { ...(rv.lights || {}), [me.id]: value };
+      playLightFx({ name: me.name, on: value === "burst" });
+    }
+    render();
+  };
+  document.getElementById("roundBurstBtn")?.addEventListener("click", () => castRoundLight("burst"));
+  document.getElementById("roundOffBtn")?.addEventListener("click", () => castRoundLight("off"));
   const cmtIn = document.getElementById("cmtIn");
   cmtIn?.addEventListener("input", () => (ui.commentDraft = cmtIn.value));
   document.getElementById("cmtBtn")?.addEventListener("click", () => {
@@ -884,7 +1353,7 @@ function renderDrinking(s) {
   const ceremony = cur.drinking || { drinkers: [], completed: 0, total: 0 };
   const finished = ceremony.allDone || ceremony.skipped;
   $app.innerHTML = `
-    ${header(s, `罚酒仪式 · 第 ${cur.roundIndex}/${cur.totalRounds} 轮`)}
+    ${header(s, `罚酒仪式 · 第 ${cur.roundIndex}/${cur.totalRounds} 题`)}
     <section class="chug-stage">
       <div class="chug-title">CHUG<br>CHUG<br>CHUG</div>
       <div class="chug-beat">举杯。干了。</div>
@@ -910,60 +1379,18 @@ function renderDrinking(s) {
   document.getElementById("nextBtn")?.addEventListener("click", () => sendOrWarn({ type: "next" }));
 }
 
-/* --- 国王时刻（全员读心命中触发）：精绘扑克牌 --- */
+/* --- 国王阶段（R2.5）：终局大国王已删除。
+   此阶段仅作每题号码国王的延续容器：号码牌 + 报号 + 揭晓，房主看完放行。
+   （前端不再发 kingQuestions，后端全员命中的终局 king 不会触发；此处仅防御性兜底。） --- */
 function renderKing(s) {
-  const k = s.king || {};
-  const kingP = k.king || { name: "？", emoji: "🍺" };
-  const iAmKing = !!k.youAreKing;
-  const order = k.order;
-  // 事实关系别搞错：被读心的是主角，国王是从命中的猜分人里抽的手最准的那个
-  const heroName = s.current?.protagonist?.name || "";
   $app.innerHTML = `
-    ${header(s, "国王时刻")}
-    <div class="glass king-stage">
-      <div class="king-card">
-        <div class="kc-inner">
-          <div class="kc-watermark">K</div>
-          <div class="kc-corner tl"><b>K</b><span>♥</span></div>
-          <div class="kc-corner br"><b>K</b><span>♥</span></div>
-          <div class="kc-center">
-            <div class="kc-crown"></div>
-            <div class="kc-king-emoji">${esc(kingP.emoji || "🍺")}</div>
-            <div class="kc-king-name">${esc(kingP.name)}</div>
-            <div class="kc-sub">全桌猜穿主角 · 手最准的下旨</div>
-          </div>
-        </div>
-      </div>
-      ${order ? `
-        <div class="king-decree">${esc(order.text)}</div>
-        ${s.you.isHost
-          ? `<button class="btn" id="nextBtn">旨意办完，下一轮</button>`
-          : `<div class="dim center">照旨意办。办不到的，自罚一杯。</div>`}
-      ` : iAmKing ? `
-        <div class="dim center">你是国王。三道旨意挑一道，或者自己写。</div>
-        <div class="king-options">
-          ${(k.options || []).map((opt, i) =>
-            `<button class="king-option" data-idx="${i}">${esc(opt.text)}</button>`).join("")}
-        </div>
-        <div class="row" style="width:100%">
-          <input type="text" id="customIn" maxlength="60" placeholder="自己写道旨意（60 字内）" class="grow" />
-          <button class="btn ghost small" id="customBtn">下旨</button>
-        </div>
-      ` : `
-        <div class="dim center">全桌把${heroName ? ` ${esc(heroName)} ` : "主角"}的心思摸得一清二楚。王冠落在手最准的 ${esc(kingP.name)} 头上，圣旨在写，谁都跑不掉。</div>
-      `}
-    </div>`;
+    ${header(s, "国王报号")}
+    ${kingChanceHtml(s)}
+    ${s.you?.isHost
+      ? `<button class="btn" id="nextBtn">${s.current?.kingChance && !s.current.kingChance.done ? "等号都报完" : "旨意办完，下一题"}</button>`
+      : `<div class="dim center">照旨意办。办不到的，自罚一杯。</div>`}`;
   bindSound();
-  $app.querySelectorAll(".king-option").forEach((b) =>
-    b.addEventListener("click", () => {
-      sound.unlock();
-      sendOrWarn({ type: "king_pick", idx: Number(b.dataset.idx) });
-    }));
-  document.getElementById("customBtn")?.addEventListener("click", () => {
-    const text = document.getElementById("customIn")?.value.trim();
-    if (!text) return toast("旨意还空着。");
-    sendOrWarn({ type: "king_custom", text });
-  });
+  bindKingChance(s);
   document.getElementById("nextBtn")?.addEventListener("click", () => sendOrWarn({ type: "next" }));
 }
 
@@ -1162,7 +1589,7 @@ function renderAha(s, aha, isFinal) {
             : ""}
     </div>`}
     ${ui.posterUrl
-      ? `<img class="poster-img" src="${ui.posterUrl}" alt="理想型海报" /><div class="dim center">长按保存。扫码的人直接进这桌。</div>`
+      ? `<img class="poster-img" src="${ui.posterUrl}" alt="理想型海报" /><div class="dim center">长按保存。扫码的人直接进这桌。</div><button class="btn" id="posterHomeBtn">进入我的主页</button>`
       : `<button class="btn ghost" id="posterBtn" ${ui.posterBusy ? "disabled" : ""}>${ui.posterBusy ? "海报在暗房里洗…" : "生成海报"}</button>`}
     ${!isFinal ? (me.isHost
       ? `<button class="btn" id="nextBtn">${s.players.some((p) => !p.done) ? "下一位主角" : "收局看总榜"}</button>`
@@ -1238,6 +1665,7 @@ function renderAha(s, aha, isFinal) {
     ui.posterBusy = false;
     render();
   });
+  document.getElementById("posterHomeBtn")?.addEventListener("click", goMyPage);
   document.getElementById("nextBtn")?.addEventListener("click", () => sendOrWarn({ type: "next" }));
   document.getElementById("burstBtn")?.addEventListener("click", () => castLight("burst"));
   document.getElementById("offBtn")?.addEventListener("click", () => castLight("off"));
@@ -1522,23 +1950,23 @@ function mockArt(emoji) {
 
 function buildPreviewState(screen) {
   const players = [
-    { name: "嘉欣", emoji: "🍷", isHost: true, connected: true, token: "t1", done: true },
-    { name: "阿豪", emoji: "🍺", isHost: false, connected: true, token: "t2", done: false },
-    { name: "赛百诺女士", emoji: "🥂", isHost: false, connected: true, token: "t3", done: false },
-    { name: "这是一个超长昵称测试员", emoji: "🍶", isHost: false, connected: false, token: "t4", done: false },
-    { name: "麦当劳", emoji: "🧉", isHost: false, connected: true, token: "t5", done: false },
+    { id: "t1", name: "coco", emoji: "🍷", isHost: true, connected: true, token: "t1", done: true },
+    { id: "t2", name: "阿豪", emoji: "🍺", isHost: false, connected: true, token: "t2", done: false },
+    { id: "t3", name: "赛百诺女士", emoji: "🥂", isHost: false, connected: true, token: "t3", done: false },
+    { id: "t4", name: "这是一个超长昵称测试员", emoji: "🍶", isHost: false, connected: false, token: "t4", done: false },
+    { id: "t5", name: "麦当劳", emoji: "🧉", isHost: false, connected: true, token: "t5", done: false },
   ];
   const decks = renderLobby._decks;
   const deck = Object.keys(decks)[0];
   const base = {
     code: "8848",
-    you: { name: "嘉欣", isHost: true },
+    you: { name: "coco", isHost: true },
     players,
     settings: { rounds: 5, deck, deckName: decks[deck].name },
     chat: [
-      { id: 1, name: "阿豪", emoji: "🍺", text: "这题出得太狠了哈哈哈", reactions: { "😂": ["嘉欣", "麦当劳"], "🍺": ["嘉欣"] } },
+      { id: 1, name: "阿豪", emoji: "🍺", text: "这题出得太狠了哈哈哈", reactions: { "😂": ["coco", "麦当劳"], "🍺": ["coco"] } },
       { id: 2, name: "麦当劳", emoji: "🧉", text: "主角面不改色，有点东西", reactions: {} },
-      { id: 3, name: "嘉欣", emoji: "🍷", text: "爆灯预备！！", reactions: { "🔥": ["阿豪"] } },
+      { id: 3, name: "coco", emoji: "🍷", text: "爆灯预备！！", reactions: { "🔥": ["阿豪"] } },
     ],
   };
   const question = { id: "q1", text: "这是一个满分男，但他留着很长的小拇指指甲，说是用来开快递的，你没见他开过快递。", spice: 3 };
@@ -1556,7 +1984,7 @@ function buildPreviewState(screen) {
     });
     return {
       id: `preview-${seed}`,
-      light: { burst: 3, off: 1, voted: 4, total: 4, mine: null, yours: null, canVote: true, burstNames: ["嘉欣", "阿豪", "麦当劳"], offNames: ["这是一个超长昵称测试员"] },
+      light: { burst: 3, off: 1, voted: 4, total: 4, mine: null, yours: null, canVote: true, burstNames: ["coco", "阿豪", "麦当劳"], offNames: ["这是一个超长昵称测试员"] },
       protagonist: p,
       gender: seed === 2 ? "n" : "m",
       profile,
@@ -1565,7 +1993,7 @@ function buildPreviewState(screen) {
       titleSub: "均分 6.4 · 容忍度前 12%",
       details: profile.relationship.details,
       stats: {
-        bestKnower: { name: "嘉欣", count: 3 },
+        bestKnower: { name: "coco", count: 3 },
         veto: "留着很长的小拇指指甲，说是用来开快递的",
         tolerancePct: 68,
         avgScore: 6.4,
@@ -1582,7 +2010,7 @@ function buildPreviewState(screen) {
     case "lobby":
       return { ...base, phase: "lobby" };
     case "sticks":
-      return { ...base, phase: "picking", current: { youAreShaker: true, drawn: false, shaker: "嘉欣" } };
+      return { ...base, phase: "picking", current: { youAreShaker: true, drawn: false, shaker: "coco" } };
     case "answer":
       return { ...base, phase: "answering", you: { name: "赛百诺女士", isHost: false }, current: {
         youAreProtagonist: true, protagonist, roundIndex: 2, totalRounds: 5, question,
@@ -1592,50 +2020,50 @@ function buildPreviewState(screen) {
         youAreProtagonist: false, protagonist, roundIndex: 2, totalRounds: 5, question,
         submitted: { guessers: ["阿豪"], protagonist: false } } };
     case "reveal":
-      return { ...base, phase: "reveal", current: {
+      return { ...base, phase: "reveal",
+        you: { name: "coco", isHost: true, id: "t1", seatNo: 3 },
+        current: {
         youAreProtagonist: false, protagonist, roundIndex: 2, totalRounds: 5,
+        kingChance: {
+          winners: ["t1", "t5"], questionIdx: 1, seatCount: 5, turnIdx: 0,
+          currentKing: "t1", done: false, results: [],
+        },
         reveal: {
           question: question.text, score: 2, comment: "他真的没开过快递，我检查过指甲。",
+          lights: { t2: "burst", t4: "off" },
           results: [
-            { name: "嘉欣", emoji: "🍷", guess: 2, exact: true, drink: false, assigned: "麦当劳" },
+            { name: "coco", emoji: "🍷", guess: 2, exact: true, drink: false },
             { name: "阿豪", emoji: "🍺", guess: 5, exact: false, drink: true },
             { name: "这是一个超长昵称测试员", emoji: "🍶", guess: 8, exact: false, drink: true },
-            { name: "麦当劳", emoji: "🧉", guess: 3, exact: false, drink: false },
+            { name: "麦当劳", emoji: "🧉", guess: 2, exact: true, drink: false },
           ],
         } } };
     case "king":
-      // 国王本人视角：选圣旨
+      // R2.5 国王本人视角：报两个号 + 一张指令卡（匿名号码版）
       return { ...base, phase: "king",
-        current: { protagonist, roundIndex: 2, totalRounds: 5 },
-        king: {
-          active: true,
-          youAreKing: true,
-          king: { name: "嘉欣", emoji: "🍷" },
-          options: [
-            { id: "kg-a", text: "指定一人用最深情的语气朗读自己最近一条外卖备注" },
-            { id: "kg-b", text: "指定一人现场给国王倒酒，动作必须像颁奖典礼" },
-            { id: "kg-c", text: "指定两人交换手机壁纸并保持到本局结束" },
-          ],
-          order: null,
-          exactGuessers: ["阿豪", "麦当劳"],
-        } };
+        you: { name: "coco", isHost: true, id: "t1", seatNo: 3 },
+        current: { protagonist, roundIndex: 2, totalRounds: 5,
+          kingChance: {
+            winners: ["t1", "t5"], questionIdx: 1, seatCount: 5, turnIdx: 0,
+            currentKing: "t1", done: false, results: [],
+          } } };
     case "kingOrder":
-      // 圣旨已下视角
-      return { ...base, phase: "king", you: { name: "阿豪", isHost: false },
-        current: { protagonist, roundIndex: 2, totalRounds: 5 },
-        king: {
-          active: false,
-          youAreKing: false,
-          king: { name: "嘉欣", emoji: "🍷" },
-          options: null,
-          order: { text: "指定一人用最深情的语气朗读自己最近一条外卖备注", custom: false },
-          exactGuessers: ["阿豪", "麦当劳"],
-        } };
+      // R2.5 揭晓视角：号都报完，公布几号是谁 + 执行指令
+      return { ...base, phase: "king", you: { name: "阿豪", isHost: false, id: "t2", seatNo: 1 },
+        current: { protagonist, roundIndex: 2, totalRounds: 5,
+          kingChance: {
+            winners: ["t1", "t5"], questionIdx: 1, seatCount: 5, turnIdx: 2,
+            currentKing: null, done: true,
+            results: [
+              { king: "t1", nums: [2, 4], names: ["赛百诺女士", "这是一个超长昵称测试员"], orderId: "ko-01", questionIdx: 1 },
+              { king: "t5", nums: [1, 3], names: ["阿豪", "coco"], orderId: "ko-02", questionIdx: 1 },
+            ],
+          } } };
     case "drinking":
       return { ...base, phase: "drinking", current: {
         protagonist, roundIndex: 2, totalRounds: 5,
         drinking: { completed: 1, total: 3, allDone: false, skipped: false, canConfirm: true, drinkers: [
-          { name: "嘉欣", emoji: "🍷", drink: { id: "wine", label: "红酒", emoji: "🍷" }, cups: 1, done: true, mine: false },
+          { name: "coco", emoji: "🍷", drink: { id: "wine", label: "红酒", emoji: "🍷" }, cups: 1, done: true, mine: false },
           { name: "阿豪", emoji: "🍺", drink: { id: "beer", label: "啤酒", emoji: "🍺" }, cups: 2, done: false, mine: false },
           { name: "麦当劳", emoji: "🧉", drink: { id: "soft", label: "无酒精", emoji: "🫧" }, cups: 1, done: false, mine: true },
         ] },
@@ -1668,7 +2096,7 @@ function bootPreview(screen) {
     // 弹幕演示：慢速飘屏，保证 3s 截图时可见
     const demo = [
       { name: "阿豪", emoji: "🍺", text: "这理想型有点帅啊" },
-      { name: "", emoji: "", text: "💗 嘉欣 爆灯了！！", special: "dm-burst" },
+      { name: "", emoji: "", text: "💗 coco 爆灯了！！", special: "dm-burst" },
       { name: "麦当劳", emoji: "🧉", text: "🔥" },
       { name: "", emoji: "", text: "🖤 超长昵称 灭灯了…", special: "dm-off" },
     ];

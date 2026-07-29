@@ -600,6 +600,104 @@ html, body {
 .solo-seat:hover .solo-label,
 .solo-seat:active .solo-label { transform: scale(1.08); }
 
+/* solo 入口上方小提示："一个人？那你和我聊。" */
+.solo-hint {
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--neon-cyan-soft);
+  text-shadow: 0 0 6px var(--glow-cyan-40), 0 1px 3px rgba(8, 3, 15, 0.9);
+  opacity: 0.92;
+  margin-bottom: 1px;
+}
+
+/* ---------- 我的主页：常驻入口（右上角，不挡桌区/不撞 OPEN 24/7） ---------- */
+.home-entry {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 77;
+  font-size: 12px;
+  padding: 6px 12px;
+  color: var(--neon-purple);
+  text-shadow: var(--neon-text-purple);
+  background: var(--panel-deep);
+  border: var(--stroke-thin) solid var(--neon-purple);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 0 10px var(--glow-purple-20), 0 4px 10px rgba(8, 3, 15, 0.5);
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.3s;
+}
+.home-entry::before { content: "▨ "; opacity: 0.85; }
+.home-entry:hover,
+.home-entry:active {
+  transform: scale(1.06);
+  box-shadow: 0 0 16px var(--glow-purple-45), 0 4px 10px rgba(8, 3, 15, 0.5);
+}
+
+/* ---------- 未注册引导横幅（老K口吻，顶部居中，生面孔才出现） ---------- */
+.guest-banner {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 76;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 92vw;
+  padding: 7px 14px;
+  font-size: 12px;
+  text-decoration: none;
+  color: var(--ink-hi);
+  background: var(--panel-deep);
+  border: var(--stroke-thin) solid var(--neon-amber);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 0 14px var(--glow-amber-25), 0 4px 12px rgba(8, 3, 15, 0.55);
+  white-space: nowrap;
+  transition: transform 0.15s;
+}
+.guest-banner .gb-text {
+  color: var(--ink-mid);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.guest-banner .gb-go {
+  flex: none;
+  font-family: var(--font-pixel);
+  color: var(--neon-amber);
+  text-shadow: var(--neon-text-amber);
+}
+.guest-banner:hover,
+.guest-banner:active { transform: translateX(-50%) scale(1.03); }
+
+/* ---------- 卡组徽标：有人的桌子挂"今晚聊什么"（man/woman/agent） ---------- */
+.deck-badge {
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  color: var(--neon-amber);
+  border: var(--stroke-thin) solid var(--neon-amber);
+  background: var(--panel-deep);
+  text-shadow: 0 0 6px var(--glow-amber-25);
+  box-shadow: 0 0 8px var(--glow-amber-25);
+  white-space: nowrap;
+}
+.deck-badge[data-deck="woman"] {
+  color: var(--neon-pink-hot);
+  border-color: var(--neon-pink);
+  text-shadow: var(--neon-text-pink);
+  box-shadow: var(--neon-box-pink);
+}
+.deck-badge[data-deck="agent"] {
+  color: var(--neon-cyan-soft);
+  border-color: var(--neon-cyan);
+  text-shadow: var(--neon-text-cyan);
+  box-shadow: var(--neon-box-cyan);
+}
+
 /* ---------- 前景地板 + 圆桌 ---------- */
 .floor {
   position: absolute;
@@ -957,4 +1055,19 @@ html, body {
   .table { gap: 4px; }
   .table-sign { font-size: 15px; padding: 2px 9px; }
   .table-seats { font-size: 11px; }
+  .deck-badge { font-size: 9px; padding: 2px 6px; }
+  /* 顶部三件套错位：生面孔横幅居左（避开 disco 球与主页入口），主页入口居右 */
+  .guest-banner {
+    top: 8px;
+    left: 60px;
+    right: 96px;
+    transform: none;
+    max-width: none;
+    justify-content: flex-start;
+    font-size: 11px;
+  }
+  .guest-banner:hover, .guest-banner:active { transform: none; }
+  .home-entry { top: 8px; right: 8px; font-size: 11px; padding: 5px 10px; }
+  /* 生面孔状态下横幅占住顶部，次要的转屏提示让路（本就 6s 自动淡出） */
+  .guest-mode .rotate-hint { display: none; }
 }

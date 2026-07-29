@@ -60,8 +60,10 @@
     <div class="stool-row">
       <span class="stool deco s1" aria-hidden="true"><i></i></span>
       <span class="stool deco s2" aria-hidden="true"><i></i></span>
-      <button class="solo-seat" id="soloSeat" type="button">
-        <span class="solo-label px-title neon-amber">一个人喝</span>
+      <button class="solo-seat" id="soloSeat" type="button"
+              title="吧台这个位置本来就是留给一个人的，视野还最好。">
+        <span class="solo-hint">一个人？那你和我聊。</span>
+        <span class="solo-label px-title neon-amber">坐吧台，和老K喝</span>
         <span class="stool solo" aria-hidden="true"><i></i></span>
       </button>
     </div>
@@ -79,6 +81,15 @@
       <span class="hint-icon" aria-hidden="true">⟳</span>
       转过来，酒吧横着更好看
     </div>
+
+    <!-- 常驻入口：我的主页（无身份时引导去吧台调酒） -->
+    <button class="home-entry px-title" id="homeEntry" type="button">我的主页</button>
+
+    <!-- 未注册引导横幅（lobby.js 检查 localStorage 后展示） -->
+    <a class="guest-banner px-title" id="guestBanner" href="/v2/cocktail.html" hidden>
+      <span class="gb-text">生面孔？先去吧台调杯酒，我好记住你。</span>
+      <span class="gb-go">去调酒 →</span>
+    </a>
 
     <!-- 找朋友：报房间码 -->
     <div class="codeboard" id="codeboard" hidden>

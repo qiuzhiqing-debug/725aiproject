@@ -19,16 +19,16 @@ export const QUESTIONS = [
   {
     key: "base",
     step: "PART 1 / 基酒",
-    title: "吧台后面这排瓶子，总有一瓶像你。挑吧。",
+    title: "吧台这排瓶子，总有一瓶对你脾气。挑吧。",
     hint: "别想太久。第一眼停在哪，就是哪。",
     options: [
-      { label: "金酒",   desc: "闻着像雨后的植物园。清爽，跟谁都合得来。" },
-      { label: "伏特加", desc: "没什么味道，劲儿都收在后面。" },
-      { label: "朗姆",   desc: "甜口，晒过太阳的味道。适合有故事的人。" },
+      { label: "金酒",   desc: "闻着像雨后的植物园。跟谁都合得来，但有自己的骨架。" },
+      { label: "伏特加", desc: "没什么味道？那是它不跟你抢戏。劲儿都收在后面。" },
+      { label: "朗姆",   desc: "晒过太阳的甜。点这瓶的人，一般都有故事。" },
       { label: "威士忌", desc: "第一口冲，坐一会儿就顺了。" },
-      { label: "龙舌兰", desc: "不爱绕弯子。看着烈，其实直接。" },
+      { label: "龙舌兰", desc: "不绕弯子。看着最烈，其实是这排里最诚实的。" },
       { label: "白兰地", desc: "壁炉边的酒。急不得，也没人急。" },
-      { label: "无酒精特调", desc: "今晚想清醒着看热闹？行，我也有招。" },
+      { label: "无酒精特调", desc: "清醒着看热闹？行，这杯我调得比酒还像样。" },
     ],
   },
   {
@@ -59,7 +59,7 @@ export const QUESTIONS = [
     key: "ice",
     step: "PART 4 / 冰量",
     title: "最后一件事——冰，加多少？",
-    hint: "冰不是温度，是距离。我从不替客人做主。",
+    hint: "冰不是温度，是距离。你自己定。",
     options: [
       { label: "不加冰", desc: "想到什么说什么，趁热。" },
       { label: "一颗大方冰", desc: "慢慢化，不着急。" },
@@ -75,7 +75,7 @@ const BASES = [
   {
     label: "金酒", glass: "highball", prefix: "雾中花园",
     palette: ["#16536e", "#2ea8c8", "#c2f3ff"],
-    intro: "入口干净，回头带一点杜松子的苦香。今晚适合聊点真的。",
+    intro: "入口干净，后面有点杜松子的苦。今晚适合聊点真的。",
   },
   {
     label: "伏特加", glass: "martini", prefix: "无声极光",
@@ -95,7 +95,7 @@ const BASES = [
   {
     label: "龙舌兰", glass: "coupe", prefix: "沙漠日出",
     palette: ["#801c1c", "#ff6a2e", "#ffd84d"],
-    intro: "日落的颜色，上头的速度。今晚别答应任何奇怪的事。",
+    intro: "上头比日落快。今晚别答应任何奇怪的事。",
   },
   {
     label: "白兰地", glass: "rocks", prefix: "壁炉余温",
@@ -274,19 +274,32 @@ if (typeof document !== "undefined" && document.getElementById("quiz")) {
     console.log("[cocktail] onCocktailDone（占位回调）", c);
   });
 
-  /* ---- 老K 登场：像素立绘 + 两句自我引入 ---- */
+  /* ---- 老K 登场：像素立绘 + 三句自我引入（店名「99%」全站唯一一次自介） ---- */
   const HOST_LINES = [
-    "第一次来吧。我是老K，这个吧台归我管。",
-    "先调杯酒。你怎么选，比你怎么说诚实。",
+    "来了？我是老K，这店归我管。",
+    "店名叫 99%。酒和灯只能把人送到 99%，差的那 1%，是个人。",
+    "今晚就干这个：先调杯酒，再看看你想要的那个人长什么样。",
   ];
   let bartender = null;
   try {
     bartender = createBartender($("hostSprite"), "talk");
-    setTimeout(() => {
-      $("hostLine").textContent = HOST_LINES[1];
-      setTimeout(() => bartender && bartender.setState("idle"), 2600);
-    }, 2600);
   } catch { /* 立绘挂了也不拦流程 */ }
+
+  // 三句自介依次播；老客识别成功后由 greetReturning() 覆盖成欢迎回来
+  let introTimers = [];
+  function playIntro(lines) {
+    introTimers.forEach(clearTimeout);
+    introTimers = [];
+    $("hostLine").textContent = lines[0];
+    bartender && bartender.setState("talk");
+    for (let i = 1; i < lines.length; i++) {
+      introTimers.push(setTimeout(() => { $("hostLine").textContent = lines[i]; }, i * 2800));
+    }
+    introTimers.push(setTimeout(
+      () => bartender && bartender.setState("idle"),
+      lines.length * 2800,
+    ));
+  }
 
   // 进度条
   const progress = $("progress");
@@ -351,23 +364,37 @@ if (typeof document !== "undefined" && document.getElementById("quiz")) {
   // ---- 调酒序列 ----
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  /* ---- 摇一摇阶段：devicemotion 物理交互，降级为连点 ----
+  /* ---- 摇一摇阶段：devicemotion 物理交互，桌面端点击充能 ----
      复用 fx.js createShaker（摇签同款）：iOS 需在手势里请求权限；
-     无传感器 1.2s 超时自动降级。TARGET=130 与摇签一致。 */
+     无传感器 1.2s 超时自动降级为点击。TARGET=130 与摇签一致。
+     R2.5：交互不写任何文字说明——手机端摇、电脑端点，靠进度条与晃动反馈。 */
   const SHAKE_TARGET = 130;
+
+  // 美术线 shaker.svg（三段式，分组 shaker-all/body/strainer/cap）inline 注入一次
+  let shakerReady = null;
+  function injectShaker() {
+    if (shakerReady) return shakerReady;
+    shakerReady = fetch("/assets-v2/shaker.svg")
+      .then((r) => (r.ok ? r.text() : Promise.reject()))
+      .then((svg) => { $("mixShaker").innerHTML = svg; })
+      .catch(() => { /* 取不到就留空，不拦流程 */ });
+    return shakerReady;
+  }
 
   function shakePhase() {
     return new Promise((resolve) => {
       const shakerEl = $("mixShaker");
       const caption = $("mixCaption");
-      const btn = $("shakeBtn");
       const fill = $("shakeFill");
       const ui = $("shakeUI");
       const motion = createShaker();
       let calmTimer = null;
       let done = false;
+      let started = false;
 
-      caption.textContent = "料都齐了。摇匀，才有得喝。";
+      // 邀请交互：壶身轻微呼吸脉冲（视觉，无文字）
+      shakerEl.classList.add("invite");
+      caption.textContent = "料齐了，力气活归你。摇，听见冰响就对了。";
 
       const setProgress = (ratio) => {
         const p = Math.min(1, ratio);
@@ -376,7 +403,7 @@ if (typeof document !== "undefined" && document.getElementById("quiz")) {
         else if (p >= 0.33) caption.textContent = "有点样子了。再狠一点。";
       };
 
-      // 摇动视觉：强度 → 振幅/角度，260ms 没新动作就归于平静
+      // 摇动视觉：强度 → 振幅/角度，300ms 没新动作就归于平静
       const kick = (intensity) => {
         const amp = 6 + intensity * 16;
         const rot = 8 + intensity * 12;
@@ -399,11 +426,22 @@ if (typeof document !== "undefined" && document.getElementById("quiz")) {
         setTimeout(resolve, 600);
       };
 
-      // 首次点击 = 用户手势：申请传感器；拿不到就把按钮变成连点充能
-      btn.addEventListener("click", async function onFirst() {
-        btn.removeEventListener("click", onFirst);
-        btn.disabled = true;
-        btn.textContent = "……";
+      // 桌面端点击充能
+      let charge = 0;
+      const tap = () => {
+        if (done) return;
+        charge += 14;
+        kick(0.8);
+        setProgress(charge / SHAKE_TARGET);
+        if (charge >= SHAKE_TARGET) finish();
+      };
+
+      // 首次交互 = 用户手势：申请传感器；拿不到就走点击充能。整壶可点。
+      shakerEl.style.cursor = "pointer";
+      shakerEl.addEventListener("click", async function onFirst() {
+        if (started || done) return;
+        started = true;
+        shakerEl.classList.remove("invite");
         const ok = await motion.requestAndStart({
           onIntensity: (v) => {
             kick(v);
@@ -412,27 +450,13 @@ if (typeof document !== "undefined" && document.getElementById("quiz")) {
           onCharged: finish,
         });
         if (done) return;
-        if (ok) {
-          // 摇一摇模式：按钮退场，指令交给手腕
-          btn.classList.add("hidden");
-          caption.textContent = "就这样，手腕带上劲。";
-        } else {
-          // 降级：连点充能（桌面端 / 无传感器 / 权限被拒）
-          let charge = 0;
-          btn.disabled = false;
-          btn.textContent = "摇不了就连点它";
-          caption.textContent = "这台机器不认摇晃。手指快点，一样出酒。";
-          const tap = () => {
-            if (done) return;
-            charge += 14;
-            kick(0.8);
-            setProgress(charge / SHAKE_TARGET);
-            if (charge >= SHAKE_TARGET) finish();
-          };
-          btn.addEventListener("click", tap);
+        if (!ok) {
+          // 无传感器 / 桌面端 / 权限被拒：继续用点击充能
+          tap();
           shakerEl.addEventListener("click", tap);
-          shakerEl.style.cursor = "pointer";
         }
+        // 有传感器：手势已授权，交给手腕；本次首点也算一下劲
+        else kick(0.6);
       });
     });
   }
@@ -451,6 +475,9 @@ if (typeof document !== "undefined" && document.getElementById("quiz")) {
     zone.innerHTML = glassSVG(cocktail.glass, cocktail.palette, cocktail.ice, cocktail.garnish);
     zone.className = `glass-zone glass--${cocktail.glass}`; // 杯口高度按杯型对齐摇壶
 
+    // 0) 注入美术线三段式摇壶（inline，供分组动画）
+    await injectShaker();
+
     // 1) 摇一摇（物理交互；preview=result 时跳过）
     if (!opts.skipShake) {
       await shakePhase();
@@ -458,7 +485,9 @@ if (typeof document !== "undefined" && document.getElementById("quiz")) {
       $("shakeUI").classList.add("hidden");
     }
 
-    // 2) 倾倒 + 三层液体依次升起
+    // 2) 倾倒：cap 打开 + 壶倾斜 + 三层液体依次升起
+    shaker.classList.add("pouring"); // 顶盖弹开
+    await sleep(opts.fast ? 40 : 240);
     shaker.classList.add("tilt");
     await sleep(opts.fast ? 60 : 300);
     const layers = [...zone.querySelectorAll(".liquid-layer")];
@@ -494,8 +523,159 @@ if (typeof document !== "undefined" && document.getElementById("quiz")) {
     $("resultIntro").textContent = cocktail.intro;
     $("result").classList.remove("hidden");
     caption.classList.add("hidden"); // 杯下字幕退场，名字只留一处
-    $("resultGo").addEventListener("click", () => window.onCocktailDone(cocktail), { once: true });
+    // resultGo：新客 → 进注册段；老客 → 直接进大厅
+    $("resultGo").addEventListener("click", () => {
+      if (isReturning) {
+        window.onCocktailDone(cocktail);
+      } else {
+        $("result").classList.add("hidden");
+        $("recoverLink").classList.add("hidden");
+        openRegister(cocktail);
+      }
+    }, { once: true });
   }
+
+  /* ================= 注册段：告诉老K你是谁 ================= */
+
+  let isReturning = false;       // 老客识别通过 → 跳过注册
+  const pick = { gender: null, seeking: null };
+
+  function bindChoice(groupId, key) {
+    const group = $(groupId);
+    group.querySelectorAll("button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        group.querySelectorAll("button").forEach((b) => b.classList.remove("on"));
+        btn.classList.add("on");
+        pick[key] = btn.dataset.v;
+      });
+    });
+  }
+  bindChoice("regGender", "gender");
+  bindChoice("regSeeking", "seeking");
+
+  function regError(msg) {
+    const el = $("regMsg");
+    el.textContent = msg;
+    el.classList.remove("hidden");
+  }
+
+  function openRegister(cocktail) {
+    $("register").classList.remove("hidden");
+    $("registerForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const submit = $("regSubmit");
+      const name = $("regName").value.trim();
+      const passcode = $("regPass").value.trim();
+      if (!name) { regError("先留个称呼，我好记住你。"); return; }
+      if (!/^\d{4,6}$/.test(passcode)) {
+        regError("暗号要 4 到 6 个数字。好记最重要，别用生日给人猜。");
+        return;
+      }
+      if (!pick.gender) { regError("你是谁，点一下告诉我。"); return; }
+      if (!pick.seeking) { regError("今晚想看什么样的人，也点一下。"); return; }
+      $("regMsg").classList.add("hidden");
+      submit.disabled = true;
+      submit.textContent = "记一下……";
+      try {
+        const res = await fetch("/api/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, passcode, gender: pick.gender, seeking: pick.seeking }),
+        });
+        if (res.status === 201) {
+          const data = await res.json();
+          localStorage.setItem("ideal_userId", data.userId);
+          localStorage.setItem("ideal_token", data.token);
+          localStorage.setItem("mfn_name", name);
+          localStorage.setItem("ideal_gender", pick.gender);
+          localStorage.setItem("ideal_seeking", pick.seeking);
+          submit.textContent = "记下了";
+          window.onCocktailDone(cocktail); // 挂 cocktail 到档案 + 进大厅
+          return;
+        }
+        if (res.status === 409) {
+          regError("这名字今晚有人用了。换一个，别撞了称呼。");
+        } else if (res.status === 400) {
+          const d = await res.json().catch(() => ({}));
+          regError(d.error === "bad_passcode"
+            ? "暗号要 4 到 6 个数字。好记最重要，别用生日给人猜。"
+            : "填得不对，再看一眼。");
+        } else {
+          regError("名字没记上，线路的事，不赖你。再报一遍。");
+        }
+      } catch {
+        regError("名字没记上，线路的事，不赖你。再报一遍。");
+      }
+      submit.disabled = false;
+      submit.textContent = "就这么定";
+    });
+  }
+
+  /* ---- 老客识别：本地已有身份 → 校验 → 通过则问好、跳过注册 ---- */
+  async function checkReturning() {
+    const id = localStorage.getItem("ideal_userId");
+    const token = localStorage.getItem("ideal_token");
+    if (!id || !token) return;
+    try {
+      const res = await fetch(`/api/user/${encodeURIComponent(id)}?token=${encodeURIComponent(token)}`);
+      if (!res.ok) throw new Error("bad");
+      const data = await res.json();
+      if (!data || data.owner === false) throw new Error("not owner");
+      isReturning = true;
+      const nick = data.nick || localStorage.getItem("mfn_name") || "";
+      localStorage.setItem("mfn_name", nick);
+      playIntro([
+        `又是你，${nick}。杯子我都记得。`,
+        "老规矩，先调一杯——想看的人，今晚换不换口味？",
+      ]);
+    } catch {
+      // 校验失败：清掉本地身份，走新客流程
+      ["ideal_userId", "ideal_token", "ideal_gender", "ideal_seeking"].forEach((k) => localStorage.removeItem(k));
+    }
+  }
+
+  /* ---- 对暗号：换设备找回身份 ---- */
+  const recoverPanel = $("recover");
+  $("recoverLink").addEventListener("click", () => recoverPanel.classList.remove("hidden"));
+  $("rcClose").addEventListener("click", () => recoverPanel.classList.add("hidden"));
+  $("rcGo").addEventListener("click", async () => {
+    const btn = $("rcGo");
+    const msg = $("rcMsg");
+    const name = $("rcName").value.trim();
+    const passcode = $("rcPass").value.trim();
+    msg.classList.add("hidden");
+    if (!name || !/^\d{4,6}$/.test(passcode)) {
+      msg.textContent = "称呼和暗号都报上，暗号是 4 到 6 个数字。";
+      msg.classList.remove("hidden");
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = "对一下……";
+    try {
+      const res = await fetch("/api/recover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, passcode }),
+      });
+      if (res.status === 200) {
+        const data = await res.json();
+        localStorage.setItem("ideal_userId", data.userId);
+        localStorage.setItem("ideal_token", data.token);
+        localStorage.setItem("mfn_name", name);
+        msg.textContent = "对上了。柜子还是你那个柜子。";
+        msg.classList.remove("hidden");
+        setTimeout(() => { location.href = "/v2/lobby.html"; }, 900);
+        return;
+      }
+      msg.textContent = "暗号对不上。再想想——实在想不起来，就回吧台重调一杯。";
+      msg.classList.remove("hidden");
+    } catch {
+      msg.textContent = "线路的事，不赖你。再对一遍。";
+      msg.classList.remove("hidden");
+    }
+    btn.disabled = false;
+    btn.textContent = "对暗号";
+  });
 
   /* ---- QA 直达参数（可选 &a=基酒,辅料,装饰,冰 覆盖默认答案，方便验各杯型） ---- */
   const qs = new URLSearchParams(location.search);
@@ -505,11 +685,21 @@ if (typeof document !== "undefined" && document.getElementById("quiz")) {
   if (aRaw.length === 4 && aRaw.every(Number.isInteger)) {
     try { resolveCocktail(aRaw); previewAnswers = aRaw; } catch { /* 非法就用默认 */ }
   }
-  if (preview === "shake") {
+  if (preview === "register") {
+    // 注册段直达截图：跳过前序流程
+    $("host").classList.add("hidden");
+    $("quiz").classList.add("hidden");
+    openRegister(resolveCocktail(previewAnswers));
+  } else if (preview === "shake") {
+    playIntro(HOST_LINES);
     startMixing(resolveCocktail(previewAnswers));
   } else if (preview === "result") {
+    playIntro(HOST_LINES);
     startMixing(resolveCocktail(previewAnswers), { skipShake: true, fast: true });
   } else {
+    playIntro(HOST_LINES);
+    $("recoverLink").classList.remove("hidden"); // 老客找回入口
+    checkReturning();
     renderQuestion();
   }
 }

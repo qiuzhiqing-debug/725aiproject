@@ -97,13 +97,17 @@ const LAYOUT_PORTRAIT = [
   btn.style.setProperty("--sign-delay", (n - 1) * -0.6 + "s");
   btn.innerHTML = `
     <span class="table-sign">${n} 号桌</span>
+    <span class="deck-badge" hidden></span>
     <span class="table-top" aria-hidden="true"></span>
     <span class="table-seats">0/8</span>`;
   btn.addEventListener("click", () => joinTable(n, btn));
   floor.appendChild(btn);
 });
 
-/* ---------------- 桌子状态轮询：人数 + 灯光 ---------------- */
+/* ---------------- 卡组徽标：本桌今晚在聊什么（COPY-PACK §4 三卡组名） ---------------- */
+const DECK_BADGE = { man: "满分男", woman: "满分女", agent: "满分Agent" };
+
+/* ---------------- 桌子状态轮询：人数 + 灯光 + 卡组徽标 ---------------- */
 async function refreshTables() {
   try {
     const res = await fetch("/api/tables");
@@ -118,6 +122,18 @@ async function refreshTables() {
         btn.querySelector(".table-seats").textContent = `${players}/8`;
       }
       btn.classList.toggle("lit", players > 0);
+      // 卡组徽标：只在有人的桌子上显示（空桌不挂牌）
+      const badge = btn.querySelector(".deck-badge");
+      if (badge) {
+        const name = players > 0 ? DECK_BADGE[t.deck] : null;
+        if (name) {
+          badge.textContent = name;
+          badge.dataset.deck = t.deck;
+          badge.hidden = false;
+        } else {
+          badge.hidden = true;
+        }
+      }
     });
   } catch {
     /* 接口没就绪：保持默认空桌冷光，不报错 */
@@ -167,10 +183,32 @@ async function joinTable(n, btn) {
   }
 }
 
-/* ---------------- 吧台单人位 ---------------- */
+/* ---------------- 吧台单人位：一个人？那你和我聊 ---------------- */
 document.getElementById("soloSeat").addEventListener("click", () => {
   location.href = "/?solo=1";
 });
+
+/* ---------------- 我的主页常驻入口 + 未注册引导 ---------------- */
+// 有身份 → 跳 /u.html?id=<ideal_userId>；无身份 → 引导去吧台调酒建档
+const myUserId = localStorage.getItem("ideal_userId");
+const homeEntry = document.getElementById("homeEntry");
+const guestBanner = document.getElementById("guestBanner");
+if (homeEntry) {
+  homeEntry.addEventListener("click", () => {
+    const id = localStorage.getItem("ideal_userId");
+    if (id) {
+      location.href = `/u.html?id=${encodeURIComponent(id)}`;
+    } else {
+      // 没身份：主页里没有你的柜子，先去吧台调杯酒把档案建起来
+      location.href = "/v2/cocktail.html";
+    }
+  });
+}
+// 生面孔（无 ideal_userId）：顶部挂一条老K口吻的引导横幅
+if (!myUserId && guestBanner) {
+  guestBanner.hidden = false;
+  document.body.classList.add("guest-mode");
+}
 
 /* ---------------- 找朋友：吧台电话 → 房间码 ---------------- */
 const codeboard = document.getElementById("codeboard");

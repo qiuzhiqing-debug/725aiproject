@@ -31,21 +31,36 @@ export default {
       return handleBartender(req, env);
     }
 
-    // 建房：POST /api/room  -> { code }
-    // body（可选）：{ visibility: "public"|"private"（默认 private）, solo: true（1 人可开局） }
+    // 用户注册（R2 契约）：昵称全局查重 + 4-6 位数字口令 + 性别/取向
+    if (url.pathname === "/api/register" && req.method === "POST") {
+      return handleRegister(req, env);
+    }
+    // 身份找回：昵称 + 口令 → userId/token
+    if (url.pathname === "/api/recover" && req.method === "POST") {
+      return handleRecover(req, env);
+    }
+    // 老K LLM 代理：永不 5xx，失败降级预写池
+    if (url.pathname === "/api/laok" && req.method === "GET") {
+      return handleLaok(url);
+    }
+
+    // 建房：POST /api/room  -> { code, deck }
+    // body（可选）：{ visibility: "public"|"private"（默认 private）, solo: true（1 人可开局）,
+    //               deck: "man"|"woman"|"agent"（卡组，默认 "man"） }
     if (url.pathname === "/api/room" && req.method === "POST") {
       let body = {};
       try { body = await readJson(req); } catch {}
       const visibility = body.visibility === "public" ? "public" : "private";
       const solo = body.solo === true;
+      const deck = ROOM_DECK_IDS.includes(body.deck) ? body.deck : "man";
       for (let i = 0; i < 15; i++) {
         const code = String(Math.floor(1000 + Math.random() * 9000));
         const stub = env.ROOM.get(env.ROOM.idFromName(code));
         const res = await stub.fetch(
-          `https://do/create?code=${code}&visibility=${visibility}${solo ? "&solo=1" : ""}`
+          `https://do/create?code=${code}&visibility=${visibility}&deck=${deck}${solo ? "&solo=1" : ""}`
         );
         if (res.ok) {
-          return jsonRes({ code });
+          return jsonRes({ code, deck });
         }
       }
       return jsonRes({ error: "房间码分配失败，请重试" }, 503);
@@ -59,8 +74,9 @@ export default {
       let body = {};
       try { body = await readJson(req); } catch {}
       const visibility = body.visibility === "private" ? "private" : "public";
+      const deck = ROOM_DECK_IDS.includes(body.deck) ? body.deck : "man";
       const stub = env.ROOM.get(env.ROOM.idFromName("table-" + tm[1]));
-      return stub.fetch(`https://do/table/join?table=${tm[1]}&visibility=${visibility}`);
+      return stub.fetch(`https://do/table/join?table=${tm[1]}&visibility=${visibility}&deck=${deck}`);
     }
 
     // 桌子占用状态：GET /api/tables -> { tables: [{table, code, players, phase}] }
@@ -72,7 +88,7 @@ export default {
             const res = await stub.fetch("https://do/table/info?table=" + n);
             return await res.json();
           } catch {
-            return { table: n, code: null, players: 0, phase: null, active: false };
+            return { table: n, code: null, players: 0, phase: null, deck: null, active: false };
           }
         })
       );
@@ -204,6 +220,9 @@ async function handleUserGet(id, env, token) {
   return jsonRes({
     userId: user.id,
     nick: user.nick,
+    // 主页"想看方向"徽标（F 线）：从注册档案透出；旧档案无该字段 → null
+    gender: user.gender || null,
+    seeking: user.seeking || null,
     cocktail: user.cocktail,
     avatarSeed: user.avatarSeed,
     owner,
@@ -365,6 +384,202 @@ async function handleBartender(req, env) {
   }
 }
 
+/* ============ 用户注册 / 身份找回（R2 契约） ============ */
+// KV：user:<id> → profile；nameindex:<normalized name> → userId（normalize = trim + 小写）
+// passcode 不落明文：存 SHA-256(passcode + userId) 的 hex。
+
+const GENDER_VALUES = Object.freeze(["m", "f", "x"]);
+
+async function sha256Hex(text) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function normalizeName(name) {
+  return String(name || "").trim().toLowerCase();
+}
+
+async function handleRegister(req, env) {
+  if (!env.USERS) return jsonRes({ error: "USERS KV 未绑定" }, 500);
+  let body;
+  try { body = await readJson(req); } catch { return jsonRes({ error: "body 不是合法 JSON" }, 400); }
+  const name = cleanUserText(body.name, 12);
+  if (!name) return jsonRes({ error: "bad_name", msg: "昵称不能为空" }, 400);
+  const passcode = String(body.passcode ?? "");
+  if (!/^\d{4,6}$/.test(passcode)) {
+    return jsonRes({ error: "bad_passcode", msg: "口令必须是 4-6 位数字" }, 400);
+  }
+  if (!GENDER_VALUES.includes(body.gender)) return jsonRes({ error: "bad_gender" }, 400);
+  if (!GENDER_VALUES.includes(body.seeking)) return jsonRes({ error: "bad_seeking" }, 400);
+
+  const indexKey = "nameindex:" + normalizeName(name);
+  const taken = await env.USERS.get(indexKey);
+  if (taken) return jsonRes({ error: "name_taken", msg: `「${name}」已经被人叫走了，换一个` }, 409);
+
+  // 沿用现有 user 结构（nick/cocktail/avatarSeed/records），新增 gender/seeking/passcodeHash
+  const id = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+  const user = {
+    id,
+    token: crypto.randomUUID(),
+    nick: name,
+    name, // 注册名（与 nameindex 对应；nick 可被后续 /api/user 更新，name 不变）
+    gender: body.gender,
+    seeking: body.seeking,
+    passcodeHash: await sha256Hex(passcode + id),
+    cocktail: null,
+    avatarSeed: "",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    records: [],
+  };
+  await env.USERS.put("user:" + id, JSON.stringify(user));
+  await env.USERS.put(indexKey, id);
+  return jsonRes({ userId: id, token: user.token }, 201);
+}
+
+async function handleRecover(req, env) {
+  if (!env.USERS) return jsonRes({ error: "USERS KV 未绑定" }, 500);
+  let body;
+  try { body = await readJson(req); } catch { return jsonRes({ error: "body 不是合法 JSON" }, 400); }
+  const normalized = normalizeName(body.name);
+  if (!normalized) return jsonRes({ error: "not_found", msg: "没有这个名字" }, 404);
+  const userId = await env.USERS.get("nameindex:" + normalized);
+  if (!userId) return jsonRes({ error: "not_found", msg: "没有这个名字" }, 404);
+  const key = "user:" + userId;
+  const user = await env.USERS.get(key, "json");
+  if (!user) return jsonRes({ error: "not_found", msg: "档案不存在" }, 404);
+  const hash = await sha256Hex(String(body.passcode ?? "") + user.id);
+  if (!user.passcodeHash || hash !== user.passcodeHash) {
+    return jsonRes({ error: "wrong_passcode", msg: "口令不对" }, 403);
+  }
+  // 兼容：极老档案没有 token → 按现有生成逻辑补一个
+  if (!user.token) {
+    user.token = crypto.randomUUID();
+    user.updatedAt = Date.now();
+    await env.USERS.put(key, JSON.stringify(user));
+  }
+  return jsonRes({ userId: user.id, token: user.token });
+}
+
+/* ============ 老K LLM 代理（/api/laok，永不 5xx） ============ */
+
+// 定稿于 docs/LAOK-PROMPT.md，改动需同步该文档
+const LAOK_SYSTEM = `你是老K，酒吧「99%」的老板，也是酒桌游戏《理想型·加载中》里的常驻角色。客人在玩"满分男/满分女/满分Agent"打分游戏：主角给缺点打分，其他人猜分，猜偏罚酒。你在吧台看着，轮到你时搭一句。
+
+人设：知世故而不世故。你什么人间戏码都见过，所以什么都不惊讶；跟谁都能聊两句、接得住梗，但从不越界。幽默是随口顺一句的松弛感，不是段子。你平视客人，不俯视不讨好。
+
+输入是 JSON，含场景类型和上下文：
+- reveal：某题结算，含题目梗概、主角真分、全场猜分偏差
+- solo：单人局，客人刚打完一题的分，你接一句
+- penalty：有人被罚酒，你补一句
+
+输出要求：
+- 只输出一句话，不超过40个字，中文口语，像随口说的
+- 先接住刚发生的事（题、分数、偏差），能提题里的具体细节最好
+- 只评这一局的事，不评客人的人品、长相、感情经历
+
+禁止：
+- emoji、波浪号、"亲""哦~"、连续感叹号
+- 网络烂梗、口号、大道理、人生建议、装深沉的金句
+- 舞台说明、引号包裹、任何解释性前后缀
+
+直接给那句话，别的什么都不要输出。`;
+
+// 内置兜底池：public/laok-lines.js（P 线程交付）不存在时使用
+const LAOK_BUILTIN_POOL = Object.freeze({
+  default: [
+    "来了就坐，酒不急，话也不急。",
+    "今晚的事今晚聊，明天的事交给明天的酒。",
+    "我这吧台什么都听过，你这点事不算事。",
+    "喝口酒，慢慢说，我不赶时间。",
+    "人心这东西，猜十次能中一次就算懂了。",
+  ],
+});
+
+// 卡组（R2）：开桌选「今晚聊什么」
+const ROOM_DECK_IDS = Object.freeze(["man", "woman", "agent"]);
+
+// public/laok-lines.js 由 P 线程新建，可能尚不存在：
+// 用「运行期拼接的动态 import + try/catch」绕开 esbuild 的构建期解析，文件缺失时降级内置池。
+// TODO: laok-lines.js 落地后可改为顶部静态 import。
+let laokLinesPromise = null;
+function loadLaokLines() {
+  if (!laokLinesPromise) {
+    const spec = "../public/" + "laok-lines" + ".js";
+    laokLinesPromise = import(spec).catch(() => null);
+  }
+  return laokLinesPromise;
+}
+
+async function laokPoolLine(scene) {
+  let pool = null;
+  const mod = await loadLaokLines();
+  const p = mod?.LAOK_POOL?.[scene];
+  if (Array.isArray(p) && p.length) pool = p;
+  if (!pool) pool = LAOK_BUILTIN_POOL[scene] || LAOK_BUILTIN_POOL.default;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+// 国王指令卡校验：只校验 id 存在；laok-lines.js / KING_ORDERS 缺失时不校验
+async function kingOrderExists(orderId) {
+  const mod = await loadLaokLines();
+  const orders = mod?.KING_ORDERS;
+  if (!orders) return true;
+  if (Array.isArray(orders)) return orders.some((o) => o === orderId || o?.id === orderId);
+  if (typeof orders === "object") return orderId in orders;
+  return true;
+}
+
+// 60s 内存级缓存：scene+ctx 相同直接复用，防刷 pollinations
+const laokCache = new Map(); // key -> { ts, body }
+const LAOK_CACHE_MS = 60 * 1000;
+const LAOK_MAX_CHARS = 80;
+
+async function handleLaok(url) {
+  try {
+    const scene = cleanUserText(url.searchParams.get("scene"), 40) || "default";
+    const ctxRaw = String(url.searchParams.get("ctx") || "").slice(0, 4000);
+    let ctx = {};
+    try { ctx = JSON.parse(ctxRaw || "{}"); } catch { ctx = {}; }
+    if (!ctx || typeof ctx !== "object") ctx = {};
+
+    const cacheKey = scene + "\u0000" + ctxRaw;
+    const hit = laokCache.get(cacheKey);
+    if (hit && Date.now() - hit.ts < LAOK_CACHE_MS) return jsonRes(hit.body);
+
+    let body = null;
+    try {
+      const prompt =
+        `${LAOK_SYSTEM}\n\n[场景] ${scene}\n[现场情况] ${JSON.stringify(ctx).slice(0, 2000)}\n` +
+        `请以老K的身份，就现场情况说一句话（不超过40个字，只输出这句话本身）。`;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5 * 1000);
+      const res = await fetch(
+        `https://text.pollinations.ai/${encodeURIComponent(prompt)}?referrer=idealtype`,
+        { signal: controller.signal }
+      );
+      clearTimeout(timer);
+      if (res.ok) {
+        const text = (await res.text()).trim();
+        if (text && Array.from(text).length <= LAOK_MAX_CHARS) {
+          body = { text, source: "llm" };
+        }
+      }
+    } catch {}
+    if (!body) body = { text: await laokPoolLine(scene), source: "pool" };
+
+    laokCache.set(cacheKey, { ts: Date.now(), body });
+    if (laokCache.size > 300) laokCache.clear(); // 防内存膨胀
+    return jsonRes(body);
+  } catch {
+    // 契约：永不 5xx
+    return jsonRes({
+      text: LAOK_BUILTIN_POOL.default[Math.floor(Math.random() * LAOK_BUILTIN_POOL.default.length)],
+      source: "pool",
+    });
+  }
+}
+
 const TITLES = [
   { min: 7.5, title: "海纳百川·活菩萨", sub: "什么缺陷到你这都是可爱" },
   { min: 5.5, title: "薛定谔的心动", sub: "你的分数没人猜得透" },
@@ -440,6 +655,7 @@ export class RoomDO {
       if (this.room) {
         if (this.room.visibility !== "public") this.room.visibility = "private";
         if (typeof this.room.solo !== "boolean") this.room.solo = false;
+        if (!ROOM_DECK_IDS.includes(this.room.deck)) this.room.deck = "man";
         if (!Array.isArray(this.room.chat)) this.room.chat = [];
         if (typeof this.room.chatSeq !== "number") this.room.chatSeq = 0;
         if (!Array.isArray(this.room.socialFeed)) this.room.socialFeed = [];
@@ -493,6 +709,7 @@ export class RoomDO {
       this.room = this.freshRoom(url.searchParams.get("code"), {
         visibility: url.searchParams.get("visibility") === "public" ? "public" : "private",
         solo: url.searchParams.get("solo") === "1",
+        deck: url.searchParams.get("deck"),
         table: Number(url.searchParams.get("table")) || null,
       });
       await this.save();
@@ -508,6 +725,7 @@ export class RoomDO {
         phase: this.room.phase,
         players: this.room.players.filter((p) => !p.left).length,
         visibility: this.room.visibility || "private",
+        deck: this.room.deck || "man",
       });
     }
 
@@ -544,6 +762,9 @@ export class RoomDO {
   async tableJoin(url) {
     const table = Number(url.searchParams.get("table")) || 0;
     const visibility = url.searchParams.get("visibility") === "private" ? "private" : "public";
+    const deck = ROOM_DECK_IDS.includes(url.searchParams.get("deck"))
+      ? url.searchParams.get("deck")
+      : "man";
     // 简易互斥：并发 join 串行化，防止同桌同时开出两个房
     this.tableLock = (this.tableLock || Promise.resolve()).then(async () => {
       const saved = (await this.ctx.storage.get("table")) || null;
@@ -555,7 +776,7 @@ export class RoomDO {
         const code = String(Math.floor(1000 + Math.random() * 9000));
         const stub = this.env.ROOM.get(this.env.ROOM.idFromName(code));
         const res = await stub.fetch(
-          `https://do/create?code=${code}&visibility=${visibility}&table=${table}`
+          `https://do/create?code=${code}&visibility=${visibility}&deck=${deck}&table=${table}`
         );
         if (res.ok) {
           await this.ctx.storage.put("table", { code, table, createdAt: Date.now() });
@@ -572,7 +793,7 @@ export class RoomDO {
   async tableInfo(url) {
     const table = Number(url.searchParams.get("table")) || 0;
     const saved = (await this.ctx.storage.get("table")) || null;
-    const idle = { table, code: null, players: 0, phase: null, active: false };
+    const idle = { table, code: null, players: 0, phase: null, deck: null, active: false };
     if (!saved?.code) return jsonRes(idle);
     const info = await this.roomSnapshot(saved.code);
     if (!this.tableRoomActive(info)) return jsonRes(idle);
@@ -582,6 +803,7 @@ export class RoomDO {
       code: info.visibility === "public" ? saved.code : null,
       players: info.players,
       phase: info.phase,
+      deck: info.deck || "man",
       active: true,
     });
   }
@@ -593,6 +815,7 @@ export class RoomDO {
       phase: "lobby",
       visibility: opts.visibility === "public" ? "public" : "private",
       solo: opts.solo === true, // solo 房允许 1 人开局
+      deck: ROOM_DECK_IDS.includes(opts.deck) ? opts.deck : "man", // 卡组（R2）：man|woman|agent
       table: opts.table || null, // 由几号桌开出（非桌房为 null）
       settings: {
         rounds: 5,
@@ -867,21 +1090,39 @@ export class RoomDO {
           ),
         },
         reveal: inReveal ? cur.reveal : null,
+        // 每题国王机会（R2.5 号码轮报）：reveal 后仍可见，供断线重连恢复当前轮到谁
+        kingChance: ["reveal", "drinking", "king"].includes(r.phase) && cur.kingChance
+          ? {
+              winners: cur.kingChance.winners,
+              questionIdx: cur.kingChance.questionIdx,
+              seatCount: cur.kingChance.seatCount,
+              turnIdx: cur.kingChance.turnIdx,
+              currentKing: cur.kingChance.winners[cur.kingChance.turnIdx] || null,
+              done: cur.kingChance.turnIdx >= cur.kingChance.winners.length,
+              results: cur.kingChance.results,
+            }
+          : null,
         drinking: r.phase === "drinking" ? this.drinkingView(cur, token) : null,
       };
     }
+    const myKingChance =
+      cur?.kingChance && ["reveal", "drinking", "king"].includes(r.phase)
+        ? cur.kingChance
+        : null;
     return {
       code: r.code,
       phase: r.phase,
       settings: r.settings,
       solo: !!r.solo,
+      deck: r.deck || "man",
       // 房主视角可见当前公开/私密状态（set_visibility 可改）
       ...(me?.isHost ? { visibility: r.visibility || "private" } : {}),
-      you: me ? { ...this.pub(me), token: me.token, isHost: me.isHost } : null,
+      you: me ? { ...this.pub(me), token: me.token, isHost: me.isHost, seeking: me.seeking || null, seatNo: myKingChance ? (myKingChance.seat[me.id] || null) : null } : null,
       // token 是唯一身份凭证，绝不出现在 players[] 里；踢人改用公开 id
       players: r.players.map((p) => this.pub(p)),
       current: curView,
-      king: this.kingView(token),
+      // R2：终局大国王已移除 —— finished 阶段 king 恒为 null（保留字段兼容旧前端）
+      king: r.phase === "finished" ? null : this.kingView(token),
       aha:
         r.phase === "aha" || r.phase === "finished"
           ? this.ahaView(r.aha, token)
@@ -1319,6 +1560,45 @@ export class RoomDO {
         this.endKingGame({ text, custom: true });
         break;
       }
+      case "king_order": {
+        // R2.5 每题国王：国王报号（不点人）。多国王按座次轮流，一人一组号+一张指令卡。
+        const kc = r.current?.kingChance;
+        if (!kc) return;
+        if (!["reveal", "drinking", "king"].includes(r.phase)) return;
+        if (kc.turnIdx >= kc.winners.length) return; // 全部报完
+        // 必须轮到发送者（按座次轮流；发送者必须在 winners 里）
+        if (me.id !== kc.winners[kc.turnIdx]) return;
+        const nums = Array.isArray(msg.nums)
+          ? msg.nums.map((n) => Math.round(Number(n)))
+          : [];
+        if (nums.length !== 2) return;
+        const [a, b] = nums;
+        // nums 互不相同、均在 1..N
+        if (!Number.isInteger(a) || !Number.isInteger(b) || a === b) return;
+        if (a < 1 || a > kc.seatCount || b < 1 || b > kc.seatCount) return;
+        const orderId = cleanUserText(msg.orderId, 60);
+        if (!orderId) return;
+        // 指令卡校验：KING_ORDERS 来自 public/laok-lines.js（P 线交付）；文件缺失时不校验
+        if (!(await kingOrderExists(orderId))) return;
+        const nameOfSeat = (n) => {
+          const pid = Object.keys(kc.seat).find((id) => kc.seat[id] === n);
+          return r.players.find((p) => p.id === pid)?.name || null;
+        };
+        const result = {
+          king: me.id,
+          nums: [a, b],
+          names: [nameOfSeat(a), nameOfSeat(b)], // 公布号背后是谁
+          orderId,
+          questionIdx: kc.questionIdx,
+        };
+        kc.results.push(result);
+        kc.turnIdx += 1; // 轮到下一个 winner
+        for (const s of this.ctx.getWebSockets()) {
+          if (!this.tokenOf(s)) continue;
+          this.send(s, { type: "king_result", ...result });
+        }
+        break;
+      }
       case "drink_done": {
         if (r.phase !== "drinking" || !r.current?.drinking) return;
         if (!Number(r.current.penalties?.[token])) return;
@@ -1425,7 +1705,34 @@ export class RoomDO {
         return;
       }
       case "light": {
-        // 爆灯/灭灯：每人只有一张当前票，但可在 aha 阶段改票。
+        // R2 每题爆灯/灭灯：对当题主角表态，每玩家每题一次，随 reveal 广播 lights:{playerId:value}
+        if (["answering", "reveal", "drinking", "king"].includes(r.phase) && r.current) {
+          const cur = r.current;
+          if (cur.protagonist === token) return; // 不能给自己爆灯
+          const value = msg.value === "burst" || msg.vote === "burst" ? "burst"
+            : msg.value === "off" || msg.vote === "off" ? "off" : null;
+          if (!value) return;
+          if (!cur.lights) cur.lights = {};
+          if (cur.lights[me.id]) return; // 每题一次，不许改票
+          const now = Date.now();
+          if (!this.allowRate(ws, me, "lastLightAt", SOCIAL.lightCooldownMs, now)) return;
+          me.lastLightAt = now;
+          cur.lights[me.id] = value;
+          if (cur.reveal) cur.reveal.lights = cur.lights;
+          for (const s of this.ctx.getWebSockets()) {
+            if (!this.tokenOf(s)) continue;
+            this.send(s, {
+              type: "light_fx",
+              name: me.name,
+              emoji: me.emoji,
+              on: value === "burst",
+              vote: value,
+              changed: false,
+            });
+          }
+          break;
+        }
+        // 结算页爆灯（沿用）：每人只有一张当前票，但可在 aha 阶段改票。
         if (r.phase !== "aha" || !r.aha) return;
         if (r.current && r.current.protagonist === token) return;
         const now = Date.now();
@@ -1520,6 +1827,7 @@ export class RoomDO {
         p.left = false;
         p.lastSeenAt = Date.now();
         p.drink = drink;
+        if (GENDER_VALUES.includes(msg.seeking)) p.seeking = msg.seeking;
         ws.serializeAttachment({ token: p.token });
         this.send(ws, { type: "welcome", token: p.token, reconnected: true });
         this.onPresenceChanged();
@@ -1553,6 +1861,7 @@ export class RoomDO {
     const token = crypto.randomUUID();
     const player = {
       token,
+      id: crypto.randomUUID(), // 公开 id（踢人/每题国王/爆灯用；token 绝不外发）
       name,
       emoji,
       isHost: r.players.length === 0,
@@ -1565,6 +1874,8 @@ export class RoomDO {
       know: 0,
       done: false,
       drink,
+      // 想看的取向（注册档案透传）：aha 结算时传给 buildIdealProfile
+      seeking: GENDER_VALUES.includes(msg.seeking) ? msg.seeking : null,
     };
     r.players.push(player);
     ws.serializeAttachment({ token });
@@ -1597,6 +1908,8 @@ export class RoomDO {
       reveal: null,
       penalties: {},
       drinking: null,
+      lights: {}, // 每题爆灯：playerId -> "burst"|"off"
+      kingChance: null, // 每题国王机会 {winners, questionIdx, claimed}
     };
     r.aha = null;
     r.king = null;
@@ -1631,6 +1944,8 @@ export class RoomDO {
     cur.reveal = null;
     cur.penalties = {};
     cur.drinking = null;
+    cur.lights = {};
+    cur.kingChance = null;
   }
 
   maybeReveal() {
@@ -1661,10 +1976,18 @@ export class RoomDO {
       if (exact) p.know++;
       results.push({ name: p.name, emoji: p.emoji, guess: g, diff, drink, exact });
     }
+    // R2 每题国王：分毫不差者（公开 id）随 reveal 下发；非空 → 广播 king_chance
+    const exactIds = results
+      .filter((x) => x.exact)
+      .map((x) => r.players.find((p) => p.name === x.name)?.id)
+      .filter(Boolean);
     cur.reveal = {
       score: cur.score,
       question: cur.question.text,
       results,
+      exact: exactIds,
+      // 每题爆灯/灭灯（R2）：playerId -> "burst"|"off"，随 reveal 广播
+      lights: cur.lights || {},
       comment: null,
     };
     cur.records.push({
@@ -1674,6 +1997,26 @@ export class RoomDO {
       comment: null,
     });
     r.phase = "reveal";
+    if (exactIds.length) {
+      const questionIdx = cur.roundIndex - 1; // 0-based 题序
+      // R2.5：给每个在座玩家发本轮匿名号（1..N，每题重洗）；只有本人从 state.you.seatNo 读到自己的号
+      const seated = r.players.filter((p) => !p.left);
+      const nums = Array.from({ length: seated.length }, (_, i) => i + 1);
+      for (let i = nums.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [nums[i], nums[j]] = [nums[j], nums[i]];
+      }
+      const seat = {};
+      seated.forEach((p, i) => { seat[p.id] = nums[i]; });
+      const seatCount = seated.length;
+      // winners 按座次有序（多人分毫不差 → 都当国王，按座次轮流报号）
+      const winners = [...exactIds].sort((a, b) => (seat[a] || 0) - (seat[b] || 0));
+      cur.kingChance = { winners, questionIdx, seat, seatCount, turnIdx: 0, results: [] };
+      for (const s of this.ctx.getWebSockets()) {
+        if (!this.tokenOf(s)) continue;
+        this.send(s, { type: "king_chance", winners, questionIdx, seatCount });
+      }
+    }
     this.maybeStartKingGame(results);
   }
 
@@ -1749,9 +2092,12 @@ export class RoomDO {
       recs.reduce((s, x) => s + x.score, 0) / Math.max(1, recs.length);
 
     // 乙游理想型档案：答案只进入确定性画像模块，不把玩家昵称或自由文本送去生图。
+    // seeking：主角注册档案里的「想看的取向」（join 时透传）；多传字段不破坏纯函数契约，
+    // ideal-profile.js 消费该字段由 E 线程实现。
     const profile = buildIdealProfile({
       records: recs,
       genderPreference: cur.gender,
+      seeking: hero.seeking || null,
       seed: `${r.code}:${r.ahaHistory.length}:${recs.map((rec) => `${rec.question.id}:${rec.score}`).join("|")}`,
     });
 

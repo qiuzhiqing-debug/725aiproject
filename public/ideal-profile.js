@@ -509,8 +509,13 @@ const GENDER_TAGS = Object.freeze({
   any: "person",
 });
 
-export function buildIdealProfile({ records, genderPreference, seed }) {
+// R2：seeking = 注册档案里「想看的取向」（m|f|x），优先决定画像的性别方向；
+// 缺省/非法时回退 genderPreference（题库/主角选择的旧行为）。保持纯函数、双端共用。
+const SEEKING_TO_GENDER = Object.freeze({ m: "m", f: "f", x: "n" });
+
+export function buildIdealProfile({ records, genderPreference, seeking, seed }) {
   seed = String(seed ?? "ideal-default");
+  const genderKey = SEEKING_TO_GENDER[seeking] || genderPreference;
   const recList = Array.isArray(records) ? records : [];
   const scores = computeDimensions(recList);
   const ranked = DIM_KEYS.map((k) => ({ key: k, score: scores[k] }))
@@ -531,14 +536,16 @@ export function buildIdealProfile({ records, genderPreference, seed }) {
   const module = recList[0]?.question?.module || "lover";
   const details = pickDetails(scores, genderPreference, seed, recList, module);
 
-  const gTag = GENDER_TAGS[genderPreference] || GENDER_TAGS.any;
+  const gTag = GENDER_TAGS[genderKey] || GENDER_TAGS.any;
   const dimDesc = `${DIMENSION_LABELS[top1.key] || "charm"}-focused, ${DIMENSION_LABELS[top2.key] || "playful"}`;
-  const prompt = `pixel art portrait of a ${gTag}, ${dimDesc} personality, cyberpunk neon bar background, vivid colors, detailed, 8-bit style`;
+  // 低精度人物 + 高精度背景（Kim R2.5）：理想型本就锚不定，人物越"努力"越丑，
+  // 故意粗像素、留白、低细节；背景（霓虹酒吧）保持精致。
+  const prompt = `low-res rough pixel art character of a ${gTag}, ${dimDesc} vibe, chunky coarse pixels, minimal low-detail simplified figure, flat blocky shapes, lots of negative space, character left abstract and undefined, standing in a highly detailed intricate cyberpunk neon bar background, retro 8-bit sprite over a rich painterly scene`;
 
   const encodedPrompt = encodeURIComponent(prompt);
   const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&seed=${hashStr(seed) % 99999}&referrer=idealtype&nologo=true`;
-  // 兜底立绘：更短的 prompt + 不同 seed，主图挂了再试一次
-  const fallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(`pixel art portrait of a ${gTag}, neon bar, 8-bit style`)}?width=512&height=512&seed=${(hashStr(seed + "fb") % 99999)}&referrer=idealtype&nologo=true`;
+  // 兜底立绘：更短的 prompt + 不同 seed，主图挂了再试一次（同样低精度人物）
+  const fallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(`low-res chunky pixel character of a ${gTag}, minimal blocky figure, detailed neon bar background`)}?width=512&height=512&seed=${(hashStr(seed + "fb") % 99999)}&referrer=idealtype&nologo=true`;
 
   const modProf = MODULE_PROFILES[module] || MODULE_PROFILES.lover;
   const introTemplate = seedPick(modProf.intros, seed + "intro");
@@ -566,7 +573,7 @@ export function buildIdealProfile({ records, genderPreference, seed }) {
   const birthDate = `${bYear}-${String(bMonth).padStart(2, "0")}-${String(bDay).padStart(2, "0")}`;
   const zodiac = zodiacOf(bMonth, bDay);
   const identity = seedPick(IDENTITY_POOL[module] || IDENTITY_POOL.lover, seed + "idn");
-  const presentation = PRESENTATIONS[genderPreference] || "中性呈现";
+  const presentation = PRESENTATIONS[genderKey] || "中性呈现";
   // 小传：两条最突出维度的核心画像拼成
   const bio = topThreeTiers.slice(0, 2).map((t) => t.text).filter(Boolean).join(" ")
     || "TA的档案还压在杯垫底下，见面聊。";
