@@ -155,4 +155,12 @@ Kim 定了 PM→Dev→QA 循环：零上下文子线程做真实体验 QA（第�
 
 ### 上线
 - 部署新 Worker：**https://ideal-type-loading.kimnin-iup.workers.dev**（Version 091e6e0c-559a-4d92-9481-737be33232f4），旧 manfen-nan 未动。
-- 公网验证：全页200、无扩展名路由正常、/api/laok池兜底、register往返返userId+token(真worker KV写入OK)、前门双视口截图 qa/pub-front-390/1400.jpg 人工核对通过(马天尼logo/店名99%/老K低精度立绘/六大基酒/零溢出)。公网全流程手机 QA 进行中。
+- 公网验证：全页200、无扩展名路由正常、/api/laok池兜底、register往返返userId+token(真worker KV写入OK)、前门双视口截图 qa/pub-front-390/1400.jpg 人工核对通过(马天尼logo/店名99%/老K低精度立绘/六大基酒/零溢出)。公网全流程手机 QA（零上下文 a503d…）跑完：solo 主干(进门→调酒→solo→答题3轮→理想型→海报进入我的主页→/u)全绿、零 console 报错、全程 scrollWidth=390、文案违规逐项皆无、老K每题锐评有字、顶栏确为马天尼杯 SVG(非K)。
+
+### 注册"P0"排查 → 误报，已自证
+- 该轮 QA 报"注册提交静默失败弹回 cocktail 无提示(P0)"。溯源代码：注册绑 form submit(cocktail.js:564)，校验口令 `/^\d{4,6}$/` 纯数字；成功 201→onCocktailDone(cocktail.html:178,真回调，无条件 location.href=lobby)。
+- 根因：QA 填的口令是 **`qa1234`(含字母)**，被前端校验正确拒绝，regError 写入 #regMsg(cocktail.js:556)——QA 未读到该元素故误判"静默"。
+- 自证复验 qa/reg-verify.mjs(公网真机 CDP)：① 坏口令 `qa1234` → #regMsg="暗号要 4 到 6 个数字…" 且非 hidden、停在 cocktail（提示确实显示）；② 合法口令 `8842` → URL→/v2/lobby、ideal_userId=7e9d7526d2e1+token 写入、scrollWidth=390。截图 reg-03-badpass/reg-04-afterlobby.jpg 目视确认。**注册端到端跑通，P0 不成立。**
+
+### 验收判定（Kim 三条硬标）
+① 公网上线 ✅ https://ideal-type-loading.kimnin-iup.workers.dev  ② 全流程可体验 ✅(solo 主干+注册均自证通过)  ③ 老K人设定妥 ✅(店名99%/老K是人非店名/低精度立绘暖笑/每题锐评/文案零违规)。R2+R2.5 交付完成。
