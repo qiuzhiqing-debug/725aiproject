@@ -269,6 +269,9 @@ function sanitizeRecordProfile(profile) {
     // 立绘 URL 必须整条保留（截断即 404）；pollinations 带编码 prompt 可能超 500，放宽到 800
     imageUrl: typeof profile.imageUrl === "string" ? profile.imageUrl.slice(0, 800) : "",
     summary: cleanUserText(profile.summary, 200),
+    // R3 字段契约：展示柜爆/灭灯统计（Number 兜底，防脏数据）
+    burstTotal: Number(profile.burstTotal) || 0,
+    offTotal: Number(profile.offTotal) || 0,
   };
 }
 
@@ -388,7 +391,8 @@ async function handleBartender(req, env) {
 // KV：user:<id> → profile；nameindex:<normalized name> → userId（normalize = trim + 小写）
 // passcode 不落明文：存 SHA-256(passcode + userId) 的 hex。
 
-const GENDER_VALUES = Object.freeze(["m", "f", "x"]);
+const GENDER_VALUES = Object.freeze(["m", "f", "x"]); // seeking：想看的取向 m/f/x
+const VIEWER_GENDERS = Object.freeze(["m", "f"]); // viewer 自身性别（隔离铁桶用）
 
 async function sha256Hex(text) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
@@ -496,8 +500,8 @@ const LAOK_BUILTIN_POOL = Object.freeze({
   ],
 });
 
-// 卡组（R2）：开桌选「今晚聊什么」
-const ROOM_DECK_IDS = Object.freeze(["man", "woman", "agent"]);
+// 卡组（R2/R4）：开桌选「今晚聊什么」——R4 删 agent、加 boss（满分老板）
+const ROOM_DECK_IDS = Object.freeze(["man", "woman", "boss"]);
 
 // public/laok-lines.js 由 P 线程新建，可能尚不存在：
 // 用「运行期拼接的动态 import + try/catch」绕开 esbuild 的构建期解析，文件缺失时降级内置池。
@@ -622,6 +626,48 @@ const MAX_KING_TEXT = 100;
 
 // 取向池（PRD V2 §3.4 / qa/QUESTION-SPEC.md）
 const VALID_POOLS = Object.freeze(["all", "straight-f", "straight-m", "gay", "lesbian", "neutral"]);
+
+/* ============ 隔离铁桶（R4 §1.3，P0，唯一真源）============
+ * (卡组 deck × viewer.gender × viewer.seeking) → 允许的 pools 集合。
+ * 铁律：任何未命中下表的组合一律只给 neutral，杜绝取向黑话串池。
+ *   满分男 man + 直女(g=f,seek=m) → neutral+straight-m（排除 gay）
+ *   满分男 man + 男同(g=m,seek=m) → neutral+gay
+ *   满分女 woman + 直男(g=m,seek=f) → neutral+straight-f（排除 lesbian）
+ *   满分女 woman + 拉拉(g=f,seek=f) → neutral+lesbian
+ *   seeking=x（不限）/ boss（满分老板，职场向）/ 任何错配 → neutral only
+ * 导出供 qa/isolation-proof.mjs 直接调用（纯函数、无副作用）。 */
+export function allowedPoolsFor(deck, gender, seeking) {
+  if (deck === "boss") return ["neutral"];
+  if (seeking !== "m" && seeking !== "f") return ["neutral"]; // 含 seeking=x/未知
+  if (deck === "man" && seeking === "m") {
+    if (gender === "f") return ["neutral", "straight-m"]; // 直女看男
+    if (gender === "m") return ["neutral", "gay"]; // 男同看男
+    return ["neutral"];
+  }
+  if (deck === "woman" && seeking === "f") {
+    if (gender === "m") return ["neutral", "straight-f"]; // 直男看女
+    if (gender === "f") return ["neutral", "lesbian"]; // 拉拉看女
+    return ["neutral"];
+  }
+  return ["neutral"]; // 卡组/取向错配（如 man+seek=f）→ 安全兜底
+}
+
+// 单题是否落在允许池：legacy/boss 的 "all" 视为通吃（保证旧库/无 pools 题可玩）
+export function questionInAllowedPools(q, allowedSet) {
+  const pools = Array.isArray(q?.pools) && q.pools.length ? q.pools : ["all"];
+  if (pools.includes("all")) return true;
+  return pools.some((p) => allowedSet.has(p));
+}
+
+// 按 viewer 过滤题库；空集兜底至少 neutral（含 all 通吃），彻底空则返回原集不阻塞开局
+export function filterQuestionsForViewer(questions, deck, gender, seeking) {
+  const list = Array.isArray(questions) ? questions : [];
+  const allowedSet = new Set(allowedPoolsFor(deck, gender, seeking));
+  const filtered = list.filter((q) => questionInAllowedPools(q, allowedSet));
+  if (filtered.length) return filtered;
+  const neutralOnly = list.filter((q) => questionInAllowedPools(q, new Set(["neutral"])));
+  return neutralOnly.length ? neutralOnly : list;
+}
 const DEFAULT_NOUN = Object.freeze({ m: "满分男", f: "满分女", n: "满分TA" });
 const DECK_NAMES = Object.freeze({
   qingtang: "清汤锅底",
@@ -815,7 +861,7 @@ export class RoomDO {
       phase: "lobby",
       visibility: opts.visibility === "public" ? "public" : "private",
       solo: opts.solo === true, // solo 房允许 1 人开局
-      deck: ROOM_DECK_IDS.includes(opts.deck) ? opts.deck : "man", // 卡组（R2）：man|woman|agent
+      deck: ROOM_DECK_IDS.includes(opts.deck) ? opts.deck : "man", // 卡组（R2/R4）：man|woman|boss
       table: opts.table || null, // 由几号桌开出（非桌房为 null）
       settings: {
         rounds: 5,
@@ -1708,7 +1754,8 @@ export class RoomDO {
         // R2 每题爆灯/灭灯：对当题主角表态，每玩家每题一次，随 reveal 广播 lights:{playerId:value}
         if (["answering", "reveal", "drinking", "king"].includes(r.phase) && r.current) {
           const cur = r.current;
-          if (cur.protagonist === token) return; // 不能给自己爆灯
+          // 多人局：不能给自己爆灯；solo 局：主角本人给每张卡自投（R3 语义）
+          if (cur.protagonist === token && !r.solo) return;
           const value = msg.value === "burst" || msg.vote === "burst" ? "burst"
             : msg.value === "off" || msg.vote === "off" ? "off" : null;
           if (!value) return;
@@ -1719,6 +1766,11 @@ export class RoomDO {
           me.lastLightAt = now;
           cur.lights[me.id] = value;
           if (cur.reveal) cur.reveal.lights = cur.lights;
+          // 每题 record 快照同步（展示柜拉爆/灭灯真数据；solo 投票在开牌后到达）
+          {
+            const rec = cur.records[cur.records.length - 1];
+            if (rec) rec.lights = { ...cur.lights };
+          }
           for (const s of this.ctx.getWebSockets()) {
             if (!this.tokenOf(s)) continue;
             this.send(s, {
@@ -1828,6 +1880,8 @@ export class RoomDO {
         p.lastSeenAt = Date.now();
         p.drink = drink;
         if (GENDER_VALUES.includes(msg.seeking)) p.seeking = msg.seeking;
+        // viewer 自身性别（隔离铁桶用：直女f vs 男同m、直男m vs 拉拉f）
+        if (VIEWER_GENDERS.includes(msg.gender)) p.gender = msg.gender;
         ws.serializeAttachment({ token: p.token });
         this.send(ws, { type: "welcome", token: p.token, reconnected: true });
         this.onPresenceChanged();
@@ -1876,6 +1930,8 @@ export class RoomDO {
       drink,
       // 想看的取向（注册档案透传）：aha 结算时传给 buildIdealProfile
       seeking: GENDER_VALUES.includes(msg.seeking) ? msg.seeking : null,
+      // viewer 自身性别（隔离铁桶：直女/男同、直男/拉拉 靠此区分）
+      gender: VIEWER_GENDERS.includes(msg.gender) ? msg.gender : null,
     };
     r.players.push(player);
     ws.serializeAttachment({ token });
@@ -1919,17 +1975,23 @@ export class RoomDO {
   drawQuestion() {
     const r = this.room;
     const cur = r.current;
-    let pool = r.questions.filter((q) => !r.usedQuestionIds.includes(q.id));
+    const hero = r.players.find((p) => p.token === cur.protagonist);
+    // 隔离铁桶（R4 §1.3）：先按主角(viewer) gender×seeking×卡组筛允许池，再池内去重抽题。
+    const base = filterQuestionsForViewer(r.questions, r.deck, hero?.gender, hero?.seeking);
+    const baseIds = new Set(base.map((q) => q.id));
+    let pool = base.filter((q) => !r.usedQuestionIds.includes(q.id));
     if (!pool.length) {
-      // 题库抽干了就重置去重池（极端情况兜底）
-      r.usedQuestionIds = [];
-      pool = r.questions.slice();
+      // 该 viewer 允许池抽干 → 只重置本池去重记录（不动其他池）
+      r.usedQuestionIds = r.usedQuestionIds.filter((id) => !baseIds.has(id));
+      pool = base.slice();
     }
     const q = pool[Math.floor(Math.random() * pool.length)];
     r.usedQuestionIds.push(q.id);
+    // boss 卡组 gender=n → 主用 n 变体（TA），绝不默认男性；m/f 卡组用各自方向变体
     let g = cur.gender;
-    if (g === "n") g = Math.random() < 0.5 ? "m" : "f";
-    const variant = g === "f" ? q.f : q.m;
+    let variant;
+    if (g === "n") variant = q.n || q.m || q.f;
+    else variant = g === "f" ? q.f : q.m;
     const noun = (r.settings.noun || DEFAULT_NOUN)[g] || DEFAULT_NOUN[g];
     cur.question = {
       id: q.id,
@@ -1995,6 +2057,8 @@ export class RoomDO {
       score: cur.score,
       results,
       comment: null,
+      // R3 字段契约：每题爆/灭灯快照 {voterId: "burst"|"off"}（reveal 阶段投票时增量同步）
+      lights: { ...(cur.lights || {}) },
     });
     r.phase = "reveal";
     if (exactIds.length) {
@@ -2083,9 +2147,23 @@ export class RoomDO {
     if (!hero) return;
     hero.done = true;
     r.lastProtagonist = hero.token;
-    const lightTotal = Math.max(0, r.players.filter((p) => this.isActive(p)).length - 1);
+    // 多人局：票源=其他活跃玩家数；solo 局：主角本人自投，基数 1（R3）
+    const lightTotal = r.solo
+      ? 1
+      : Math.max(0, r.players.filter((p) => this.isActive(p)).length - 1);
 
     const recs = cur.records;
+    // 爆/灭灯真值聚合（替换写死 0）：汇总每题 record.lights 快照
+    let lightBurst = 0;
+    let lightOff = 0;
+    for (const rec of recs) {
+      for (const v of Object.values(rec.lights || {})) {
+        if (v === "burst") lightBurst++;
+        else if (v === "off") lightOff++;
+      }
+    }
+    const lightVoted = lightBurst + lightOff;
+    const lightBurstPct = lightVoted ? Math.round((lightBurst / lightVoted) * 100) : 0;
     const tolerated = recs.filter((x) => x.score >= 7);
     const vetoed = recs.filter((x) => x.score <= 2);
     const avg =
@@ -2137,11 +2215,11 @@ export class RoomDO {
         drinkBoard,
         rounds: recs.length,
         lights: {
-          burst: 0,
-          off: 0,
-          voted: 0,
-          total: lightTotal,
-          burstPct: 0,
+          burst: lightBurst,
+          off: lightOff,
+          voted: lightVoted,
+          total: r.solo ? recs.length : lightTotal,
+          burstPct: lightBurstPct,
         },
       },
     };

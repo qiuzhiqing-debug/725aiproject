@@ -21,6 +21,8 @@ function lazyImport(key, path) {
   return lazyModules[key] || (lazyModules[key] = import(path));
 }
 const loadQuestions = () => lazyImport("questions", "./questions.js");
+// 满分老板题库（P2 独占文件）：导出名 MODULE（{key,name,noun,desc,decks:{qingtang,fanqie,mala}}），全 neutral
+const loadBoss = () => lazyImport("boss", "./questions-v2/boss.js");
 const loadQr = () => lazyImport("qr", "./qrcode.js");
 const loadPoster = () => lazyImport("poster", "./poster.js");
 const loadIdealProfile = () => lazyImport("idealProfile", "./ideal-profile.js");
@@ -51,7 +53,7 @@ const deckLabel = (name) => DECK_DISPLAY[name] || name || "";
 const ROOM_DECKS = {
   man: { name: "满分男", g: "m", line: "给男人打分，从来没这么理直气壮过" },
   woman: { name: "满分女", g: "f", line: "满分女的标准答案，今晚现场对" },
-  agent: { name: "满分Agent", g: "n", line: "反转局：今晚被打分的，是你的AI" },
+  boss: { name: "满分老板", g: "n", line: "落座，聊聊你那位满分老板的糟心操作" },
 };
 const roomDeckName = (key) => ROOM_DECKS[key]?.name || "满分男";
 
@@ -140,6 +142,7 @@ const ui = {
   drink: localStorage.getItem("mfn_drink") || "beer",
   deck: ROOM_DECKS[localStorage.getItem("mfn_deck")] ? localStorage.getItem("mfn_deck") : "man",
   seeking: null, // 注册档案「想看的取向」m|f|x（resolveSeeking 异步填充，join 时带上）
+  gender: null, // 注册档案 viewer 自身性别 m|f（隔离铁桶用：直女/男同、直男/拉拉区分）
   solo: PARAMS.get("solo") === "1",
   table: /^[1-9]$/.test(PARAMS.get("table") || "") ? PARAMS.get("table") : "",
   code: PARAMS.get("room") || "",
@@ -233,28 +236,44 @@ async function createRoom({ solo = false, deck = "man" } = {}) {
   return j.code;
 }
 
-/* ---------- seeking：注册档案「想看的取向」 ----------
-   join 时带给后端 → 主角结算时 buildIdealProfile 按它定画像方向。
-   来源优先级：localStorage 缓存（注册页写入）→ GET /api/user/:id?token= 的档案字段。 */
+/* ---------- 注册档案「想看的取向 seeking + 自身性别 gender」 ----------
+   join 时带给后端 → ①主角结算 buildIdealProfile 按 seeking 定画像方向；
+   ②后端隔离铁桶按 (卡组×gender×seeking) 筛允许池（直女绝不吃 gay 等）。
+   来源优先级：localStorage 缓存（注册页写入）→ GET /api/user/:id?token= 档案字段。 */
 let seekingPromise = null;
 function resolveSeeking() {
   if (!seekingPromise) {
     seekingPromise = (async () => {
-      const cached = localStorage.getItem("ideal_seeking");
-      if (["m", "f", "x"].includes(cached)) return cached;
-      const id = localStorage.getItem("ideal_userId");
-      const token = localStorage.getItem("ideal_token");
-      if (!id || !token || PREVIEW) return null;
-      try {
-        const j = await fetch(`/api/user/${id}?token=${encodeURIComponent(token)}`)
-          .then((r) => (r.ok ? r.json() : null));
-        if (j && ["m", "f", "x"].includes(j.seeking)) {
-          localStorage.setItem("ideal_seeking", j.seeking);
-          return j.seeking;
+      const cachedSeek = localStorage.getItem("ideal_seeking");
+      const cachedGender = localStorage.getItem("ideal_gender");
+      let seeking = ["m", "f", "x"].includes(cachedSeek) ? cachedSeek : null;
+      let gender = ["m", "f"].includes(cachedGender) ? cachedGender : null;
+      if ((!seeking || !gender) && !PREVIEW) {
+        const id = localStorage.getItem("ideal_userId");
+        const token = localStorage.getItem("ideal_token");
+        if (id && token) {
+          try {
+            const j = await fetch(`/api/user/${id}?token=${encodeURIComponent(token)}`)
+              .then((r) => (r.ok ? r.json() : null));
+            if (j) {
+              if (!seeking && ["m", "f", "x"].includes(j.seeking)) {
+                seeking = j.seeking;
+                localStorage.setItem("ideal_seeking", j.seeking);
+              }
+              if (!gender && ["m", "f"].includes(j.gender)) {
+                gender = j.gender;
+                localStorage.setItem("ideal_gender", j.gender);
+              }
+            }
+          } catch {}
         }
-      } catch {}
-      return null;
-    })().then((v) => (ui.seeking = v));
+      }
+      return { seeking, gender };
+    })().then((v) => {
+      ui.seeking = v.seeking;
+      ui.gender = v.gender;
+      return v;
+    });
   }
   return seekingPromise;
 }
@@ -317,6 +336,7 @@ function connect(code, { silentFail = false } = {}) {
       emoji: ui.emoji,
       drink: ui.drink,
       seeking: ui.seeking || undefined,
+      gender: ui.gender || undefined,
       token: localStorage.getItem("mfn_token_" + code) || undefined,
     });
   };
@@ -688,11 +708,18 @@ function renderHome() {
 }
 
 /* --- 大厅 --- */
-// 按本桌卡组取题库：man/woman → DECKS（m/f 题面），agent → AGENT_MODULE.decks
+// 按本桌卡组取题库：man/woman → DECKS（m/f 题面）；boss → 满分老板（不分锅底，三段合成单池）
 function decksForRoom(deckKey) {
   const q = renderLobby._q;
   if (!q) return null;
-  return deckKey === "agent" ? q.AGENT_MODULE.decks : q.DECKS;
+  if (deckKey === "boss") {
+    const bm = q.BOSS_MODULE;
+    if (!bm?.decks) return null;
+    // R4：满分老板不分锅底，qingtang/fanqie/mala 三段 questions 合成一个池
+    const questions = Object.values(bm.decks).flatMap((d) => (d?.questions || []));
+    return { all: { name: bm.name || "满分老板", questions } };
+  }
+  return q.DECKS;
 }
 
 function renderLobby(s) {
@@ -759,8 +786,9 @@ function renderLobby(s) {
     catch { toast(invite); }
   });
   if (me.isHost && !renderLobby._q) {
-    loadQuestions().then(({ DECKS, AGENT_MODULE }) => {
-      renderLobby._q = { DECKS, AGENT_MODULE };
+    Promise.all([loadQuestions(), loadBoss().catch(() => null)]).then(([q, boss]) => {
+      // P2 契约：boss.js 导出名为 MODULE（兼容 BOSS_MODULE 命名）
+      renderLobby._q = { DECKS: q.DECKS, BOSS_MODULE: boss?.MODULE || boss?.BOSS_MODULE || null };
       if (ui.state?.phase === "lobby" && ui.state?.code === s.code) render();
     }).catch(() => toast("酒单半路洒了。刷新一下，我再拿一份。"));
   }
@@ -779,7 +807,12 @@ function renderLobby(s) {
       sound.unlock();
       const selectedDeck = decks[s.settings.deck] || decks.qingtang || Object.values(decks)[0];
       const startMsg = { type: "start", questions: selectedDeck.questions };
-      if (s.deck === "agent") startMsg.noun = renderLobby._q.AGENT_MODULE.noun;
+      if (s.deck === "boss") {
+        const bm = renderLobby._q.BOSS_MODULE;
+        startMsg.module = "boss";
+        startMsg.moduleName = bm?.name || "满分老板";
+        startMsg.noun = bm?.noun || { m: "满分老板", f: "满分老板", n: "满分老板" };
+      }
       send(startMsg);
     });
   }
@@ -1280,19 +1313,28 @@ function renderReveal(s) {
           <span class="g">${x.guess}</span>
         </div>`).join("")}
     </div>`}
-    ${solo ? "" : `<div class="glass stack center light-panel round-light-panel">
-      ${cur.youAreProtagonist
-        ? `<div class="light-count">这题的你：爆灯 <b>${burstCount}</b> · 灭灯 <b>${offCount}</b></div>
-           <div class="dim">灯是他们对这题的你亮的。别紧张，灯不咬人。</div>`
-        : lightLocked
-          ? `<div class="light-count">你这票：${myLight === "off" ? "🖤 灭灯" : "💗 爆灯"}</div>
-             <div class="dim">一题一盏灯，落了就不改。</div>`
-          : `<div class="dim">这题的 ${esc(cur.protagonist?.name || "主角")}，心动还是下头？一题只有一票。</div>
-             <div class="row light-btns">
-               <button class="btn light-burst grow" id="roundBurstBtn">💗 爆灯</button>
-               <button class="btn light-off grow" id="roundOffBtn">灭灯</button>
-             </div>`}
-    </div>`}
+    <div class="glass stack center light-panel round-light-panel">
+      ${solo
+        ? (lightLocked
+            ? `<div class="light-count">你给这张卡：${myLight === "off" ? "🖤 灭灯（就这点，pass）" : "💗 爆灯（瑕不掩瑜）"}</div>
+               <div class="dim">一张卡一盏灯，点了就定。今晚的爆/灭灯率会记进你的展示柜。</div>`
+            : `<div class="dim">这条「满分但是…」，你给爆灯还是灭灯？💗 爆灯=瑕不掩瑜 · 🖤 灭灯=就这点 pass。</div>
+               <div class="row light-btns">
+                 <button class="btn light-burst grow" id="roundBurstBtn">💗 爆灯</button>
+                 <button class="btn light-off grow" id="roundOffBtn">灭灯</button>
+               </div>`)
+        : (cur.youAreProtagonist
+            ? `<div class="light-count">这题的你：爆灯 <b>${burstCount}</b> · 灭灯 <b>${offCount}</b></div>
+               <div class="dim">灯是他们对这题的你亮的。别紧张，灯不咬人。</div>`
+            : lightLocked
+              ? `<div class="light-count">你这票：${myLight === "off" ? "🖤 灭灯" : "💗 爆灯"}</div>
+                 <div class="dim">一题一盏灯，落了就不改。</div>`
+              : `<div class="dim">这题的 ${esc(cur.protagonist?.name || "主角")}，心动还是下头？一题只有一票。</div>
+                 <div class="row light-btns">
+                   <button class="btn light-burst grow" id="roundBurstBtn">💗 爆灯</button>
+                   <button class="btn light-off grow" id="roundOffBtn">灭灯</button>
+                 </div>`)}
+    </div>
     ${kingChanceHtml(s)}
     ${!solo && cur.youAreProtagonist && !ui.commentSent && !rv.comment ? `
     <div class="glass row">
@@ -1477,6 +1519,9 @@ async function maybeSaveAhaProfile(s, aha, profile, confirmedUrl) {
           avgScore: aha.stats?.avgScore ?? 0,
           imageUrl: confirmedUrl || portrait.imageUrl || aha.imageUrl || "",
           summary: rel.coreText || profile.coreText || "",
+          // R3 字段契约：展示柜爆/灭灯统计（后端 sanitizeRecordProfile 白名单放行）
+          burstTotal: aha.stats?.lights?.burst ?? 0,
+          offTotal: aha.stats?.lights?.off ?? 0,
         },
       }),
     });
