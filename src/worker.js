@@ -26,6 +26,15 @@ export default {
       return handleRecordVisibility(req, uvm[1], Number(uvm[2]), env);
     }
 
+    // 展示柜点赞：POST /api/showcase/like { recordId }
+    if (url.pathname === "/api/showcase/like" && req.method === "POST") {
+      return handleShowcaseLike(req, env);
+    }
+    // 展示柜评论：POST /api/showcase/comment { recordId, text, name? }
+    if (url.pathname === "/api/showcase/comment" && req.method === "POST") {
+      return handleShowcaseComment(req, env);
+    }
+
     // 酒保老K：LLM 锐评 / 画像文案
     if (url.pathname === "/api/bartender" && req.method === "POST") {
       return handleBartender(req, env);
@@ -214,8 +223,15 @@ async function handleUserGet(id, env, token) {
     if (hidden && !owner) continue;
     visibleCount++;
     const mod = rec.module || "lover";
-    // idx = 记录在原始数组中的下标，用于 /records/:idx/visibility
-    (showcase[mod] || (showcase[mod] = [])).push({ ...rec, hidden, idx });
+    // idx = 记录在原始数组中的下标，用于 /records/:idx/visibility 与 showcase like/comment
+    // R5：随 record 下发点赞数 likes 与评论 comments（最多 20，倒序）。
+    (showcase[mod] || (showcase[mod] = [])).push({
+      ...rec,
+      hidden,
+      idx,
+      likes: Number(rec.likes) || 0,
+      comments: Array.isArray(rec.comments) ? rec.comments.slice(-20).reverse() : [],
+    });
   }
   return jsonRes({
     userId: user.id,
@@ -292,6 +308,85 @@ async function handleRecordVisibility(req, id, idx, env) {
   user.updatedAt = Date.now();
   await env.USERS.put(key, JSON.stringify(user));
   return jsonRes({ ok: true, idx, hidden: records[idx].hidden });
+}
+
+/* ============ 展示柜点赞 / 评论（R5 §1.3/§2；挂 USERS KV 同一份记录，不新建 namespace） ============ */
+// recordId 格式："<userId>:<idx>"，idx = 记录在 user.records 数组的下标（随 GET 展示柜下发）。
+const COMMENT_MAX_LENGTH = 80;
+const COMMENT_STORE_LIMIT = 20; // 每条记录最多保留 20 条评论（KV 128KB 保护）
+const showcaseCommentRate = new Map(); // ip/user -> 上次评论时间（轻限频 3s）
+
+// 服务端 HTML 转义：评论会被 u.html 渲染，先在后端把危险字符转掉，前端再 esc 一次。
+function esc(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// 定位 recordId 对应的 { user, key, rec, idx }；找不到返回 { error, status }。
+async function resolveShowcaseRecord(env, recordId) {
+  const raw = String(recordId ?? "");
+  const sep = raw.lastIndexOf(":");
+  if (sep <= 0) return { error: "recordId 格式错误", status: 400 };
+  const id = raw.slice(0, sep);
+  const idx = Number(raw.slice(sep + 1));
+  if (!/^[A-Za-z0-9-]{4,40}$/.test(id) || !Number.isInteger(idx) || idx < 0) {
+    return { error: "recordId 格式错误", status: 400 };
+  }
+  const key = "user:" + id;
+  const user = await env.USERS.get(key, "json");
+  if (!user) return { error: "档案不存在", status: 404 };
+  const records = Array.isArray(user.records) ? user.records : [];
+  if (idx >= records.length) return { error: "记录不存在", status: 404 };
+  return { user, key, rec: records[idx], idx };
+}
+
+async function handleShowcaseLike(req, env) {
+  if (!env.USERS) return jsonRes({ error: "USERS KV 未绑定" }, 500);
+  let body;
+  try { body = await readJson(req); } catch { return jsonRes({ error: "body 不是合法 JSON" }, 400); }
+  const found = await resolveShowcaseRecord(env, body.recordId);
+  if (found.error) return jsonRes({ error: found.error }, found.status);
+  found.rec.likes = (Number(found.rec.likes) || 0) + 1;
+  found.user.updatedAt = Date.now();
+  await env.USERS.put(found.key, JSON.stringify(found.user));
+  return jsonRes({ likes: found.rec.likes });
+}
+
+async function handleShowcaseComment(req, env) {
+  if (!env.USERS) return jsonRes({ error: "USERS KV 未绑定" }, 500);
+  let body;
+  try { body = await readJson(req); } catch { return jsonRes({ error: "body 不是合法 JSON" }, 400); }
+
+  // 轻限频：同 IP/用户 3 秒 1 条
+  const ip = req.headers.get("cf-connecting-ip") || "local";
+  const rateKey = ip + "|" + String(body.name || "");
+  const now = Date.now();
+  const last = showcaseCommentRate.get(rateKey) || 0;
+  if (now - last < 3000) return jsonRes({ error: "评论太快了，稍等一下" }, 429);
+
+  const text = esc(cleanUserText(body.text, COMMENT_MAX_LENGTH));
+  if (!text) return jsonRes({ error: "评论不能为空" }, 400);
+
+  const found = await resolveShowcaseRecord(env, body.recordId);
+  if (found.error) return jsonRes({ error: found.error }, found.status);
+
+  const name = esc(cleanUserText(body.name, 12)) || "路人";
+  if (!Array.isArray(found.rec.comments)) found.rec.comments = [];
+  found.rec.comments.push({ name, text, ts: now });
+  if (found.rec.comments.length > COMMENT_STORE_LIMIT) {
+    found.rec.comments.splice(0, found.rec.comments.length - COMMENT_STORE_LIMIT);
+  }
+  found.user.updatedAt = now;
+  await env.USERS.put(found.key, JSON.stringify(found.user));
+
+  showcaseCommentRate.set(rateKey, now);
+  if (showcaseCommentRate.size > 5000) showcaseCommentRate.clear(); // 防内存膨胀
+  // 返回最新列表（≤20，倒序）
+  return jsonRes({ comments: found.rec.comments.slice(-COMMENT_STORE_LIMIT).reverse() });
 }
 
 /* ============ 酒保老K（LLM）============ */
@@ -1224,7 +1319,7 @@ export class RoomDO {
         total: aha.lightTotal || 0,
         mine: vote,
         yours: vote, // 兼容早期前端字段
-        canVote: !!token && token !== protagonistToken,
+        canVote: !!token && (this.room.solo || token !== protagonistToken),
         burstNames: burstNames.length ? burstNames : _legacyLightNames?.burst || [],
         offNames: offNames.length ? offNames : _legacyLightNames?.off || [],
       },
@@ -1751,42 +1846,11 @@ export class RoomDO {
         return;
       }
       case "light": {
-        // R2 每题爆灯/灭灯：对当题主角表态，每玩家每题一次，随 reveal 广播 lights:{playerId:value}
-        if (["answering", "reveal", "drinking", "king"].includes(r.phase) && r.current) {
-          const cur = r.current;
-          // 多人局：不能给自己爆灯；solo 局：主角本人给每张卡自投（R3 语义）
-          if (cur.protagonist === token && !r.solo) return;
-          const value = msg.value === "burst" || msg.vote === "burst" ? "burst"
-            : msg.value === "off" || msg.vote === "off" ? "off" : null;
-          if (!value) return;
-          if (!cur.lights) cur.lights = {};
-          if (cur.lights[me.id]) return; // 每题一次，不许改票
-          const now = Date.now();
-          if (!this.allowRate(ws, me, "lastLightAt", SOCIAL.lightCooldownMs, now)) return;
-          me.lastLightAt = now;
-          cur.lights[me.id] = value;
-          if (cur.reveal) cur.reveal.lights = cur.lights;
-          // 每题 record 快照同步（展示柜拉爆/灭灯真数据；solo 投票在开牌后到达）
-          {
-            const rec = cur.records[cur.records.length - 1];
-            if (rec) rec.lights = { ...cur.lights };
-          }
-          for (const s of this.ctx.getWebSockets()) {
-            if (!this.tokenOf(s)) continue;
-            this.send(s, {
-              type: "light_fx",
-              name: me.name,
-              emoji: me.emoji,
-              on: value === "burst",
-              vote: value,
-              changed: false,
-            });
-          }
-          break;
-        }
-        // 结算页爆灯（沿用）：每人只有一张当前票，但可在 aha 阶段改票。
+        // R5：爆灯/灭灯只在 aha「理想型立绘亮相那一刻」（每题投灯已删）。
+        // 每人一票、可在 aha 阶段改票，以最后一票为准。
         if (r.phase !== "aha" || !r.aha) return;
-        if (r.current && r.current.protagonist === token) return;
+        // 多人局：主角不能给自己投；solo 局只有主角本人 → 放开自投（lightTotal 基数 1）。
+        if (!r.solo && r.current && r.current.protagonist === token) return;
         const now = Date.now();
         if (!this.allowRate(ws, me, "lastLightAt", SOCIAL.lightCooldownMs, now)) return;
         me.lastLightAt = now;
@@ -2153,17 +2217,7 @@ export class RoomDO {
       : Math.max(0, r.players.filter((p) => this.isActive(p)).length - 1);
 
     const recs = cur.records;
-    // 爆/灭灯真值聚合（替换写死 0）：汇总每题 record.lights 快照
-    let lightBurst = 0;
-    let lightOff = 0;
-    for (const rec of recs) {
-      for (const v of Object.values(rec.lights || {})) {
-        if (v === "burst") lightBurst++;
-        else if (v === "off") lightOff++;
-      }
-    }
-    const lightVoted = lightBurst + lightOff;
-    const lightBurstPct = lightVoted ? Math.round((lightBurst / lightVoted) * 100) : 0;
+    // R5：爆/灭灯只在 aha 一刻产生。此处初始化为空，待 aha 投票后由 light 处理器聚合。
     const tolerated = recs.filter((x) => x.score >= 7);
     const vetoed = recs.filter((x) => x.score <= 2);
     const avg =
@@ -2215,11 +2269,11 @@ export class RoomDO {
         drinkBoard,
         rounds: recs.length,
         lights: {
-          burst: lightBurst,
-          off: lightOff,
-          voted: lightVoted,
-          total: r.solo ? recs.length : lightTotal,
-          burstPct: lightBurstPct,
+          burst: 0,
+          off: 0,
+          voted: 0,
+          total: lightTotal, // solo=1；多人=活跃人数-1
+          burstPct: 0,
         },
       },
     };

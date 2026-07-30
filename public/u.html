@@ -247,6 +247,95 @@
       border-radius: 4px;
     }
 
+    /* ---- R5：同桌爆灯率 ---- */
+    .record-burst {
+      margin-top: 8px;
+      font-family: var(--font-pixel);
+      font-size: 11px;
+      color: var(--neon-pink-hot);
+      text-shadow: var(--neon-text-pink);
+      letter-spacing: .02em;
+    }
+
+    /* ---- R5：点赞 + 评论（极简） ---- */
+    .record-social {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--line-soft);
+    }
+    .like-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 44px;
+      padding: 0 14px;
+      border: 1px solid var(--line-neon);
+      border-radius: var(--radius-pill);
+      background: var(--bar-bg-raise);
+      color: var(--ink-hi);
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    .like-btn:hover { border-color: var(--neon-pink-hot); }
+    .like-btn.liked {
+      opacity: .6;
+      cursor: default;
+      color: var(--neon-pink-hot);
+      border-color: var(--neon-pink-hot);
+    }
+    .like-count { font-family: var(--font-pixel); }
+
+    .comment-list {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .comment-item {
+      font-size: 11px;
+      line-height: 1.5;
+      color: var(--ink-mid);
+      word-break: break-word;
+    }
+    .comment-item .cm-name { color: var(--neon-cyan-soft); }
+    .comment-empty { font-size: 11px; color: var(--ink-ghost); margin-top: 8px; }
+
+    .comment-form {
+      margin-top: 8px;
+      display: flex;
+      gap: 6px;
+    }
+    .comment-input {
+      flex: 1;
+      min-width: 0;
+      min-height: 44px;
+      padding: 10px;
+      background: var(--bar-bg-deep);
+      border: 1px solid var(--line-soft);
+      border-radius: var(--radius-btn);
+      color: var(--ink-hi);
+      font-size: 13px;
+      font-family: inherit;
+    }
+    .comment-input:focus { outline: none; border-color: var(--neon-cyan); }
+    .comment-send {
+      flex-shrink: 0;
+      min-width: 44px;
+      min-height: 44px;
+      padding: 0 12px;
+      border: none;
+      border-radius: var(--radius-btn);
+      background: var(--neon-purple);
+      color: #fff;
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    .comment-send:hover { opacity: .9; }
+    .comment-send:disabled { opacity: .5; cursor: default; }
+
     /* ---- 可见性小眼睛（仅本人可见） ---- */
     .record-eye {
       position: absolute;
@@ -540,6 +629,14 @@
       );
     }
 
+    // R5：评论列表渲染（昵称+内容，全部走 esc 防 XSS；空态给一句引导）
+    function renderComments(list) {
+      if (!list || !list.length) return `<div class="comment-empty">还没人留话，来一句？</div>`;
+      return list.map(c =>
+        `<div class="comment-item"><span class="cm-name">${esc(c.name || "路人")}</span>：${esc(c.text || "")}</div>`
+      ).join("");
+    }
+
     const MODULE_NAMES = {
       lover: "满分爱人",
       boss: "满分老板",
@@ -647,6 +744,32 @@
               const score = p.avgScore > 0
                 ? `<div class="record-score">场均 ${p.avgScore.toFixed(1)} 分</div>`
                 : "";
+
+              // R5 §1.2 同桌爆灯率 = 爆 / (爆+灭)，分母 0 显示「—」（不显示 0%）
+              const bt = Number(p.burstTotal) || 0;
+              const ot = Number(p.offTotal) || 0;
+              const denom = bt + ot;
+              const burstHtml = `<div class="record-burst">同桌爆灯率 ${denom > 0 ? Math.round(bt / denom * 100) + "%" : "—"}</div>`;
+
+              // R5 §1.3 点赞 + 评论（每卡稳定 recordId：优先后端 id，兜底 userId:idx）
+              const recordId = rec.id || `${userId}:${rec.idx}`;
+              const likes = Number(rec.likes) || 0;
+              const liked = localStorage.getItem("liked:" + recordId) === "1";
+              const comments = Array.isArray(rec.comments)
+                ? [...rec.comments].sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 20)
+                : [];
+              const socialHtml = `
+                <div class="record-social">
+                  <button class="like-btn${liked ? " liked" : ""}" type="button" data-record="${esc(recordId)}"${liked ? " disabled" : ""} aria-label="点赞">
+                    <span aria-hidden="true">👍</span><span class="like-count">${likes}</span>
+                  </button>
+                  <div class="comment-list">${renderComments(comments)}</div>
+                  <form class="comment-form" data-record="${esc(recordId)}">
+                    <input class="comment-input" type="text" maxlength="80" placeholder="留一句…" aria-label="写评论" />
+                    <button class="comment-send" type="submit">发送</button>
+                  </form>
+                </div>`;
+
               const hidden = !!rec.hidden;
               const eye = isSelf
                 ? `<button class="record-eye" type="button" data-idx="${rec.idx}" title="${hidden ? "已隐藏，点击公开" : "公开中，点击隐藏"}" aria-label="切换这条记录的可见性">${hidden ? "🙈" : "👁"}</button>`
@@ -662,6 +785,8 @@
                     ${tags ? `<div class="record-tags">${tags}</div>` : ""}
                     ${p.summary ? `<div class="record-summary">${esc(p.summary)}</div>` : ""}
                     ${score}
+                    ${burstHtml}
+                    ${socialHtml}
                   </div>
                 </div>`;
             }).join("");
@@ -729,8 +854,114 @@
       `;
 
       if (isSelf) bindEyeToggles($main);
+      bindLikes($main);
+      bindComments($main);
 
       document.title = `${data.nick} 的理想型档案`;
+    }
+
+    /* ---- R5：点赞（localStorage 去重 + 乐观置灰，后端回真实计数） ---- */
+    function bindLikes($root) {
+      $root.querySelectorAll(".like-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          if (btn.classList.contains("liked")) return;
+          const recordId = btn.dataset.record;
+          const $count = btn.querySelector(".like-count");
+          const prev = Number($count.textContent) || 0;
+          const setCount = (n) => { $count.textContent = n; };
+
+          // 乐观：置灰 + 本地去重 + 计数 +1
+          btn.classList.add("liked");
+          btn.disabled = true;
+          localStorage.setItem("liked:" + recordId, "1");
+          setCount(prev + 1);
+
+          try {
+            const res = await fetch("/api/showcase/like", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ recordId }),
+            });
+            if (res.ok) {
+              const data = await res.json().catch(() => null);
+              if (data && typeof data.likes === "number") setCount(data.likes);
+            } else if (res.status === 404) {
+              toast("先记下了，稍后同步");
+            } else {
+              // 回滚
+              btn.classList.remove("liked");
+              btn.disabled = false;
+              localStorage.removeItem("liked:" + recordId);
+              setCount(prev);
+              toast("没点上，再试一次");
+            }
+          } catch {
+            toast("先记下了，稍后同步");
+          }
+        });
+      });
+    }
+
+    /* ---- R5：评论（≤80 字，提交后新评论插到列表顶部，esc 渲染防 XSS） ---- */
+    function prependComment(list, c) {
+      const empty = list.querySelector(".comment-empty");
+      if (empty) empty.remove();
+      const div = document.createElement("div");
+      div.className = "comment-item";
+      div.innerHTML = `<span class="cm-name">${esc(c.name || "路人")}</span>：${esc(c.text || "")}`;
+      list.insertBefore(div, list.firstChild);
+      while (list.querySelectorAll(".comment-item").length > 20) {
+        list.removeChild(list.lastChild);
+      }
+    }
+
+    function bindComments($root) {
+      $root.querySelectorAll(".comment-form").forEach(form => {
+        form.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const recordId = form.dataset.record;
+          const input = form.querySelector(".comment-input");
+          const send = form.querySelector(".comment-send");
+          const list = form.parentElement.querySelector(".comment-list");
+          const text = input.value.trim();
+          if (!text) return;
+          if (text.length > 80) { toast("最多 80 个字"); return; }
+
+          // 本地昵称兜底：当前身份昵称，无则「路人」（后端返回列表时以后端为准）
+          const localName = localStorage.getItem("mfn_name") || "路人";
+          send.disabled = true;
+          try {
+            const res = await fetch("/api/showcase/comment", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ recordId, text }),
+            });
+            if (res.ok) {
+              const data = await res.json().catch(() => null);
+              const comments = Array.isArray(data?.comments) ? data.comments
+                : Array.isArray(data) ? data : null;
+              if (comments) {
+                const sorted = [...comments].sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 20);
+                list.innerHTML = renderComments(sorted);
+              } else {
+                prependComment(list, { name: localName, text });
+              }
+              input.value = "";
+            } else if (res.status === 404) {
+              prependComment(list, { name: localName, text });
+              input.value = "";
+              toast("先记下了，稍后同步");
+            } else {
+              toast("没发出去，再试一次");
+            }
+          } catch {
+            prependComment(list, { name: localName, text });
+            input.value = "";
+            toast("先记下了，稍后同步");
+          }
+          send.disabled = false;
+        });
+      });
     }
 
     /* ---- 可见性切换 ---- */

@@ -1016,27 +1016,38 @@ input[type="range"]::-moz-range-thumb {
   to { background-position: -90% 0; }
 }
 
-.art-wrap::before {
-  content: "你老公来咯🪽🪽";
+/* R6：「你老公/老婆/老板/TA 来咯」彩蛋。文案不再写死在此，由 app.js 按模组×性别
+   注入 .waiting-egg 真实元素（MODULE_PROFILES.waiting）。立绘登场那刻弹出并常驻可见。 */
+.waiting-egg {
   position: absolute;
-  top: 50%;
+  top: 14px;
   left: 50%;
+  z-index: 3;
+  padding: 6px 16px;
+  border-radius: 999px;
+  background: rgba(20, 8, 30, 0.62);
+  border: var(--stroke-thin) solid var(--line-neon);
   color: var(--neon-pink-hot);
   text-shadow: var(--neon-text-pink);
   font-family: var(--font-pixel);
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 700;
   white-space: nowrap;
-  transform: translate(-50%, -50%);
-  animation: waitPulse 1.6s ease-in-out infinite;
+  pointer-events: none;
+  transform: translateX(-50%);
+  animation: eggPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both,
+             eggGlow 1.8s ease-in-out 0.5s infinite;
 }
 
-@keyframes waitPulse {
-  0%, 100% { opacity: 0.85; }
-  50% { opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
+@keyframes eggPop {
+  from { opacity: 0; transform: translateX(-50%) translateY(-10px) scale(0.82); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
 }
 
-.art-wrap.loaded::before { content: none; }
+@keyframes eggGlow {
+  0%, 100% { opacity: 0.92; }
+  50% { opacity: 1; }
+}
 
 .art-wrap img {
   position: absolute;
@@ -1745,7 +1756,8 @@ body:not(.has-dmbar) .chat-fab {
 .archetype-chip {
   position: absolute;
   z-index: 3;
-  top: 14px;
+  /* R6：让位给顶部居中的「你老公/老婆/老板来咯」彩蛋，档案名下移一行避免重叠 */
+  top: 52px;
   right: 14px;
   max-width: calc(100% - 28px);
   padding: 7px 11px;

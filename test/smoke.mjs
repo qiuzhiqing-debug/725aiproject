@@ -130,6 +130,49 @@ async function autoPlay(players, { maxSteps = 400 } = {}) {
   return false;
 }
 
+// 推进到 aha（立绘结算）就停，用于验证 aha 阶段爆灯（solo 主角自投）
+async function playToAha(players, { maxSteps = 400 } = {}) {
+  for (let step = 0; step < maxSteps; step++) {
+    await sleep(120);
+    const st = players[0]?.state;
+    if (!st) continue;
+    if (st.phase === "aha") return true;
+    const host = players.find((p) => p.state?.you?.isHost);
+    switch (st.phase) {
+      case "picking": {
+        const shaker = players.find((p) => p.state?.current?.youAreShaker);
+        if (shaker) shaker.send({ type: shaker.state.current.drawn ? "stick_done" : "draw_stick" });
+        break;
+      }
+      case "protagonist_setup":
+        players.find((p) => p.state?.current?.youAreProtagonist)?.send({ type: "set_gender", gender: "m" });
+        break;
+      case "answering":
+        for (const p of players) {
+          if (p.state?.current?.youAreProtagonist) p.send({ type: "score", v: 5 });
+          else p.send({ type: "guess", v: 6 });
+        }
+        break;
+      case "reveal":
+        host?.send({ type: "next" });
+        break;
+      case "drinking":
+        host?.send({ type: "skip_drinking" });
+        host?.send({ type: "next" });
+        break;
+      case "king": {
+        const king = players.find((p) => p.state?.king?.youAreKing);
+        if (king?.state?.king?.active) king.send({ type: "king_pick", idx: 0 });
+        else host?.send({ type: "next" });
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return false;
+}
+
 async function main() {
   console.log("== 冒烟测试 @", BASE);
 
@@ -706,6 +749,33 @@ async function main() {
   ok(S.state.ahaHistory?.length === 1, "solo 局也生成 aha 结算（ahaHistory=1）");
   try { S.ws.close(); } catch {}
 
+  // R5：solo 局 aha 本人自投一票（total=1，本人爆灯=100%），可改票
+  const soloLightRoom = await (await fetch(BASE + "/api/room", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ solo: true }),
+  })).json();
+  const SL = new Player("独灯侠", "🥃", "baijiu");
+  await SL.connect(soloLightRoom.code);
+  SL.send({ type: "start", rounds: 3, questions: v2Questions });
+  await SL.waitPhase("picking");
+  const reachedAha = await playToAha([SL]);
+  ok(reachedAha, "solo 局手动推进到 aha 立绘");
+  ok(SL.state.aha.light.canVote === true, "solo 主角本人有 aha 投灯资格（canVote=true）");
+  SL.send(lightVotePayload("burst"));
+  await waitUntil(() => SL.state?.aha?.light?.burst === 1 && SL.state?.aha?.light?.total === 1
+    && SL.state?.aha?.light?.mine === "burst");
+  const slt = SL.state.aha.light;
+  ok(slt.burst === 1 && slt.off === 0 && slt.total === 1 && slt.mine === "burst",
+    `solo 主角自投爆灯：爆${slt.burst}/共${slt.total}（爆灯率100%）`);
+  ok(SL.state.aha.stats.lights.burst === 1 && SL.state.aha.stats.lights.total === 1,
+    "solo aha stats.lights 记录 total=1 爆灯1（海报/展示柜口径）");
+  await sleep(550);
+  SL.send(lightVotePayload("off")); // 改票 爆→灭
+  await waitUntil(() => SL.state?.aha?.light?.off === 1 && SL.state?.aha?.light?.burst === 0
+    && SL.state?.aha?.light?.mine === "off");
+  ok(SL.state.aha.light.off === 1 && SL.state.aha.light.total === 1 && SL.state.aha.light.mine === "off",
+    "solo 改票爆→灭：灭1/共1（本人灭灯=0%爆灯率）");
+  try { SL.ws.close(); } catch {}
+
   // 正常房仍保持 2 人下限
   const { code: codeN } = await (await fetch(BASE + "/api/room", { method: "POST" })).json();
   const N1 = new Player("孤勇者", "🍺");
@@ -770,6 +840,67 @@ async function main() {
   });
   const introView = await (await fetch(`${BASE}/api/user/${created.userId}`)).json();
   ok(introView.cocktail?.intro === "先苦后甜，像极了暗恋", "cocktail.intro 通过白名单保存");
+
+  /* ================= R5：展示柜点赞 + 评论 ================= */
+  console.log("\n-- R5 展示柜点赞/评论 --");
+
+  const JSON_H = { "content-type": "application/json" };
+  const rid0 = `${created.userId}:0`; // 可见的 lover 记录
+
+  // 点赞 +1（幂等累加，两次 → 2）
+  const like1 = await fetch(BASE + "/api/showcase/like", {
+    method: "POST", headers: JSON_H, body: JSON.stringify({ recordId: rid0 }),
+  });
+  const like1b = await like1.json();
+  ok(like1.status === 200 && like1b.likes === 1, "POST /api/showcase/like → likes=1");
+  const like2b = await (await fetch(BASE + "/api/showcase/like", {
+    method: "POST", headers: JSON_H, body: JSON.stringify({ recordId: rid0 }),
+  })).json();
+  ok(like2b.likes === 2, "再次点赞累加 → likes=2");
+
+  // 坏 recordId → 400；越界 idx → 404
+  const likeBad = await fetch(BASE + "/api/showcase/like", {
+    method: "POST", headers: JSON_H, body: JSON.stringify({ recordId: "nocolon" }),
+  });
+  ok(likeBad.status === 400, "点赞坏 recordId（无分隔符）→ 400");
+  const likeOob = await fetch(BASE + "/api/showcase/like", {
+    method: "POST", headers: JSON_H, body: JSON.stringify({ recordId: `${created.userId}:99` }),
+  });
+  ok(likeOob.status === 404, "点赞越界 idx → 404");
+
+  // 评论：XSS 转义 + name 保存
+  const cmtRes = await fetch(BASE + "/api/showcase/comment", {
+    method: "POST", headers: JSON_H,
+    body: JSON.stringify({ recordId: rid0, text: "<script>alert(1)</script>笑死", name: "阿黑" }),
+  });
+  const cmtBody = await cmtRes.json();
+  ok(cmtRes.status === 200 && Array.isArray(cmtBody.comments) && cmtBody.comments.length === 1,
+    "POST /api/showcase/comment → 200 返回评论列表");
+  ok(cmtBody.comments[0].text.includes("&lt;script&gt;") && !cmtBody.comments[0].text.includes("<script>"),
+    "评论 HTML 转义（<script> → &lt;script&gt;）");
+  ok(cmtBody.comments[0].name === "阿黑", "评论保存昵称");
+
+  // 同名 3s 内再评 → 429（轻限频）
+  const cmtFast = await fetch(BASE + "/api/showcase/comment", {
+    method: "POST", headers: JSON_H,
+    body: JSON.stringify({ recordId: rid0, text: "再来一条", name: "阿黑" }),
+  });
+  ok(cmtFast.status === 429, "同名 3 秒内连发评论 → 429 限频");
+
+  // 空评论 → 400（换新名字避开限频）
+  const cmtEmpty = await fetch(BASE + "/api/showcase/comment", {
+    method: "POST", headers: JSON_H,
+    body: JSON.stringify({ recordId: rid0, text: "   ", name: "空白君" }),
+  });
+  ok(cmtEmpty.status === 400, "空白评论 → 400");
+
+  // GET 记录下行携带 likes + comments
+  const cmtView = await (await fetch(`${BASE}/api/user/${created.userId}`)).json();
+  const rec0 = (cmtView.showcase.lover || []).find((r) => r.idx === 0);
+  ok(rec0 && rec0.likes === 2, `GET 记录携带 likes=${rec0?.likes}（=2）`);
+  ok(rec0 && Array.isArray(rec0.comments) && rec0.comments.length === 1
+    && rec0.comments[0].text.includes("&lt;script&gt;"),
+    "GET 记录携带 comments（含转义文本）");
 
   /* ================= R2：注册 + 找回（昵称全局查重 + 4-6 位口令） ================= */
   console.log("\n-- R2 注册/找回 --");
@@ -878,9 +1009,9 @@ async function main() {
   kHero.send({ type: "set_gender", gender: "m" });
   await K1.waitPhase("answering");
 
-  // 答题期爆灯（每题一次）；主角对自己爆灯应被忽略
-  kGuessers[0].send({ type: "light", value: "burst" });
-  kHero.send({ type: "light", value: "burst" });
+  // R5：答题/开牌期不再有每题灯票（爆灯灭灯只在 aha 立绘一刻）。发了也应被忽略。
+  kGuessers[0].send({ type: "light", value: "burst", vote: "burst" });
+  kHero.send({ type: "light", value: "burst", vote: "burst" });
 
   kHero.send({ type: "score", v: 7 });
   kGuessers[0].send({ type: "guess", v: 7 }); // 分毫不差
@@ -905,12 +1036,12 @@ async function main() {
   const seatToName = {}; kt.forEach((p) => { seatToName[p.state.you.seatNo] = p.name; });
   ok(seatOfId[kChance.winners[0]] < seatOfId[kChance.winners[1]], "king_chance.winners 按座次升序");
 
-  // reveal 期灭灯 → 随 reveal.lights 带出
-  kGuessers[1].send({ type: "light", value: "off" });
-  await waitUntil(() => K1.state?.current?.reveal?.lights?.[kIds[kGuessers[1].name]] === "off");
-  const kLights = K1.state.current.reveal.lights;
-  ok(kLights[kIds[kGuessers[1].name]] === "off" && !(kIds[kHero.name] in kLights),
-    "reveal.lights = {playerId: burst|off}（主角自灯无效）");
+  // R5：开牌期灭灯也不再产生每题灯票（答题 reveal 页彻底无灯 UI，验收硬指标）
+  kGuessers[1].send({ type: "light", value: "off", vote: "off" });
+  await sleep(300);
+  const kLights = K1.state.current.reveal.lights || {};
+  ok(Object.keys(kLights).length === 0,
+    "R5：答题/开牌期无每题灯票（reveal.lights 恒空，每题投灯已删）");
 
   // 号码轮报：确定当前轮到谁、下一个是谁（按座次）
   const kcView = () => K1.state.current.kingChance;

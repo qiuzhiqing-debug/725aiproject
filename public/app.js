@@ -29,6 +29,8 @@ const loadIdealProfile = () => lazyImport("idealProfile", "./ideal-profile.js");
 // 老K立绘（v2 共用模块，只 import 不改）：锐评 NPC 的小头像
 const loadBartender = () => lazyImport("bartender", "./v2/bartender.js");
 let buildIdealProfileFn = null;
+// R6「你老公来咯」彩蛋：从 ideal-profile.js 读 MODULE_PROFILES.waiting（只读不改）。
+let moduleProfiles = null;
 
 const EMOJIS = ["🍺", "🍷", "🥃", "🍶", "🍸", "🍹", "🥂", "🍻", "🫗", "🧉"];
 const DRINK_OPTIONS = [
@@ -170,7 +172,6 @@ const ui = {
   lastDmSent: 0,
   // R2 局内新体系
   genderSentFor: null, // protagonist_setup 自动代发 set_gender 的判重键
-  lightSent: null, // 本题爆灯/灭灯已发出的判重键（乐观置灰）
   kingPick: { nums: [], orderId: null }, // 每题国王（号码版）：我选的两个号 + 指令卡
   kingSent: false,
   kingOrderPage: 0,
@@ -477,8 +478,7 @@ function onMessage(msg) {
       ui.submitPendingAt = 0;
       ui.commentSent = false;
       ui.assigned = false;
-      // R2：每题爆灯 / 每题国王的本地状态随题重置
-      ui.lightSent = null;
+      // R2：每题国王的本地状态随题重置（R5：每题爆灯已删）
       ui.kingPick = { nums: [], orderId: null };
       ui.kingSent = false;
       ui.kingOrderPage = 0;
@@ -1269,17 +1269,7 @@ function renderReveal(s) {
   const verdictAt = scoreDelay + 0.55; // 秒
   const badgeD = (i) => (fresh ? `style="--d:${(verdictAt + i * 0.09).toFixed(2)}s"` : "");
 
-  // R2 每题爆灯：reveal.lights = {playerId: "burst"|"off"}
-  const lights = rv.lights || {};
-  const idByName = Object.fromEntries((s.players || []).map((p) => [p.name, p.id]));
-  const rowLamp = (name) => {
-    const v = lights[idByName[name]];
-    return v ? `<span class="row-lamp ${v === "burst" ? "on" : "dead"}" title="${v === "burst" ? "爆灯" : "灭灯"}"></span>` : "";
-  };
-  const myLight = lights[me.id] || null;
-  const lightLocked = !!myLight || ui.lightSent === revealKey;
-  const burstCount = Object.values(lights).filter((v) => v === "burst").length;
-  const offCount = Object.values(lights).filter((v) => v === "off").length;
+  // R5：答题 reveal 页不再有任何爆灯/灭灯 UI（爆灯灭灯只在 aha 立绘亮相那一刻）。
 
   // 老K锐评：先同步取一条兜底文案（立即可见），再非阻塞异步取 LLM 版到了后替换
   const laokKey = `rv:${s.code}:${revealKey}`;
@@ -1307,34 +1297,12 @@ function renderReveal(s) {
     ${solo ? "" : `<div class="glass stack">
       ${rv.results.map((x, i) => `
         <div class="reveal-row ${fresh ? "seq" : (x.drink ? "drink" : "") + " " + (x.exact ? "exact" : "")}" data-i="${i}" ${rowD(i)}>
-          <span>${esc(x.emoji)}</span>${rowLamp(x.name)}<b>${esc(x.name)}</b>
+          <span>${esc(x.emoji)}</span><b>${esc(x.name)}</b>
           ${x.exact ? `<span class="badge exact ${fresh ? "seq-pop" : ""}" ${badgeD(i)}>懂TA+1</span>` : ""}
           ${x.drink ? `<span class="badge drink ${fresh ? "seq-pop" : ""}" ${badgeD(i)}>罚酒</span>` : ""}
           <span class="g">${x.guess}</span>
         </div>`).join("")}
     </div>`}
-    <div class="glass stack center light-panel round-light-panel">
-      ${solo
-        ? (lightLocked
-            ? `<div class="light-count">你给这张卡：${myLight === "off" ? "🖤 灭灯（就这点，pass）" : "💗 爆灯（瑕不掩瑜）"}</div>
-               <div class="dim">一张卡一盏灯，点了就定。今晚的爆/灭灯率会记进你的展示柜。</div>`
-            : `<div class="dim">这条「满分但是…」，你给爆灯还是灭灯？💗 爆灯=瑕不掩瑜 · 🖤 灭灯=就这点 pass。</div>
-               <div class="row light-btns">
-                 <button class="btn light-burst grow" id="roundBurstBtn">💗 爆灯</button>
-                 <button class="btn light-off grow" id="roundOffBtn">灭灯</button>
-               </div>`)
-        : (cur.youAreProtagonist
-            ? `<div class="light-count">这题的你：爆灯 <b>${burstCount}</b> · 灭灯 <b>${offCount}</b></div>
-               <div class="dim">灯是他们对这题的你亮的。别紧张，灯不咬人。</div>`
-            : lightLocked
-              ? `<div class="light-count">你这票：${myLight === "off" ? "🖤 灭灯" : "💗 爆灯"}</div>
-                 <div class="dim">一题一盏灯，落了就不改。</div>`
-              : `<div class="dim">这题的 ${esc(cur.protagonist?.name || "主角")}，心动还是下头？一题只有一票。</div>
-                 <div class="row light-btns">
-                   <button class="btn light-burst grow" id="roundBurstBtn">💗 爆灯</button>
-                   <button class="btn light-off grow" id="roundOffBtn">灭灯</button>
-                 </div>`)}
-    </div>
     ${kingChanceHtml(s)}
     ${!solo && cur.youAreProtagonist && !ui.commentSent && !rv.comment ? `
     <div class="glass row">
@@ -1367,18 +1335,6 @@ function renderReveal(s) {
       setTimeout(() => { celebrate(); sound.tick(); }, verdictAt * 1000 + 150);
     }
   }
-  const castRoundLight = (value) => {
-    sound.unlock();
-    if (!sendOrWarn(lightVotePayload(value))) return;
-    ui.lightSent = revealKey; // 乐观置灰；服务端 reveal.lights 广播为准
-    if (PREVIEW) {
-      rv.lights = { ...(rv.lights || {}), [me.id]: value };
-      playLightFx({ name: me.name, on: value === "burst" });
-    }
-    render();
-  };
-  document.getElementById("roundBurstBtn")?.addEventListener("click", () => castRoundLight("burst"));
-  document.getElementById("roundOffBtn")?.addEventListener("click", () => castRoundLight("off"));
   const cmtIn = document.getElementById("cmtIn");
   cmtIn?.addEventListener("input", () => (ui.commentDraft = cmtIn.value));
   document.getElementById("cmtBtn")?.addEventListener("click", () => {
@@ -1519,9 +1475,9 @@ async function maybeSaveAhaProfile(s, aha, profile, confirmedUrl) {
           avgScore: aha.stats?.avgScore ?? 0,
           imageUrl: confirmedUrl || portrait.imageUrl || aha.imageUrl || "",
           summary: rel.coreText || profile.coreText || "",
-          // R3 字段契约：展示柜爆/灭灯统计（后端 sanitizeRecordProfile 白名单放行）
-          burstTotal: aha.stats?.lights?.burst ?? 0,
-          offTotal: aha.stats?.lights?.off ?? 0,
+          // R5 字段契约：展示柜爆/灭灯统计取自 aha 阶段真实灯结果（不再取每题聚合）
+          burstTotal: aha.light?.burst ?? aha.stats?.lights?.burst ?? 0,
+          offTotal: aha.light?.off ?? aha.stats?.lights?.off ?? 0,
         },
       }),
     });
@@ -1537,8 +1493,9 @@ function renderAha(s, aha, isFinal) {
   if (!isCompleteProfile(aha.profile) && !buildIdealProfileFn) {
     $app.innerHTML = `${header(s, "理想型加载中")}<div class="boot glass">档案在路上。TA在里面挑今晚穿什么。</div>`;
     bindSound();
-    loadIdealProfile().then(({ buildIdealProfile }) => {
+    loadIdealProfile().then(({ buildIdealProfile, MODULE_PROFILES }) => {
       buildIdealProfileFn = buildIdealProfile;
+      moduleProfiles = MODULE_PROFILES;
       if (["aha", "finished"].includes(ui.state?.phase)) render();
     }).catch(() => toast("档案没送到。刷新一下，我再去催一遍。"));
     return;
@@ -1578,12 +1535,19 @@ function renderAha(s, aha, isFinal) {
     ["出生日期", card.birthDate], ["星座", card.zodiac],
     ["职业", card.occupation, "wide"], ["身份", card.identity, "wide"],
   ].filter((cell) => cell[1]);
+  // R6 彩蛋：按模组×性别读 MODULE_PROFILES.waiting，立绘亮相时真实渲染（不再靠 CSS ::before 写死"老公"）。
+  // 满分男→你老公来咯 / 满分女→你老婆来咯 / 满分老板→你老板来咯 / seeking=x/TA→你的TA来咯。
+  const waitModule = s.settings?.module || "lover";
+  const waitGenderKey = { m: "masc", f: "femme", n: "androgynous" }[aha.gender] || "any";
+  const waiting = moduleProfiles?.[waitModule]?.waiting || null;
+  const waitingText = waiting ? (waiting[waitGenderKey] || waiting.any || waiting.androgynous || "") : "";
   const stageBody = stage === 0 ? `
     <div class="aha-stage portrait-stage" style="--profile-primary:${primary};--profile-accent:${accent}">
       <div class="art-wrap" id="artWrap">
         <div class="art-fallback"><b>${esc(chipText)}</b><span>${esc(card.presentation || "")}</span></div>
         <img id="artImg" src="${esc(portrait.imageUrl || aha.imageUrl || "")}" alt="${esc(portrait.alt || (chipText ? `${chipText}理想型立绘` : "理想型立绘"))}" />
         ${chipText ? `<span class="archetype-chip">${esc(chipText)}</span>` : ""}
+        ${waitingText ? `<div class="waiting-egg" role="status">${esc(waitingText)}</div>` : ""}
       </div>
       <div class="caption">
         <b class="ideal-name">${esc(card.archetype || "理想型档案")}</b>
@@ -1618,7 +1582,8 @@ function renderAha(s, aha, isFinal) {
     </div>
     <div class="flip-scene" id="ahaStage" role="button" tabindex="0" aria-live="polite" aria-label="点击查看${stage < 2 ? stages[stage + 1] : stages[0]}">${stageBody}</div>
     <button class="stage-next" id="stageNext">${stage < 2 ? `点击继续 · ${stages[stage + 1]}` : "回到理想型立绘"}<span>→</span></button>
-    ${solo ? "" : `<div class="glass stack center light-panel">
+    <div class="glass stack center light-panel">
+      ${solo ? `<div class="dim">你给这张理想型：💗 爆灯 / 🖤 灭灯（点了可改）</div>` : ""}
       <div class="lamp-row">${lampRow}</div>
       <div class="light-count">爆灯 <b>${lt.burst}</b> · 灭灯 <b>${lt.off}</b><span class="dim"> · 已投 ${lt.voted ?? lt.burst + lt.off}/${lt.total}</span></div>
       ${canVote ? `
@@ -1626,13 +1591,13 @@ function renderAha(s, aha, isFinal) {
           <button class="btn light-burst grow ${mine === "burst" ? "selected" : ""}" id="burstBtn">${mine === "burst" ? "已爆灯" : "爆灯"}</button>
           <button class="btn light-off grow ${mine === "off" ? "selected" : ""}" id="offBtn">${mine === "off" ? "已灭灯" : "灭灯"}</button>
         </div>
-        <div class="dim">灯可以改，最后一票记进海报。</div>
-      ` : s.current?.youAreProtagonist && !isFinal
+        <div class="dim">${solo ? "一盏灯，点了可改，记进你的展示柜。" : "灯可以改，最后一票记进海报。"}</div>
+      ` : s.current?.youAreProtagonist && !isFinal && !solo
           ? `<div class="dim">全场在给你的理想型亮灯。别紧张，灯不咬人。</div>`
           : lt.burstNames?.length
             ? `<div class="dim">爆灯的人：${lt.burstNames.map(esc).join("、")}</div>`
             : ""}
-    </div>`}
+    </div>
     ${ui.posterUrl
       ? `<img class="poster-img" src="${ui.posterUrl}" alt="理想型海报" /><div class="dim center">长按保存。扫码的人直接进这桌。</div><button class="btn" id="posterHomeBtn">进入我的主页</button>`
       : `<button class="btn ghost" id="posterBtn" ${ui.posterBusy ? "disabled" : ""}>${ui.posterBusy ? "海报在暗房里洗…" : "生成海报"}</button>`}
@@ -1994,6 +1959,10 @@ function mockArt(emoji) {
 }
 
 function buildPreviewState(screen) {
+  // QA：?preview=aha&module=boss&g=f 可切模组×性别，验证「你老公/老婆/老板/TA 来咯」彩蛋
+  const previewParams = new URLSearchParams(location.search);
+  const pModule = previewParams.get("module") || undefined;
+  const pGender = previewParams.get("g") || previewParams.get("gender") || null;
   const players = [
     { id: "t1", name: "coco", emoji: "🍷", isHost: true, connected: true, token: "t1", done: true },
     { id: "t2", name: "阿豪", emoji: "🍺", isHost: false, connected: true, token: "t2", done: false },
@@ -2007,7 +1976,7 @@ function buildPreviewState(screen) {
     code: "8848",
     you: { name: "coco", isHost: true },
     players,
-    settings: { rounds: 5, deck, deckName: decks[deck].name },
+    settings: { rounds: 5, deck, deckName: decks[deck].name, module: pModule },
     chat: [
       { id: 1, name: "阿豪", emoji: "🍺", text: "这题出得太狠了哈哈哈", reactions: { "😂": ["coco", "麦当劳"], "🍺": ["coco"] } },
       { id: 2, name: "麦当劳", emoji: "🧉", text: "主角面不改色，有点东西", reactions: {} },
@@ -2116,9 +2085,12 @@ function buildPreviewState(screen) {
     case "aha":
     case "profile":
     case "chemistry":
-    case "poster":
-      return { ...base, phase: "aha", aha: mkAha(protagonist, 1),
+    case "poster": {
+      const ahaObj = mkAha(protagonist, 1);
+      if (pGender) ahaObj.gender = pGender; // QA 覆盖：验证不同性别的「来咯」彩蛋
+      return { ...base, phase: "aha", aha: ahaObj,
         current: { youAreProtagonist: false, protagonist } };
+    }
     case "final":
       return { ...base, phase: "finished",
         ahaHistory: [mkAha(protagonist, 1), mkAha({ name: "麦当劳", emoji: "🧉" }, 2)] };
@@ -2154,9 +2126,10 @@ function bootPreview(screen) {
 (async function boot() {
   if (PREVIEW) {
     try {
-      const [{ DECKS }, { buildIdealProfile }] = await Promise.all([loadQuestions(), loadIdealProfile()]);
+      const [{ DECKS }, { buildIdealProfile, MODULE_PROFILES }] = await Promise.all([loadQuestions(), loadIdealProfile()]);
       renderLobby._decks = DECKS;
       buildIdealProfileFn = buildIdealProfile;
+      moduleProfiles = MODULE_PROFILES;
       if (bootPreview(PREVIEW)) return;
     } catch {
       toast("预览资源加载失败");
