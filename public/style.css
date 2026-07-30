@@ -2855,3 +2855,118 @@ body:not(.has-dmbar) .chat-fab {
   .king-num { min-width: 44px; min-height: 44px; font-size: 18px; }
   .deck-card b { font-size: 16px; }
 }
+
+/* ============ 图鉴（占位骨架）+ 满分人生入口 ============ */
+.gx-banner {
+  padding: 12px 16px;
+  text-align: center;
+  font-size: 13.5px;
+  letter-spacing: 0.04em;
+  color: var(--neon-amber, #ffd24a);
+  border-left: 4px solid var(--neon-amber, #ffd24a);
+  background: rgba(255, 182, 72, 0.08);
+}
+.gx-life { flex-direction: row; align-items: center; gap: 12px; }
+.gx-life-title {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--neon-amber, #ffd24a);
+  text-shadow: var(--neon-text-amber);
+}
+.gx-life .btn { flex: none; padding: 10px 16px; }
+
+.gx-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0;
+}
+.gx-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: var(--stroke-thin) solid var(--line-neon);
+  border-radius: var(--radius-card, 10px);
+  background: var(--panel-solid, #241536);
+}
+.gx-card.locked { opacity: 0.9; }
+.gx-card.unlocked { border-color: var(--neon-pink); box-shadow: var(--neon-box-pink); }
+.gx-silhouette {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  aspect-ratio: 3 / 4;
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 9px),
+    linear-gradient(180deg, #2c1a42, #120a1c);
+}
+.gx-card.locked .gx-silhouette { filter: grayscale(0.6) brightness(0.72); }
+.gx-card.unlocked .gx-silhouette {
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 45, 120, 0.08) 0 1px, transparent 1px 9px),
+    linear-gradient(180deg, #3a1c4e, #1a1026);
+}
+.gx-silhouette b { font-size: 14px; font-weight: 800; color: var(--ink-hi, #f4ecff); text-align: center; }
+.gx-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 15px;
+  line-height: 1;
+}
+.gx-hidden-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.gx-hidden {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  aspect-ratio: 1 / 1;
+  border: 1px dashed var(--line-soft, rgba(168, 107, 255, 0.3));
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.25);
+}
+.gx-hidden span { font-size: 13px; }
+.gx-hidden small { font-size: 9px; color: var(--ink-lo, rgba(244, 236, 255, 0.5)); letter-spacing: 0.08em; }
+.gx-hidden-count {
+  font-size: 11px;
+  text-align: center;
+  color: var(--ink-lo, rgba(244, 236, 255, 0.55));
+  letter-spacing: 0.06em;
+}
+
+/* 满分人生 付费占位 modal */
+.life-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(9, 5, 16, 0.72);
+  backdrop-filter: blur(3px);
+}
+.life-modal {
+  max-width: 340px;
+  width: 100%;
+  display: grid;
+  gap: 14px;
+  text-align: center;
+  padding: 24px 22px;
+  border: var(--stroke) solid var(--neon-amber, #ffd24a);
+  box-shadow: 0 0 24px var(--glow-amber-55, rgba(255, 182, 72, 0.55));
+}
+.life-modal-title { font-size: 22px; font-weight: 800; }
+.life-modal-body { font-size: 14px; line-height: 1.6; color: var(--ink-hi, #f4ecff); }
+
+@media (max-width: 480px) {
+  .gx-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gx-life { flex-direction: column; align-items: stretch; text-align: center; }
+  .gx-life .btn { width: 100%; }
+}

@@ -23,6 +23,8 @@ function lazyImport(key, path) {
 const loadQuestions = () => lazyImport("questions", "./questions.js");
 // 满分老板题库（P2 独占文件）：导出名 MODULE（{key,name,noun,desc,decks:{qingtang,fanqie,mala}}），全 neutral
 const loadBoss = () => lazyImport("boss", "./questions-v2/boss.js");
+// 满分闺蜜题库（并行线程新建，结构同 boss.js）：导出名 MODULE，全 neutral
+const loadBestie = () => lazyImport("bestie", "./questions-v2/bestie.js");
 const loadQr = () => lazyImport("qr", "./qrcode.js");
 const loadPoster = () => lazyImport("poster", "./poster.js");
 const loadIdealProfile = () => lazyImport("idealProfile", "./ideal-profile.js");
@@ -56,6 +58,7 @@ const ROOM_DECKS = {
   man: { name: "满分男", g: "m", line: "给男人打分，从来没这么理直气壮过" },
   woman: { name: "满分女", g: "f", line: "满分女的标准答案，今晚现场对" },
   boss: { name: "满分老板", g: "n", line: "落座，聊聊你那位满分老板的糟心操作" },
+  bestie: { name: "满分闺蜜", g: "n", line: "闺蜜局开桌，今晚聊聊那个满分的她" },
 };
 const roomDeckName = (key) => ROOM_DECKS[key]?.name || "满分男";
 
@@ -540,7 +543,9 @@ function render() {
   if (render._animationEnd) render._animationEnd();
   $app.classList.remove("phase-in");
   render._key = key;
-  if (ui.screen === "home") {
+  if (ui.screen === "gallery") {
+    renderGallery();
+  } else if (ui.screen === "home") {
     renderHome();
   } else {
     const s = ui.state;
@@ -590,6 +595,7 @@ function header(s, sub) {
   return `<div class="row">
     <div class="grow"><div class="brand-title"><span class="brand-mark" aria-hidden="true">${BRAND_MARK_SVG}</span><h1 class="neon">理想型<span class="amber">·</span>加载中</h1></div>
     ${sub ? `<div class="dim">${sub}</div>` : ""}</div>
+    <button class="btn ghost small" id="galleryBtn" title="图鉴" aria-label="打开图鉴">📖</button>
     <button class="btn ghost small me-btn" id="meBtn" aria-label="进入我的主页">我的</button>
     <button class="btn ghost small" id="sndBtn">${sound.enabled ? "🔊" : "🔇"}</button>
   </div>`;
@@ -602,6 +608,11 @@ function bindSound() {
     render();
   });
   document.getElementById("meBtn")?.addEventListener("click", goMyPage);
+  document.getElementById("galleryBtn")?.addEventListener("click", () => {
+    ui._galleryReturn = ui.screen;
+    ui.screen = "gallery";
+    render();
+  });
 }
 
 /* --- 首页 --- */
@@ -707,17 +718,104 @@ function renderHome() {
   bindSound();
 }
 
+/* --- 图鉴（占位骨架，非终版）---
+   Kim：先留个可点击的图鉴图标 + 收集概念。类型体系未定，本版全部剪影占位。
+   解锁判定：best-effort 读服务端 showcase（有 ideal_userId 才查）；读不到就全锁，绝不报错。 */
+const GALLERY_MODULES = [
+  { name: "满分男", key: "lover" },
+  { name: "满分女", key: "lover" },
+  { name: "满分老板", key: "boss" },
+  { name: "满分闺蜜", key: "bestie" },
+  { name: "满分室友", key: "roommate" },
+  { name: "满分老师", key: "teacher" },
+];
+let galleryUnlocked = null; // null=未查；Set=已查到的已解锁 module key
+
+function loadGalleryUnlocks() {
+  if (galleryUnlocked !== null) return; // 只查一次
+  galleryUnlocked = new Set();
+  const id = localStorage.getItem("ideal_userId");
+  if (!id) return; // 没建档 → 全锁
+  const token = localStorage.getItem("ideal_token");
+  fetch("/api/user/" + encodeURIComponent(id) + (token ? "?token=" + encodeURIComponent(token) : ""))
+    .then((r) => (r.ok ? r.json() : null))
+    .then((j) => {
+      const showcase = j?.showcase;
+      if (showcase && typeof showcase === "object") {
+        for (const k of Object.keys(showcase)) {
+          if (Array.isArray(showcase[k]) && showcase[k].length) galleryUnlocked.add(k);
+        }
+        if (ui.screen === "gallery") render(); // 查到就刷新剪影 → 解锁态
+      }
+    })
+    .catch(() => {}); // 读不到就保持全锁
+}
+
+function renderGallery() {
+  loadGalleryUnlocks();
+  const unlocked = galleryUnlocked || new Set();
+  const cards = GALLERY_MODULES.map((m) => {
+    const isUnlocked = unlocked.has(m.key);
+    const hidden = Array.from({ length: 3 }, () =>
+      `<div class="gx-hidden" title="隐藏款 · 未解锁"><span>🔒</span><small>???</small></div>`).join("");
+    return `
+    <div class="gx-card ${isUnlocked ? "unlocked" : "locked"}">
+      <div class="gx-silhouette">
+        <span class="gx-badge">${isUnlocked ? "✔" : "🔒"}</span>
+        <b>${esc(m.name)}</b>
+      </div>
+      <div class="gx-hidden-row">${hidden}</div>
+      <div class="gx-hidden-count">隐藏款 0/3</div>
+    </div>`;
+  }).join("");
+  $app.innerHTML = `
+    ${header(null, "图鉴 · 收集你解锁过的满分类型")}
+    <div class="glass gx-banner">图鉴 · 类型体系开发中，当前为占位预览版</div>
+    <div class="glass gx-life stack">
+      <div class="grow"><b class="gx-life-title">满分人生 ✦</b><span class="dim">付费深度报告 · 把你的所有满分类型合成一份人生档案</span></div>
+      <button class="btn" id="lifeBtn2">解锁满分人生 ✦</button>
+    </div>
+    <div class="gx-grid">${cards}</div>
+    <div class="glass center">
+      <button class="btn ghost" id="galleryBackBtn">返回首页</button>
+    </div>`;
+  document.getElementById("galleryBackBtn")?.addEventListener("click", () => {
+    ui.screen = ui._galleryReturn && ui._galleryReturn !== "gallery" ? ui._galleryReturn : "home";
+    render();
+  });
+  document.getElementById("lifeBtn2")?.addEventListener("click", openLifeModal);
+  bindSound();
+}
+
+/* --- 满分人生（付费占位 modal）--- */
+function openLifeModal() {
+  document.getElementById("lifeModal")?.remove();
+  const wrap = document.createElement("div");
+  wrap.id = "lifeModal";
+  wrap.className = "life-modal-overlay";
+  wrap.innerHTML = `
+    <div class="life-modal glass" role="dialog" aria-modal="true" aria-label="满分人生">
+      <b class="life-modal-title neon-amber">满分人生 ✦</b>
+      <p class="life-modal-body">付费深度报告 · 敬请期待。<br/>把你解锁过的所有满分类型，合成一份只属于你的人生档案。</p>
+      <button class="btn" id="lifeCloseBtn">知道了</button>
+    </div>`;
+  const close = () => wrap.remove();
+  wrap.addEventListener("click", (ev) => { if (ev.target === wrap) close(); });
+  document.body.appendChild(wrap);
+  document.getElementById("lifeCloseBtn")?.addEventListener("click", close);
+}
+
 /* --- 大厅 --- */
 // 按本桌卡组取题库：man/woman → DECKS（m/f 题面）；boss → 满分老板（不分锅底，三段合成单池）
 function decksForRoom(deckKey) {
   const q = renderLobby._q;
   if (!q) return null;
-  if (deckKey === "boss") {
-    const bm = q.BOSS_MODULE;
+  if (deckKey === "boss" || deckKey === "bestie") {
+    // 满分老板/满分闺蜜同款处理：不分锅底，三段 questions 合成一个池
+    const bm = deckKey === "bestie" ? q.BESTIE_MODULE : q.BOSS_MODULE;
     if (!bm?.decks) return null;
-    // R4：满分老板不分锅底，qingtang/fanqie/mala 三段 questions 合成一个池
     const questions = Object.values(bm.decks).flatMap((d) => (d?.questions || []));
-    return { all: { name: bm.name || "满分老板", questions } };
+    return { all: { name: bm.name || (deckKey === "bestie" ? "满分闺蜜" : "满分老板"), questions } };
   }
   return q.DECKS;
 }
@@ -786,9 +884,13 @@ function renderLobby(s) {
     catch { toast(invite); }
   });
   if (me.isHost && !renderLobby._q) {
-    Promise.all([loadQuestions(), loadBoss().catch(() => null)]).then(([q, boss]) => {
-      // P2 契约：boss.js 导出名为 MODULE（兼容 BOSS_MODULE 命名）
-      renderLobby._q = { DECKS: q.DECKS, BOSS_MODULE: boss?.MODULE || boss?.BOSS_MODULE || null };
+    Promise.all([loadQuestions(), loadBoss().catch(() => null), loadBestie().catch(() => null)]).then(([q, boss, bestie]) => {
+      // 契约：模组文件导出名为 MODULE（兼容 *_MODULE 命名）
+      renderLobby._q = {
+        DECKS: q.DECKS,
+        BOSS_MODULE: boss?.MODULE || boss?.BOSS_MODULE || null,
+        BESTIE_MODULE: bestie?.MODULE || bestie?.BESTIE_MODULE || null,
+      };
       if (ui.state?.phase === "lobby" && ui.state?.code === s.code) render();
     }).catch(() => toast("酒单半路洒了。刷新一下，我再拿一份。"));
   }
@@ -812,6 +914,11 @@ function renderLobby(s) {
         startMsg.module = "boss";
         startMsg.moduleName = bm?.name || "满分老板";
         startMsg.noun = bm?.noun || { m: "满分老板", f: "满分老板", n: "满分老板" };
+      } else if (s.deck === "bestie") {
+        const bm = renderLobby._q.BESTIE_MODULE;
+        startMsg.module = "bestie";
+        startMsg.moduleName = bm?.name || "满分闺蜜";
+        startMsg.noun = bm?.noun || { m: "满分闺蜜", f: "满分闺蜜", n: "满分闺蜜" };
       }
       send(startMsg);
     });

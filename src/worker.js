@@ -596,7 +596,7 @@ const LAOK_BUILTIN_POOL = Object.freeze({
 });
 
 // 卡组（R2/R4）：开桌选「今晚聊什么」——R4 删 agent、加 boss（满分老板）
-const ROOM_DECK_IDS = Object.freeze(["man", "woman", "boss"]);
+const ROOM_DECK_IDS = Object.freeze(["man", "woman", "boss", "bestie"]);
 
 // public/laok-lines.js 由 P 线程新建，可能尚不存在：
 // 用「运行期拼接的动态 import + try/catch」绕开 esbuild 的构建期解析，文件缺失时降级内置池。
@@ -732,7 +732,7 @@ const VALID_POOLS = Object.freeze(["all", "straight-f", "straight-m", "gay", "le
  *   seeking=x（不限）/ boss（满分老板，职场向）/ 任何错配 → neutral only
  * 导出供 qa/isolation-proof.mjs 直接调用（纯函数、无副作用）。 */
 export function allowedPoolsFor(deck, gender, seeking) {
-  if (deck === "boss") return ["neutral"];
+  if (deck === "boss" || deck === "bestie") return ["neutral"]; // 满分老板/满分闺蜜：非取向向，全 neutral
   if (seeking !== "m" && seeking !== "f") return ["neutral"]; // 含 seeking=x/未知
   if (deck === "man" && seeking === "m") {
     if (gender === "f") return ["neutral", "straight-m"]; // 直女看男

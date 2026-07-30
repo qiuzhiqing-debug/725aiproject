@@ -2,6 +2,7 @@
 // 前置：wrangler dev 已在 BASE 运行（或由 run-smoke 包装脚本拉起）
 import WebSocket from "ws";
 import { DECKS } from "../public/questions.js";
+import { allowedPoolsFor } from "../src/worker.js";
 import {
   chatPayload,
   danmakuPayload,
@@ -986,6 +987,17 @@ async function main() {
   ok(/^\d{4}$/.test(deckRoom.code) && deckRoom.deck === "woman", "建房 body.deck=woman 生效");
   const defDeckRoom = await (await fetch(BASE + "/api/room", { method: "POST" })).json();
   ok(defDeckRoom.deck === "man", "deck 缺省 = man");
+
+  // 满分闺蜜（bestie）：与 boss 平行的第 4 个卡组
+  ok(JSON.stringify(allowedPoolsFor("bestie", "f", "m")) === JSON.stringify(["neutral"])
+    && JSON.stringify(allowedPoolsFor("bestie", "m", "f")) === JSON.stringify(["neutral"])
+    && JSON.stringify(allowedPoolsFor("bestie", "n", "x")) === JSON.stringify(["neutral"]),
+    "allowedPoolsFor('bestie', …) 恒返回 ['neutral']（非取向向，隔离铁桶）");
+  const bestieRoom = await (await fetch(BASE + "/api/room", {
+    method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ deck: "bestie" }),
+  })).json();
+  ok(/^\d{4}$/.test(bestieRoom.code) && bestieRoom.deck === "bestie",
+    "建房 body.deck=bestie 被接受（不回退成 man）");
   const tablesR2 = await (await fetch(BASE + "/api/tables")).json();
   ok(tablesR2.tables.every((t) => "deck" in t), "/api/tables 每桌返回带 deck 字段");
 
