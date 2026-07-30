@@ -1,5 +1,32 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="满分酒桌局">
-  <rect width="64" height="64" rx="14" fill="#075dff"/>
-  <path d="M5 48h54v11H5z" fill="#22dcff"/>
-  <path d="M14 18h8v27h-8V27l-5 3v-8l8-4h5zm27-1c10 0 14 7 14 15s-4 15-14 15-14-7-14-15 4-15 14-15zm0 8c-4 0-5 3-5 7s1 7 5 7 5-3 5-7-1-7-5-7z" fill="#fff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="理想型·加载中 霓虹马天尼杯">
+  <!-- 霓虹马天尼杯：与全站 logo 同源——三层霓虹管（宽晕+中晕+锐芯）+ 霓虹橄榄 -->
+  <defs>
+    <filter id="fvWide" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="2.4"/>
+    </filter>
+    <filter id="fvMid" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="1"/>
+    </filter>
+    <filter id="fvTight" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="0.35"/>
+    </filter>
+    <!-- 杯体：倒三角杯碗 + 细杯脚 + 底座（手绘 path） -->
+    <path id="fvGlass"
+          d="M 16 18 L 48 18 L 32 40 L 32 52 M 22 52 L 42 52 M 20 27 L 44 27"
+          fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </defs>
+
+  <!-- 深底圆角卡片 -->
+  <rect width="64" height="64" rx="14" fill="#160c22"/>
+  <rect x="1.5" y="1.5" width="61" height="61" rx="12.5" fill="none"
+        stroke="#a86bff" stroke-width="1.4" opacity="0.45" filter="url(#fvMid)"/>
+
+  <!-- 青色霓虹杯管：宽晕 → 中晕 → 锐芯 -->
+  <use href="#fvGlass" stroke="#2de2ff" stroke-width="7" opacity="0.5" filter="url(#fvWide)"/>
+  <use href="#fvGlass" stroke="#2de2ff" stroke-width="3.4" opacity="0.9" filter="url(#fvMid)"/>
+  <use href="#fvGlass" stroke="#c9f7ff" stroke-width="1.5" filter="url(#fvTight)"/>
+
+  <!-- 品红橄榄小灯（杯碗内点缀） -->
+  <circle cx="32" cy="24.5" r="4.2" fill="#ff2d78" opacity="0.5" filter="url(#fvWide)"/>
+  <circle cx="32" cy="24.5" r="2.3" fill="#ffb0cd" filter="url(#fvTight)"/>
 </svg>

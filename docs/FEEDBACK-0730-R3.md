@@ -50,7 +50,16 @@
   - 直女（seeking=m，看满分男/直男）→ 只出 `straight-m`/`neutral` 池，**排除 gay**。
   - 男同（若产品有此路径）→ 才出 gay 池。当前若 seeking 无法区分"直女看男"vs"男同看男"，R1 给出方案（新增维度或 seeking 语义修正），A 实现。
   - 交付前用脚本证明：直女档案连抽 N 题 0 条 gay 池命中。
-- **爆灯灭灯 solo + 展示柜（R2 取证后细化）**：solo 局每题 reveal 带 lights 数据；结算写入用户 records，展示柜（u.html）按题展示爆/灭灯统计。字段名 R2 取证后定，A 定义、F/E 消费。
+- **爆灯灭灯 solo + 展示柜（R2 取证已细化，字段钉死）**：
+  - **取证结论（Kim 质疑全中）**：solo 前端 app.js L1283 硬跳过、后端 solo 票源恒 0（worker.js L1711 主角不能自投 / L2086 lightTotal=活跃-1=0）；灯从不落 KV（maybeReveal L1993 push record 时没带 lights；buildAha L2139 聚合写死 0；saveAha L1472 上报 profile 不含灯；sanitizeRecordProfile L261 白名单无灯字段）；u.html L637-663 不渲染灯。
+  - **solo 灯语义（PM 决策，可逆，待 Kim 早上确认）**：solo 无他人，改为**玩家本人给每张"满分X但是…"卡点灯**——爆灯=瑕不掩瑜/灭灯=就这点 pass。展示柜拉的是"今晚你的爆/灭灯率"（真数据，非系统假投）。多人局语义不变（他人给主角投灯）。
+  - **字段契约（A 定义，E/F 照此消费，不许私改字段名）**：
+    - 每题 record 增 `lights: {voterId: "burst"|"off"}` 快照（worker.js maybeReveal push record 处）。
+    - aha 聚合真值：`aha.stats.lights = { burst, off, voted, burstPct }`（buildAha 替换写死 0）。
+    - 客户端 saveAha 上报 `profile.burstTotal` / `profile.offTotal`（app.js L1472 profile 对象加）。
+    - KV 白名单放行 `burstTotal` / `offTotal`（sanitizeRecordProfile 加，Number 兜底）。
+    - 展示柜 u.html record-card 渲染 `💗 ${p.burstTotal} · 🖤 ${p.offTotal}`（L659-663 间）。
+    - solo：前端 renderReveal 去掉 `${solo?"":…}` 对灯面板的门控，solo 走"本人投灯"分支（爆/灭按钮可点，投完置灰）；后端 solo 分支允许主角自投（放开 L1711 对 solo 的限制）、lightTotal 给基数 1。
 - **favicon**：`public/favicon.svg` 内容替换为马天尼杯（viewBox 保持 0 0 64 64，暗紫霓虹调，与站内 logo.svg 同源风格）。
 
 ## 文件所有权（本轮，继承 R2 + 补充）
