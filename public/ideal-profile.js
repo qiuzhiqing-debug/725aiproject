@@ -67,27 +67,77 @@ const CORE_TIERS = Object.freeze({
   },
 });
 
-// 称号拼装表：形容词取自第一突出维度，名词取自第二突出维度（24×24 组合）
-const PERSONA_ADJ = Object.freeze({
-  boundary: { high: "边界感精装修的", mid: "看人下菜碟的", low: "不设防的" },
-  warmth: { high: "情绪价值拉满的", mid: "冷热交替供应的", low: "嘴硬心软的" },
-  money: { high: "算盘打得响的", mid: "选择性大方的", low: "月底吃土的" },
-  play: { high: "野得没有淡季的", mid: "定期发疯的", low: "岁月静好的" },
-  control: { high: "全都安排上的", mid: "关键时刻出手的", low: "彻底放养的" },
-  romance: { high: "浪漫浓度超标的", mid: "限量供应浪漫的", low: "闷声干大事的" },
-  absurd: { high: "抽象浓度爆表的", mid: "半懂装懂的", low: "一本正经的" },
-  meme: { high: "5G冲浪的", mid: "梗慢半拍的", low: "赛博纯真的" },
+/* ================================================================
+ * TYPE-16 型号体系（R8 定稿，docs/FEEDBACK-0801-R8.md §4/§6）
+ * 旧 ADJ×NOUN 自由拼装称号已弃用（576 组合不可图鉴）；
+ * 称号 = 型号名，16 个固定桶：4 族 × 族内主导维 × 方向。
+ * 常数由 PM 用 10000 局人群模拟标定（α=0.7 部分归一），逐字采用，禁止调参；
+ * 改题库/tag 必须重跑标定后同步 TYPE_NORM。
+ * ================================================================ */
+export const TYPE_ALPHA = 0.7;
+
+// 每维「题库覆盖归一因子」（人群标定 σ）
+export const TYPE_NORM = Object.freeze({
+  boundary: 0.731, warmth: 0.330, money: 0.370, play: 0.461,
+  control: 0.737, romance: 0.374, absurd: 0.605, meme: 0.330,
 });
-const PERSONA_NOUN = Object.freeze({
-  boundary: { high: "人形保险柜", mid: "海关关长", low: "透明人室友装" },
-  warmth: { high: "人形充电宝", mid: "自助餐大厨", low: "沉默投喂机" },
-  money: { high: "首席财务官", mid: "隐藏款富哥", low: "破产美食家" },
-  play: { high: "游乐场厂长", mid: "周末限定演员", low: "沙发钉子户" },
-  control: { high: "行程总导演", mid: "备胎方案批发商", low: "副驾DJ" },
-  romance: { high: "细节收藏家", mid: "惊喜盲盒", low: "周三魔法师" },
-  absurd: { high: "对线艺术家", mid: "认真查梗员", low: "人形翻译器" },
-  meme: { high: "冲浪运动员", mid: "复盘型选手", low: "词典派学者" },
-});
+
+// 四族固定序（平局破序用）：order→hot→wild→worldly；族内 d1 优先
+const TYPE_FAMILIES = Object.freeze([
+  Object.freeze({ family: "order", dims: Object.freeze(["boundary", "control"]) }),
+  Object.freeze({ family: "hot", dims: Object.freeze(["warmth", "romance"]) }),
+  Object.freeze({ family: "wild", dims: Object.freeze(["play", "absurd"]) }),
+  Object.freeze({ family: "worldly", dims: Object.freeze(["money", "meme"]) }),
+]);
+
+// 隐藏款 = 人群验证最稀有 3 型（#05 充电宝 / #13 CFO / #16 学者）
+export const HIDDEN_TYPE_IDS = Object.freeze([5, 13, 16]);
+
+export const TYPE_TABLE = Object.freeze([
+  Object.freeze({ id: 1, code: "#01", key: "boundary+", name: "边界感精装修的人形保险柜", family: "order", hidden: false }),
+  Object.freeze({ id: 2, code: "#02", key: "boundary-", name: "不设防的透明人", family: "order", hidden: false }),
+  Object.freeze({ id: 3, code: "#03", key: "control+", name: "全都安排上的行程总导演", family: "order", hidden: false }),
+  Object.freeze({ id: 4, code: "#04", key: "control-", name: "彻底放养的副驾DJ", family: "order", hidden: false }),
+  Object.freeze({ id: 5, code: "#05", key: "warmth+", name: "情绪价值拉满的人形充电宝", family: "hot", hidden: true }),
+  Object.freeze({ id: 6, code: "#06", key: "warmth-", name: "嘴硬心软的沉默投喂机", family: "hot", hidden: false }),
+  Object.freeze({ id: 7, code: "#07", key: "romance+", name: "浪漫浓度超标的细节收藏家", family: "hot", hidden: false }),
+  Object.freeze({ id: 8, code: "#08", key: "romance-", name: "闷声干大事的周三魔法师", family: "hot", hidden: false }),
+  Object.freeze({ id: 9, code: "#09", key: "play+", name: "野得没有淡季的游乐场厂长", family: "wild", hidden: false }),
+  Object.freeze({ id: 10, code: "#10", key: "play-", name: "岁月静好的沙发钉子户", family: "wild", hidden: false }),
+  Object.freeze({ id: 11, code: "#11", key: "absurd+", name: "抽象浓度爆表的对线艺术家", family: "wild", hidden: false }),
+  Object.freeze({ id: 12, code: "#12", key: "absurd-", name: "一本正经的人形翻译器", family: "wild", hidden: false }),
+  Object.freeze({ id: 13, code: "#13", key: "money+", name: "算盘打得响的首席财务官", family: "worldly", hidden: true }),
+  Object.freeze({ id: 14, code: "#14", key: "money-", name: "月底吃土的破产美食家", family: "worldly", hidden: false }),
+  Object.freeze({ id: 15, code: "#15", key: "meme+", name: "5G冲浪的热梗批发商", family: "worldly", hidden: false }),
+  Object.freeze({ id: 16, code: "#16", key: "meme-", name: "赛博纯真的词典派学者", family: "worldly", hidden: true }),
+]);
+
+const TYPE_BY_KEY = Object.freeze(Object.fromEntries(TYPE_TABLE.map((t) => [t.key, t])));
+
+/**
+ * 判型纯函数：8 维分向量 → TYPE_TABLE 条目（确定性：同 scores 永远同型）。
+ * z[d] = scores[d] / norm[d]^α → 族强度 = |z[d1]|+|z[d2]|（严格大于才换族，平局留前者）
+ * → 族内主导维 = |z| 大者（平局取 d1，用 >=）→ 方向 z>=0 为 "+"。
+ * 全零向量按上述平局规则自然落 #01（order→boundary→+）。
+ */
+export function classifyType16(scores) {
+  const z = {};
+  for (const d of DIM_KEYS) {
+    const raw = Number(scores?.[d]) || 0;
+    z[d] = raw / Math.pow(TYPE_NORM[d], TYPE_ALPHA);
+  }
+  let best = TYPE_FAMILIES[0];
+  let bestStrength = Math.abs(z[best.dims[0]]) + Math.abs(z[best.dims[1]]);
+  for (let i = 1; i < TYPE_FAMILIES.length; i++) {
+    const fam = TYPE_FAMILIES[i];
+    const strength = Math.abs(z[fam.dims[0]]) + Math.abs(z[fam.dims[1]]);
+    if (strength > bestStrength) { best = fam; bestStrength = strength; }
+  }
+  const [d1, d2] = best.dims;
+  const dom = Math.abs(z[d1]) >= Math.abs(z[d2]) ? d1 : d2;
+  const sign = z[dom] >= 0 ? "+" : "-";
+  return TYPE_BY_KEY[dom + sign];
+}
 
 /* ================================================================
  * 二、tag → 维度权重表（打分器输入端）
@@ -715,11 +765,9 @@ export function buildIdealProfile({ records, genderPreference, seeking, seed }) 
 
   const top1 = ranked[0] || { key: "warmth", score: 0.3 };
   const top2 = ranked[1] || { key: "play", score: 0.2 };
-  const tier1 = dimTier(top1.score);
-  const tier2 = dimTier(top2.score);
-  const archetype =
-    (PERSONA_ADJ[top1.key]?.[tier1] || "神秘气质的") +
-    (PERSONA_NOUN[top2.key]?.[tier2] || "理想搭档");
+  // TYPE-16（R8）：称号 = 型号名，不再自由拼装
+  const type = classifyType16(scores);
+  const archetype = type.name;
 
   const mbti = MBTI_MAP.map((fn) => fn(scores)).join("");
   const occupList = OCCUPATIONS[top2.key] || OCCUPATIONS.play;
@@ -790,6 +838,7 @@ export function buildIdealProfile({ records, genderPreference, seeking, seed }) 
   };
   const matchCard = {
     archetype, mbti, occupation,
+    typeCode: type.code, typeName: type.name,
     presentation, birthDate, zodiac, identity, bio, keywords,
     fictional: true,
   };
@@ -800,9 +849,10 @@ export function buildIdealProfile({ records, genderPreference, seeking, seed }) 
     matchCard,
     relationship,
     coreText,
+    type: { id: type.id, code: type.code, key: type.key, name: type.name, family: type.family, hidden: type.hidden },
     stages: [
       { id: "portrait", title: "理想型立绘", data: { prompt, imageUrl, archetype, palette } },
-      { id: "profile", title: "相亲档案", data: { archetype, mbti, occupation, presentation, birthDate, zodiac, identity, keywords } },
+      { id: "profile", title: "相亲档案", data: { archetype, mbti, occupation, presentation, birthDate, zodiac, identity, keywords, typeCode: type.code, typeName: type.name } },
       { id: "relationship", title: "相处细节", data: { details, heading, chemistry } },
     ],
   };

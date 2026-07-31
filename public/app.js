@@ -146,6 +146,7 @@ const ui = {
     "🍺",
   drink: localStorage.getItem("mfn_drink") || "beer",
   deck: ROOM_DECKS[localStorage.getItem("mfn_deck")] ? localStorage.getItem("mfn_deck") : "man",
+  codexDeck: "man", // 图鉴当前翻开的本（R8：man|woman|boss|bestie）
   seeking: null, // 注册档案「想看的取向」m|f|x（resolveSeeking 异步填充，join 时带上）
   gender: null, // 注册档案 viewer 自身性别 m|f（隔离铁桶用：直女/男同、直男/拉拉区分）
   solo: PARAMS.get("solo") === "1",
@@ -718,67 +719,104 @@ function renderHome() {
   bindSound();
 }
 
-/* --- 图鉴（占位骨架，非终版）---
-   Kim：先留个可点击的图鉴图标 + 收集概念。类型体系未定，本版全部剪影占位。
-   解锁判定：best-effort 读服务端 showcase（有 ideal_userId 才查）；读不到就全锁，绝不报错。 */
-const GALLERY_MODULES = [
-  { name: "满分男", key: "lover" },
-  { name: "满分女", key: "lover" },
-  { name: "满分老板", key: "boss" },
-  { name: "满分闺蜜", key: "bestie" },
-  { name: "满分室友", key: "roommate" },
-  { name: "满分老师", key: "teacher" },
+/* --- 图鉴（R8 CODEX）：按 deck 分本收集型号徽章 ---
+   Kim 钦定：进度存 KV 跟账号走；满分男/满分女是爱情方向两本，老板一本、闺蜜一本；
+   每本 16 型号（TYPE_TABLE），其中 3 个隐藏款未解锁时显示剪影+？？？。
+   「16 个是标签不是 16 个人」：图鉴收藏的是型号徽章（固定），每局档案/立绘照旧随 seed 变。 */
+const CODEX_BOOKS = [
+  { key: "man", name: "满分男" },
+  { key: "woman", name: "满分女" },
+  { key: "boss", name: "满分老板" },
+  { key: "bestie", name: "满分闺蜜" },
 ];
-let galleryUnlocked = null; // null=未查；Set=已查到的已解锁 module key
+const CODEX_SOON = ["满分室友", "满分老师"]; // 敬请期待占位
+let codexProgress = null; // null=未查；object=GET /api/user/:id 下发的 codex
+let codexFetching = false;
+let typeTableCache = null; // TYPE_TABLE（ideal-profile.js 懒加载，TYPE 线契约）
 
-function loadGalleryUnlocks() {
-  if (galleryUnlocked !== null) return; // 只查一次
-  galleryUnlocked = new Set();
+function loadCodexDeps() {
+  if (!typeTableCache) {
+    loadIdealProfile()
+      .then((mod) => {
+        if (Array.isArray(mod?.TYPE_TABLE) && mod.TYPE_TABLE.length) {
+          typeTableCache = mod.TYPE_TABLE;
+          if (ui.screen === "gallery") render();
+        }
+      })
+      .catch(() => {}); // 型号表读不到 → 图鉴格子保持加载占位，绝不报错
+  }
   const id = localStorage.getItem("ideal_userId");
-  if (!id) return; // 没建档 → 全锁
+  if (!id || codexProgress !== null || codexFetching) return;
+  codexFetching = true;
   const token = localStorage.getItem("ideal_token");
   fetch("/api/user/" + encodeURIComponent(id) + (token ? "?token=" + encodeURIComponent(token) : ""))
     .then((r) => (r.ok ? r.json() : null))
     .then((j) => {
-      const showcase = j?.showcase;
-      if (showcase && typeof showcase === "object") {
-        for (const k of Object.keys(showcase)) {
-          if (Array.isArray(showcase[k]) && showcase[k].length) galleryUnlocked.add(k);
-        }
-        if (ui.screen === "gallery") render(); // 查到就刷新剪影 → 解锁态
-      }
+      codexProgress = j?.codex && typeof j.codex === "object" ? j.codex : {};
+      if (ui.screen === "gallery") render();
     })
-    .catch(() => {}); // 读不到就保持全锁
+    .catch(() => { codexProgress = null; }) // 读不到保持未查状态 → 下次打开图鉴自动重试（渲染层视为全锁）
+    .finally(() => { codexFetching = false; });
+}
+
+// 一格型号徽章：普通未解锁=剪影+编号；隐藏款未解锁=剪影+？？？；解锁=编号+名称+×count（隐藏款加✦）
+function codexCellHtml(t, entry) {
+  const count = Number(entry?.count) || 0;
+  if (count < 1) {
+    return `<div class="gx-type locked${t.hidden ? " hidden-type" : ""}" title="${t.hidden ? "隐藏款 · 抽到才揭示" : "未解锁"}">
+      <span class="gx-type-sil" aria-hidden="true">👤</span>
+      <b class="gx-type-code">${t.hidden ? "？？？" : esc(t.code)}</b>
+    </div>`;
+  }
+  return `<div class="gx-type unlocked${t.hidden ? " hidden-type" : ""}" title="${esc(t.code)} ${esc(t.name)}">
+    <b class="gx-type-code">${esc(t.code)}${t.hidden ? ` <span class="gx-type-star">✦</span>` : ""}</b>
+    <span class="gx-type-name">${esc(t.name)}</span>
+    <span class="gx-type-count">×${count}</span>
+  </div>`;
 }
 
 function renderGallery() {
-  loadGalleryUnlocks();
-  const unlocked = galleryUnlocked || new Set();
-  const cards = GALLERY_MODULES.map((m) => {
-    const isUnlocked = unlocked.has(m.key);
-    const hidden = Array.from({ length: 3 }, () =>
-      `<div class="gx-hidden" title="隐藏款 · 未解锁"><span>🔒</span><small>???</small></div>`).join("");
-    return `
-    <div class="gx-card ${isUnlocked ? "unlocked" : "locked"}">
-      <div class="gx-silhouette">
-        <span class="gx-badge">${isUnlocked ? "✔" : "🔒"}</span>
-        <b>${esc(m.name)}</b>
-      </div>
-      <div class="gx-hidden-row">${hidden}</div>
-      <div class="gx-hidden-count">隐藏款 0/3</div>
-    </div>`;
-  }).join("");
+  loadCodexDeps();
+  const loggedIn = !!localStorage.getItem("ideal_userId");
+  const types = typeTableCache || [];
+  const book = CODEX_BOOKS.find((b) => b.key === ui.codexDeck) || CODEX_BOOKS[0];
+  const bookOf = (key) => (loggedIn && codexProgress?.[key] && typeof codexProgress[key] === "object" ? codexProgress[key] : {});
+  const unlockedIn = (key) => types.filter((t) => Number(bookOf(key)[t.id]?.count) > 0).length;
+  const tabs = CODEX_BOOKS.map((b) => `
+    <button type="button" class="gx-book-tab ${b.key === book.key ? "sel" : ""}" data-book="${b.key}">
+      <b>${b.name}</b><small>${loggedIn ? `${unlockedIn(b.key)}/16` : "0/16"}</small>
+    </button>`).join("");
+  const cells = types.length
+    ? types.map((t) => codexCellHtml(t, bookOf(book.key)[t.id])).join("")
+    : `<div class="gx-type-loading dim">型号表加载中…</div>`;
+  const soon = CODEX_SOON.map((name) => `
+    <div class="gx-soon"><b>${name}</b><span>敬请期待</span></div>`).join("");
   $app.innerHTML = `
-    ${header(null, "图鉴 · 收集你解锁过的满分类型")}
-    <div class="glass gx-banner">图鉴 · 类型体系开发中，当前为占位预览版</div>
+    ${header(null, "图鉴 · 收集你解锁过的满分型号")}
     <div class="glass gx-life stack">
       <div class="grow"><b class="gx-life-title">满分人生 ✦</b><span class="dim">付费深度报告 · 把你的所有满分类型合成一份人生档案</span></div>
       <button class="btn" id="lifeBtn2">解锁满分人生 ✦</button>
     </div>
-    <div class="gx-grid">${cards}</div>
+    ${loggedIn ? "" : `<div class="glass gx-banner">登录后开始收集 · 图鉴进度跟账号走</div>`}
+    <div class="gx-codex${loggedIn ? "" : " gx-locked-page"}" ${loggedIn ? "" : `aria-disabled="true"`}>
+      <div class="gx-book-tabs">${tabs}</div>
+      <div class="gx-book-head">
+        <b>${book.name}图鉴</b>
+        <span class="dim">已收集 ${loggedIn ? unlockedIn(book.key) : 0}/16 · 隐藏款 ✦×3</span>
+      </div>
+      <div class="gx-type-grid">${cells}</div>
+      <div class="gx-book-note dim">16 个是型号标签，不是 16 个人——同一型号每局都是不同的档案和立绘。</div>
+      <div class="gx-soon-row">${soon}</div>
+    </div>
     <div class="glass center">
       <button class="btn ghost" id="galleryBackBtn">返回首页</button>
     </div>`;
+  document.querySelector(".gx-book-tabs")?.addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-book]");
+    if (!b) return;
+    ui.codexDeck = b.dataset.book;
+    render();
+  });
   document.getElementById("galleryBackBtn")?.addEventListener("click", () => {
     ui.screen = ui._galleryReturn && ui._galleryReturn !== "gallery" ? ui._galleryReturn : "home";
     render();
@@ -1594,6 +1632,48 @@ async function maybeSaveAhaProfile(s, aha, profile, confirmedUrl) {
   }
 }
 
+// R8 图鉴收集：主角本人的 aha 上报本局型号 → POST /api/user/:id/codex {deck, typeId}。
+// 失败静默（绝不阻塞动画）；按 aha.id 持久化判重，finished 回看/刷新不重复计数。
+const CODEX_SAVED_LS = "mfn_codex_saved";
+const savedCodexKeys = (() => {
+  try { return new Set(JSON.parse(localStorage.getItem(CODEX_SAVED_LS) || "[]")); }
+  catch { return new Set(); }
+})();
+function persistSavedCodexKeys() {
+  try { localStorage.setItem(CODEX_SAVED_LS, JSON.stringify([...savedCodexKeys].slice(-50))); } catch {}
+}
+async function maybeReportCodex(s, aha, profile) {
+  const typeId = profile?.type?.id; // TYPE 线契约字段；缺失（旧档案/旧 worker）则不上报
+  if (!Number.isInteger(typeId) || typeId < 1 || typeId > 16) return;
+  if (!aha?.protagonist?.name || aha.protagonist.name !== s.you?.name) return; // 只记自己的局
+  const deck = ROOM_DECKS[s.deck] ? s.deck : null;
+  if (!deck) return;
+  const userId = localStorage.getItem("ideal_userId");
+  const token = localStorage.getItem("ideal_token");
+  if (!userId || !token || PREVIEW) return; // 登录判定与展示柜直存同源；预览不上报
+  const key = "codex:" + ahaSaveKey(s, aha);
+  if (savedCodexKeys.has(key)) return;
+  savedCodexKeys.add(key); // 乐观锁，防重复提交
+  persistSavedCodexKeys();
+  try {
+    const res = await fetch(`/api/user/${userId}/codex`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, deck, typeId }),
+    });
+    if (res.ok) {
+      const j = await res.json().catch(() => null);
+      if (j?.codex) codexProgress = j.codex; // 图鉴页下次打开直接是新进度
+    } else {
+      savedCodexKeys.delete(key); // 服务端拒绝 → 允许下次重试
+      persistSavedCodexKeys();
+    }
+  } catch {
+    savedCodexKeys.delete(key);
+    persistSavedCodexKeys();
+  }
+}
+
 function renderAha(s, aha, isFinal) {
   const me = s.you;
   aha = aha || {};
@@ -1615,6 +1695,8 @@ function renderAha(s, aha, isFinal) {
   const keywords = Array.isArray(card.keywords) ? card.keywords : [];
   const details = Array.isArray(relationship.details) ? relationship.details : [];
   const solo = !!s.solo;
+  // R8：本局主角是自己且已登录 → 上报图鉴收集（静默，不 await、不阻塞动画）
+  maybeReportCodex(s, aha, profile);
   // 展示柜写入时机：立绘确认加载成功（ui.ahaArtUrl 有值）后带确认 URL 写；
   // 若图迟迟不来，10s 兜底按默认 URL 写（异步生成场景不丢记录）。
   if (ui.ahaArtUrl != null) {
@@ -1648,6 +1730,15 @@ function renderAha(s, aha, isFinal) {
   const waitGenderKey = { m: "masc", f: "femme", n: "androgynous" }[aha.gender] || "any";
   const waiting = moduleProfiles?.[waitModule]?.waiting || null;
   const waitingText = waiting ? (waiting[waitGenderKey] || waiting.any || waiting.androgynous || "") : "";
+  // R8 型号角标（亮相页第一页）：#07 · 名称；隐藏款加 ✦。type 数据缺失则整个角标不渲染。
+  const typeInfo = profile.type && profile.type.code && profile.type.name ? profile.type : null;
+  const typeBadgeHtml = typeInfo
+    ? `<div class="gx-type-badge${typeInfo.hidden ? " hidden-type" : ""}" title="本局型号（图鉴收藏的是型号徽章，档案每局都变）">
+        <span class="gx-type-badge-code">${esc(typeInfo.code)}</span>
+        <span class="gx-type-badge-name">${esc(typeInfo.name)}</span>
+        ${typeInfo.hidden ? `<span class="gx-type-star" title="隐藏款">✦</span>` : ""}
+      </div>`
+    : "";
   const stageBody = stage === 0 ? `
     <div class="aha-stage portrait-stage" style="--profile-primary:${primary};--profile-accent:${accent}">
       <div class="art-wrap" id="artWrap">
@@ -1657,6 +1748,7 @@ function renderAha(s, aha, isFinal) {
         ${waitingText ? `<div class="waiting-egg" role="status">${esc(waitingText)}</div>` : ""}
       </div>
       <div class="caption">
+        ${typeBadgeHtml}
         <b class="ideal-name">${esc(card.archetype || "理想型档案")}</b>
         <div class="ideal-meta">${[card.mbti, card.presentation, relationship.chemistry]
           .filter(Boolean).map((m) => `<span>${esc(m)}</span>`).join("")}</div>
@@ -2103,6 +2195,12 @@ function buildPreviewState(screen) {
       archetypeHint: seed === 2 ? "power-ceo" : "wild-charmer",
       seed: `preview-${seed}`,
     });
+    // R8 QA：?preview=aha 下型号角标必须可截图。TYPE 线正常时用真 type；缺失则造个假的兜底。
+    if (!profile.type?.id) {
+      profile.type = seed === 2
+        ? { id: 13, code: "#13", key: "money+", name: "算盘打得响的首席财务官", family: "worldly", hidden: true }
+        : { id: 7, code: "#07", key: "romance+", name: "浪漫浓度超标的细节收藏家", family: "hot", hidden: false };
+    }
     return {
       id: `preview-${seed}`,
       light: { burst: 3, off: 1, voted: 4, total: 4, mine: null, yours: null, canVote: true, burstNames: ["coco", "阿豪", "麦当劳"], offNames: ["这是一个超长昵称测试员"] },

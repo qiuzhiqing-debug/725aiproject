@@ -25,6 +25,11 @@ export default {
     if (uvm && req.method === "POST") {
       return handleRecordVisibility(req, uvm[1], Number(uvm[2]), env);
     }
+    // 图鉴收集（R8 CODEX）：POST /api/user/:id/codex  body {token, deck, typeId}
+    const ucm = url.pathname.match(/^\/api\/user\/([A-Za-z0-9-]{4,40})\/codex$/);
+    if (ucm && req.method === "POST") {
+      return handleUserCodex(req, ucm[1], env);
+    }
 
     // 展示柜点赞：POST /api/showcase/like { recordId }
     if (url.pathname === "/api/showcase/like" && req.method === "POST") {
@@ -146,7 +151,8 @@ async function readJson(req, maxBytes = 32 * 1024) {
 }
 
 /* ============ 用户档案（KV: USERS） ============ */
-// value 结构：{ id, token, nick, cocktail, avatarSeed, createdAt, updatedAt, records: [{module, role, profile, ts}] }
+// value 结构：{ id, token, nick, cocktail, avatarSeed, createdAt, updatedAt, records: [{module, role, profile, ts}],
+//              codex: { man|woman|boss|bestie: { "1".."16": { count, firstAt } } } }（R8 图鉴收集，跟账号走）
 // KV 单 value 128KB 限制 → records 超 100 条截断最旧的。
 
 const USER_RECORDS_LIMIT = 100;
@@ -244,6 +250,8 @@ async function handleUserGet(id, env, token) {
     owner,
     playCount: visibleCount,
     showcase,
+    // R8 图鉴收集进度：codex[deck][typeId] = { count, firstAt }（跟账号走，公开可见）
+    codex: user.codex && typeof user.codex === "object" ? user.codex : {},
   });
 }
 
@@ -308,6 +316,35 @@ async function handleRecordVisibility(req, id, idx, env) {
   user.updatedAt = Date.now();
   await env.USERS.put(key, JSON.stringify(user));
   return jsonRes({ ok: true, idx, hidden: records[idx].hidden });
+}
+
+// R8 图鉴收集：主角本人 aha 时上报本局型号 → codex[deck][typeId].count+1（firstAt 只写首次）。
+// 鉴权与 records 端点同级：必须带本人 token。防刷 MVP：只记 count+firstAt，solo 也入账。
+async function handleUserCodex(req, id, env) {
+  if (!env.USERS) return jsonRes({ error: "USERS KV 未绑定" }, 500);
+  let body;
+  try { body = await readJson(req); } catch { return jsonRes({ error: "body 不是合法 JSON" }, 400); }
+  const deck = body.deck;
+  const typeId = body.typeId;
+  if (!ROOM_DECK_IDS.includes(deck)) return jsonRes({ error: "deck 不合法" }, 400);
+  if (!Number.isInteger(typeId) || typeId < 1 || typeId > 16) {
+    return jsonRes({ error: "typeId 必须是 1..16 的整数" }, 400);
+  }
+  const key = "user:" + id;
+  const user = await env.USERS.get(key, "json");
+  if (!user) return jsonRes({ error: "档案不存在" }, 404);
+  if (!body.token || user.token !== body.token) return jsonRes({ error: "token 不符" }, 403);
+  if (!user.codex || typeof user.codex !== "object") user.codex = {};
+  if (!user.codex[deck] || typeof user.codex[deck] !== "object") user.codex[deck] = {};
+  const entry = user.codex[deck][typeId];
+  if (entry && typeof entry === "object") {
+    entry.count = (Number(entry.count) || 0) + 1; // firstAt 只写一次，累加不覆盖
+  } else {
+    user.codex[deck][typeId] = { count: 1, firstAt: Date.now() };
+  }
+  user.updatedAt = Date.now();
+  await env.USERS.put(key, JSON.stringify(user));
+  return jsonRes({ ok: true, codex: user.codex });
 }
 
 /* ============ 展示柜点赞 / 评论（R5 §1.3/§2；挂 USERS KV 同一份记录，不新建 namespace） ============ */

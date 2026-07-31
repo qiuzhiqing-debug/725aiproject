@@ -842,6 +842,52 @@ async function main() {
   const introView = await (await fetch(`${BASE}/api/user/${created.userId}`)).json();
   ok(introView.cocktail?.intro === "先苦后甜，像极了暗恋", "cocktail.intro 通过白名单保存");
 
+  /* ================= R8：图鉴收集 codex（KV 跟账号走） ================= */
+  console.log("\n-- R8 图鉴 codex --");
+
+  const CODEX_H = { "content-type": "application/json" };
+  const postCodex = (body) => fetch(`${BASE}/api/user/${created.userId}/codex`, {
+    method: "POST", headers: CODEX_H, body: JSON.stringify({ token: created.token, ...body }),
+  });
+
+  // ① 合法请求 200 且 count 递增、firstAt 只写一次
+  const cdx1Res = await postCodex({ deck: "man", typeId: 7 });
+  const cdx1 = await cdx1Res.json();
+  ok(cdx1Res.status === 200 && cdx1.ok === true && cdx1.codex?.man?.[7]?.count === 1,
+    "POST codex {man,7} → 200 count=1");
+  const firstAt1 = cdx1.codex?.man?.[7]?.firstAt;
+  ok(Number.isFinite(firstAt1) && firstAt1 > 0, `首次解锁写入 firstAt=${firstAt1}`);
+  await sleep(30); // 保证两次写入时间戳可区分，验证 firstAt 不被覆盖
+  const cdx2 = await (await postCodex({ deck: "man", typeId: 7 })).json();
+  ok(cdx2.codex?.man?.[7]?.count === 2, "同型号再抽 → count 递增为 2");
+  ok(cdx2.codex?.man?.[7]?.firstAt === firstAt1, "firstAt 只写一次，重复解锁不覆盖");
+  const cdx3 = await (await postCodex({ deck: "woman", typeId: 16 })).json();
+  ok(cdx3.codex?.woman?.[16]?.count === 1 && cdx3.codex?.man?.[7]?.count === 2,
+    "不同 deck 分本记账：woman#16 与 man#7 互不影响");
+
+  // ② 非法 deck / typeId=0 / typeId=17 / 非整数 → 400
+  ok((await postCodex({ deck: "lover", typeId: 3 })).status === 400, "非法 deck=lover → 400");
+  ok((await postCodex({ deck: "man", typeId: 0 })).status === 400, "typeId=0 → 400");
+  ok((await postCodex({ deck: "man", typeId: 17 })).status === 400, "typeId=17 → 400");
+  ok((await postCodex({ deck: "man", typeId: 7.5 })).status === 400, "typeId=7.5 非整数 → 400");
+  ok((await postCodex({ deck: "man", typeId: "7" })).status === 400, "typeId 字符串 → 400");
+  // 鉴权与 records 端点同级：错 token 403，用户不存在 404
+  const cdxBadToken = await fetch(`${BASE}/api/user/${created.userId}/codex`, {
+    method: "POST", headers: CODEX_H, body: JSON.stringify({ token: "wrong-token", deck: "man", typeId: 7 }),
+  });
+  ok(cdxBadToken.status === 403, "codex 错 token → 403");
+  const cdxNoUser = await fetch(`${BASE}/api/user/nonexist404/codex`, {
+    method: "POST", headers: CODEX_H, body: JSON.stringify({ token: "x", deck: "man", typeId: 7 }),
+  });
+  ok(cdxNoUser.status === 404, "codex 用户不存在 → 404");
+
+  // ③ GET user 返回体含 codex
+  const codexView = await (await fetch(`${BASE}/api/user/${created.userId}`)).json();
+  ok(codexView.codex && typeof codexView.codex === "object", "GET /api/user/:id 返回体含 codex");
+  ok(codexView.codex?.man?.[7]?.count === 2 && codexView.codex?.man?.[7]?.firstAt === firstAt1
+    && codexView.codex?.woman?.[16]?.count === 1,
+    "GET codex 与写入一致：man#7×2（firstAt 保留）/ woman#16×1");
+
   /* ================= R5：展示柜点赞 + 评论 ================= */
   console.log("\n-- R5 展示柜点赞/评论 --");
 
