@@ -164,3 +164,13 @@ Kim 定了 PM→Dev→QA 循环：零上下文子线程做真实体验 QA（第�
 
 ### 验收判定（Kim 三条硬标）
 ① 公网上线 ✅ https://ideal-type-loading.kimnin-iup.workers.dev  ② 全流程可体验 ✅(solo 主干+注册均自证通过)  ③ 老K人设定妥 ✅(店名99%/老K是人非店名/低精度立绘暖笑/每题锐评/文案零违规)。R2+R2.5 交付完成。
+
+## 2026-08-07 通宵（Fable 方案 / Opus 执行：R9 一期 MVP）
+- 战略：Kim 定位拍板「酒桌游戏，摊牌是心理测试」；PRD 模板升级（第一页 MVP 五问强制）；北极星=周完局桌数。
+- 致命修复「题随被拷问者」：man/woman 合并 lover 恋爱局，每轮按主角 gender×seeking 抽池（allowedPoolsFor 去 deck 参数），current.renderGender 契约全桌渲染 满分男他/满分女她/理想型TA；入座第四问「今晚想品鉴谁」。跨性别架构原则：机制只问"想品鉴谁"，永不问玩家自己性别。
+- PHASE1_FLAGS 关不删：gallery/lifeEntry/deckBoss/deckBestie/showcaseSocial；存档 tag archive/r8-full。
+- 埋点：StatsDO(SQLite) 6 事件服务端直记为主，/api/track 白名单，/stats 仪表盘（北极星大数字+60%线+怎么读）；STATS_KEY=wrangler secret（值在 Kim 晨报里）。
+- 验证：smoke 253/0（PM 亲跑）；隔离铁桶 6 档×300 抽零泄漏；三态变体/单卡/四问/亮相截图 390 零溢出；线上验证 7 项过（bestie 首测回 bestie 是部署边缘传播延迟，复测 lover；secret 首设含 \r 尾巴 403，bash printf 重设后通）。
+- 部署：ideal-type-loading Version 4af0cc30。commit 248c0b0（main 已推）。
+- 题库审计 docs/QUESTION-AUDIT-R9.md：数据层干净（中性池 0 视角假设、圈层池 4×18 变体全对），隔离坏在调用不坏在题——Kim review 可只看内容质量。
+- 并行：ui-r9 worktree（去廉价感重设计+老K重绘，docs/UI-BRIEF-R9.md）跑 localhost 给 Kim 晨审，不上线。
