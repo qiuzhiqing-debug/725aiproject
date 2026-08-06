@@ -178,6 +178,32 @@ h2 {
 
 .drink-choice-grid button.sel small { color: var(--ink-hi); }
 
+/* --- 入座第四问「今晚想品鉴谁」（R9 PRD §3.2）---
+   与称呼/杯子/罚酒三连问同一套外观（复用 .emoji-grid + .drink-choice-grid 的按钮样式），
+   只把轨道换成三等分。必须写成 .emoji-grid.seek-choice-grid：.emoji-grid 的 5 轨规则
+   在本文件里排在后面，同优先级会赢，加一层类才盖得住。
+   minmax(0, 1fr) 保证 390 宽零横向溢出。 */
+.emoji-grid.seek-choice-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.emoji-grid.seek-choice-grid button { min-width: 0; }
+
+.seek-choice-grid small {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+/* 选中态跟着 .sel 走（.emoji-grid button.sel 已给霓虹粉描边），这里只补取向问的青色提示线 */
+.seek-note {
+  margin-top: -2px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  border-left: 3px solid var(--neon-cyan);
+  padding-left: 9px;
+}
+
 .amber {
   color: var(--neon-amber);
   text-shadow: var(--neon-text-amber);
@@ -2479,6 +2505,12 @@ body:not(.has-dmbar) .chat-fab {
     gap: 6px;
   }
 
+  /* 第四问在窄屏保持三等分（不能继承上面的 5 轨 46px 下限，否则 390 会横向溢出） */
+  .emoji-grid.seek-choice-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
   .player b { max-width: 8.5em; }
 
   body:not(.has-dmbar) .player .kickBtn {
@@ -2614,13 +2646,23 @@ body:not(.has-dmbar) .chat-fab {
 /* --- 顶栏「我的」入口 --- */
 .me-btn { white-space: nowrap; }
 
-/* --- 卡组选择（首页「今晚聊什么」）--- */
+/* --- 卡组选择（首页「今晚聊什么」）---
+   R9：一期只剩「满分男 · 满分女」一张恋爱局合并卡（老板/闺蜜藏在 PHASE1_FLAGS 后）。
+   轨道一律 minmax(0, 1fr)：长文案（如「满分男 · 满分女」）不会把 390 宽撑出横向滚动。 */
 .deck-pick { gap: 10px; }
 .deck-cards {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
 }
+/* 单卡（一期常态）：主卡感更强一点，霓虹口吻不变 */
+.deck-cards.single .deck-card {
+  padding: 17px 18px;
+  border-color: var(--neon-pink);
+  box-shadow: 0 0 18px rgba(255, 45, 120, 0.26), inset 0 0 14px rgba(255, 45, 120, 0.1);
+}
+.deck-cards.single .deck-card b { font-size: 20px; }
+.deck-cards.single .dc-kicker { color: var(--neon-pink); opacity: 1; }
 .deck-card {
   position: relative;
   display: grid;
@@ -2636,7 +2678,13 @@ body:not(.has-dmbar) .chat-fab {
   cursor: pointer;
   transition: border-color 0.14s ease, box-shadow 0.14s ease, transform 0.14s ease;
 }
-.deck-card b { font-size: 18px; font-weight: 800; letter-spacing: 0.02em; }
+.deck-card b {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  min-width: 0;
+  overflow-wrap: anywhere; /* 「满分男 · 满分女」在 390 窄屏折行，不横向裁切 */
+}
 .dc-kicker {
   font-family: var(--font-pixel, monospace);
   font-size: 10px;

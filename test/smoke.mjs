@@ -31,11 +31,13 @@ async function waitUntil(predicate, ms = 5000) {
 }
 
 class Player {
-  constructor(name, emoji, drink = "beer", seeking = null) {
+  constructor(name, emoji, drink = "beer", seeking = null, gender = null) {
     this.name = name;
     this.emoji = emoji;
     this.drink = drink;
     this.seeking = seeking;
+    // R9：viewer 自身性别（隔离铁桶用：直女f vs 男同m、直男m vs 姬圈f）
+    this.gender = gender;
     this.token = null;
     this.state = null;
     this.lastError = null;
@@ -50,7 +52,7 @@ class Player {
     this.ws = new WebSocket(`${WS_BASE}/api/room/${code}/ws`);
     return new Promise((res, rej) => {
       this.ws.on("open", () => {
-        this.ws.send(JSON.stringify({ type: "join", name: this.name, emoji: this.emoji, drink: this.drink, seeking: this.seeking, token }));
+        this.ws.send(JSON.stringify({ type: "join", name: this.name, emoji: this.emoji, drink: this.drink, seeking: this.seeking, gender: this.gender, token }));
       });
       this.ws.on("message", (raw) => {
         const m = JSON.parse(raw.toString());
@@ -1027,31 +1029,33 @@ async function main() {
   /* ================= R2：卡组 deck + 每题国王 + 每题爆灯 + 终局无大国王 ================= */
   console.log("\n-- R2 卡组 + 每题国王/爆灯 --");
 
+  // R9 卡组合并：man/woman/boss/bestie/lover 全部规整为 lover（旧链接兼容，不 400）
   const deckRoom = await (await fetch(BASE + "/api/room", {
     method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ deck: "woman" }),
   })).json();
-  ok(/^\d{4}$/.test(deckRoom.code) && deckRoom.deck === "woman", "建房 body.deck=woman 生效");
+  ok(/^\d{4}$/.test(deckRoom.code) && deckRoom.deck === "lover",
+    "R9：建房 body.deck=woman 被规整为 lover（旧链接兼容）");
   const defDeckRoom = await (await fetch(BASE + "/api/room", { method: "POST" })).json();
-  ok(defDeckRoom.deck === "man", "deck 缺省 = man");
+  ok(defDeckRoom.deck === "lover", "R9：deck 缺省 = lover");
 
-  // 满分闺蜜（bestie）：与 boss 平行的第 4 个卡组
-  ok(JSON.stringify(allowedPoolsFor("bestie", "f", "m")) === JSON.stringify(["neutral"])
-    && JSON.stringify(allowedPoolsFor("bestie", "m", "f")) === JSON.stringify(["neutral"])
-    && JSON.stringify(allowedPoolsFor("bestie", "n", "x")) === JSON.stringify(["neutral"]),
-    "allowedPoolsFor('bestie', …) 恒返回 ['neutral']（非取向向，隔离铁桶）");
-  const bestieRoom = await (await fetch(BASE + "/api/room", {
-    method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ deck: "bestie" }),
-  })).json();
-  ok(/^\d{4}$/.test(bestieRoom.code) && bestieRoom.deck === "bestie",
-    "建房 body.deck=bestie 被接受（不回退成 man）");
+  for (const legacy of ["man", "boss", "bestie", "lover", "不存在的卡组"]) {
+    const res = await fetch(BASE + "/api/room", {
+      method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ deck: legacy }),
+    });
+    const room = await res.json();
+    ok(res.status === 200 && /^\d{4}$/.test(room.code) && room.deck === "lover",
+      `R9：建房 deck=${legacy} → 200 且规整为 lover（不 400）`);
+  }
   const tablesR2 = await (await fetch(BASE + "/api/tables")).json();
   ok(tablesR2.tables.every((t) => "deck" in t), "/api/tables 每桌返回带 deck 字段");
+  ok(tablesR2.tables.every((t) => t.deck === null || t.deck === "lover"),
+    "R9：/api/tables 的 deck 只可能是 lover（空桌为 null）");
 
   const K1 = new Player("国一", "🍺", "beer", "f"), K2 = new Player("国二", "🍷", "wine", "m"), K3 = new Player("国三", "🥃", "soft", "x");
   await K1.connect(deckRoom.code); await K2.connect(deckRoom.code); await K3.connect(deckRoom.code);
   const kt = [K1, K2, K3];
   await waitUntil(() => K1.state?.players?.length === 3);
-  ok(K1.state.deck === "woman", "房间 state 广播带 deck");
+  ok(K1.state.deck === "lover", "R9：房间 state 广播 deck=lover");
   ok(K1.state.you.seeking === "f" && K2.state.you.seeking === "m" && K3.state.you.seeking === "x",
     "join 透传 seeking → state.you.seeking");
 
@@ -1153,6 +1157,172 @@ async function main() {
   await Promise.all(kt.map((p) => p.waitPhase("finished")));
   ok(K1.state.phase === "finished" && K1.state.king === null, "finished 阶段无终局大国王（state.king=null）");
   kt.forEach((p) => { try { p.ws.close(); } catch {} });
+
+  /* ================= R9：题随被拷问者（主角 gender×seeking 决定抽题池 + renderGender） ================= */
+  console.log("\n-- R9 题随被拷问者 --");
+
+  // 纯函数映射（新签名：allowedPoolsFor(gender, seeking)，与卡组无关）
+  const poolsOf = (g, s) => JSON.stringify(allowedPoolsFor(g, s));
+  ok(poolsOf("f", "m") === JSON.stringify(["neutral", "straight-m"]), "allowedPoolsFor 直女(f,m) → neutral+straight-m");
+  ok(poolsOf("m", "m") === JSON.stringify(["neutral", "gay"]), "allowedPoolsFor 男同(m,m) → neutral+gay");
+  ok(poolsOf("m", "f") === JSON.stringify(["neutral", "straight-f"]), "allowedPoolsFor 直男(m,f) → neutral+straight-f");
+  ok(poolsOf("f", "f") === JSON.stringify(["neutral", "lesbian"]), "allowedPoolsFor 姬圈(f,f) → neutral+lesbian");
+  ok(poolsOf("f", "x") === JSON.stringify(["neutral"]) && poolsOf("m", "x") === JSON.stringify(["neutral"]),
+    "allowedPoolsFor seeking=x（都行）→ 仅 neutral");
+  ok(poolsOf(null, null) === JSON.stringify(["neutral"]) && poolsOf(null, "m") === JSON.stringify(["neutral"])
+    && poolsOf("f", null) === JSON.stringify(["neutral"]),
+    "allowedPoolsFor 主角无档案（散客没选）→ 仅 neutral");
+
+  // 合成题库：每池 id 前缀唯一，抽到什么就能反推来自哪个池
+  const R9_ROUNDS = 8; // = rounds 上限；允许池恰好 8 题 → 8 轮把该池抽空，覆盖完整
+  const R9_IDS = { neutral: [], "straight-m": [], gay: [], "straight-f": [], lesbian: [] };
+  const r9Bank = [];
+  for (const [pool, prefix, n] of [
+    ["neutral", "r9ne", 2], ["straight-m", "r9sm", 6], ["gay", "r9gay", 6],
+    ["straight-f", "r9sf", 6], ["lesbian", "r9les", 6],
+  ]) {
+    for (let i = 1; i <= n; i++) {
+      const id = `${prefix}-${i}`;
+      R9_IDS[pool].push(id);
+      r9Bank.push({ id, spice: 1, pools: [pool], m: `${pool}题${i}`, f: `${pool}题${i}`, n: `${pool}题${i}` });
+    }
+  }
+  const r9AllIds = Object.values(R9_IDS).flat();
+  const r9Allowed = (...pools) => new Set([...R9_IDS.neutral, ...pools.flatMap((p) => R9_IDS[p])]);
+  const r9Forbidden = (allowedSet) => r9AllIds.filter((id) => !allowedSet.has(id));
+
+  // solo 房 = 单人局，主角必定是他自己 → 主角取向可控，抽题池可断言
+  async function r9SoloProbe(label, gender, seeking) {
+    const room = await (await fetch(BASE + "/api/room", {
+      method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ solo: true }),
+    })).json();
+    const p = new Player(label, "🍺", "beer", seeking, gender);
+    await p.connect(room.code);
+    await waitUntil(() => p.state?.players?.length === 1);
+    p.send({ type: "start", rounds: R9_ROUNDS, questions: r9Bank });
+    await p.waitPhase("picking");
+    p.send({ type: "draw_stick" });
+    await waitUntil(() => p.state?.current?.drawn === true);
+    p.send({ type: "stick_done" });
+    await p.waitPhase("protagonist_setup");
+    p.send({ type: "set_gender", gender: "m" });
+    const ids = new Set();
+    const renderGenders = new Set();
+    for (let round = 1; round <= R9_ROUNDS; round++) {
+      const arrived = await waitUntil(
+        () => p.state?.phase === "answering" && p.state?.current?.roundIndex === round, 8000);
+      if (!arrived) break;
+      ids.add(p.state.current.question.id);
+      renderGenders.add(p.state.current.renderGender);
+      p.send({ type: "score", v: 5 });
+      if (!(await waitUntil(() => p.state?.phase === "reveal", 8000))) break;
+      p.send({ type: "next" });
+    }
+    await waitUntil(() => p.state?.phase === "aha", 8000);
+    try { p.ws.close(); } catch {}
+    return { ids, renderGenders: [...renderGenders], roomDeck: p.state?.deck };
+  }
+
+  // ① 主角直女（gender f, seeking m）→ 只出 neutral ∪ straight-m
+  const pf = await r9SoloProbe("直女主角", "f", "m");
+  const pfAllowed = r9Allowed("straight-m");
+  ok([...pf.ids].every((id) => pfAllowed.has(id))
+    && r9Forbidden(pfAllowed).every((id) => !pf.ids.has(id)),
+    `① 直女主角抽题只出 neutral∪straight-m（${pf.ids.size} 题，无 gay/lesbian/straight-f）`);
+  ok(pf.ids.size === pfAllowed.size && [...pfAllowed].every((id) => pf.ids.has(id)),
+    "① 直女主角 8 轮把 neutral+straight-m 池抽干（池确实是这 8 题）");
+  ok(pf.roomDeck === "lover", "① 房间仍是 lover 恋爱局（题池由主角决定，不由卡组）");
+
+  // ② 主角男同（gender m, seeking m）→ 只出 neutral ∪ gay
+  const pg = await r9SoloProbe("男同主角", "m", "m");
+  const pgAllowed = r9Allowed("gay");
+  ok([...pg.ids].every((id) => pgAllowed.has(id))
+    && r9Forbidden(pgAllowed).every((id) => !pg.ids.has(id)),
+    `② 男同主角抽题只出 neutral∪gay（${pg.ids.size} 题，无 straight-m/straight-f/lesbian）`);
+  ok(pg.ids.size === pgAllowed.size && [...pgAllowed].every((id) => pg.ids.has(id)),
+    "② 男同主角 8 轮把 neutral+gay 池抽干（池确实是这 8 题）");
+
+  // ②b 直男 / 姬圈（同一份题库、同一个 lover 房，只因主角不同而换池）
+  const pm = await r9SoloProbe("直男主角", "m", "f");
+  const pmAllowed = r9Allowed("straight-f");
+  ok([...pm.ids].every((id) => pmAllowed.has(id)) && pm.ids.size === pmAllowed.size,
+    "②b 直男主角(m,f) 只出 neutral∪straight-f");
+  const pl = await r9SoloProbe("姬圈主角", "f", "f");
+  const plAllowed = r9Allowed("lesbian");
+  ok([...pl.ids].every((id) => plAllowed.has(id)) && pl.ids.size === plAllowed.size,
+    "②b 姬圈主角(f,f) 只出 neutral∪lesbian");
+
+  // ③ 主角无档案（散客没选 gender/seeking）→ 只出 neutral
+  const pn = await r9SoloProbe("散客主角", null, null);
+  ok([...pn.ids].every((id) => R9_IDS.neutral.includes(id)) && pn.ids.size === R9_IDS.neutral.length,
+    `③ 无档案主角只出 neutral（抽到 ${[...pn.ids].join(",")}）`);
+  // seeking=x（都行）同样只给 neutral
+  const px = await r9SoloProbe("都行主角", "m", "x");
+  ok([...px.ids].every((id) => R9_IDS.neutral.includes(id)),
+    "③ seeking=x（都行）主角只出 neutral");
+
+  // ④ current.renderGender 三态（契约：m→m / f→f / 其它或缺失→n）
+  ok(pf.renderGenders.length === 1 && pf.renderGenders[0] === "m", "④ renderGender：主角 seeking=m → 'm'");
+  ok(pm.renderGenders.length === 1 && pm.renderGenders[0] === "f", "④ renderGender：主角 seeking=f → 'f'");
+  ok(px.renderGenders.length === 1 && px.renderGenders[0] === "n", "④ renderGender：主角 seeking=x → 'n'");
+  ok(pn.renderGenders.length === 1 && pn.renderGenders[0] === "n", "④ renderGender：主角无档案 → 'n'");
+
+  // ⑤ 同一局内两个取向不同的主角 → 各自轮次抽到的池不同
+  const duoRoom = await (await fetch(BASE + "/api/room", {
+    method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ deck: "man" }), // 旧 man 链接
+  })).json();
+  const D1 = new Player("直女姐", "🍷", "wine", "m", "f"); // 直女 → neutral+straight-m
+  const D2 = new Player("男同弟", "🍺", "beer", "m", "m"); // 男同 → neutral+gay
+  await D1.connect(duoRoom.code);
+  await D2.connect(duoRoom.code);
+  const duo = [D1, D2];
+  await waitUntil(() => D1.state?.players?.length === 2);
+  ok(D1.state.deck === "lover", "⑤ 旧 man 链接开的房，广播里已是 lover");
+  D1.send({ type: "start", rounds: R9_ROUNDS, questions: r9Bank });
+
+  const drawnBy = new Map(); // 主角昵称 -> 该主角轮次抽到的题 id 集合
+  const rgBy = new Map(); // 主角昵称 -> renderGender
+  for (let turn = 0; turn < 2; turn++) {
+    if (!(await waitUntil(() => D1.state?.phase === "picking", 10000))) break;
+    const shaker = duo.find((p) => p.state?.current?.youAreShaker);
+    shaker.send({ type: "draw_stick" });
+    await waitUntil(() => D1.state?.current?.drawn === true);
+    shaker.send({ type: "stick_done" });
+    await D1.waitPhase("protagonist_setup");
+    const hero = duo.find((p) => p.state.current.youAreProtagonist);
+    const guesser = duo.find((p) => p !== hero);
+    hero.send({ type: "set_gender", gender: "m" });
+    const ids = new Set();
+    for (let round = 1; round <= R9_ROUNDS; round++) {
+      if (!(await waitUntil(
+        () => D1.state?.phase === "answering" && D1.state?.current?.roundIndex === round, 10000))) break;
+      ids.add(D1.state.current.question.id);
+      rgBy.set(hero.name, D1.state.current.renderGender);
+      hero.send({ type: "score", v: 5 });
+      guesser.send({ type: "guess", v: 6 }); // 差 1：不罚酒、不分毫不差 → 不触发国王
+      if (!(await waitUntil(() => D1.state?.phase === "reveal", 10000))) break;
+      duo.find((p) => p.state?.you?.isHost)?.send({ type: "next" });
+    }
+    drawnBy.set(hero.name, ids);
+    await waitUntil(() => D1.state?.phase === "aha", 10000);
+    duo.find((p) => p.state?.you?.isHost)?.send({ type: "next" });
+  }
+  duo.forEach((p) => { try { p.ws.close(); } catch {} });
+
+  const straightIds = drawnBy.get("直女姐") || new Set();
+  const gayIds = drawnBy.get("男同弟") || new Set();
+  ok(straightIds.size > 0 && gayIds.size > 0, `⑤ 同局两位主角各自跑完 ${R9_ROUNDS} 轮（${straightIds.size}/${gayIds.size} 题）`);
+  ok([...straightIds].every((id) => r9Allowed("straight-m").has(id))
+    && ![...straightIds].some((id) => R9_IDS.gay.includes(id)),
+    "⑤ 直女那几轮只出 neutral∪straight-m（一道 gay 题都没串进来）");
+  ok([...gayIds].every((id) => r9Allowed("gay").has(id))
+    && ![...gayIds].some((id) => R9_IDS["straight-m"].includes(id)),
+    "⑤ 男同那几轮只出 neutral∪gay（一道 straight-m 题都没串进来）");
+  ok([...straightIds].some((id) => R9_IDS["straight-m"].includes(id))
+    && [...gayIds].some((id) => R9_IDS.gay.includes(id)),
+    "⑤ 两位主角各自抽到了自己取向的专属题（池确实换了，不是都退化成 neutral）");
+  ok(rgBy.get("直女姐") === "m" && rgBy.get("男同弟") === "m",
+    "⑤ 同局内 renderGender 按各自主角 seeking 广播");
 
   console.log(`\n== 结果：${passed} 通过 / ${failed} 失败`);
   process.exit(failed ? 1 : 0);

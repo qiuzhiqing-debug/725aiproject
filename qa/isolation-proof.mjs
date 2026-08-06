@@ -1,4 +1,4 @@
-// 隔离铁桶证明脚本（R4 §1.3 P0 交付前必证）
+// 隔离铁桶证明脚本（R4 P0 · R9 改版：签名去 deck，题随被拷问者）
 // 直接调用 worker.js 导出的选题真源函数 filterQuestionsForViewer / allowedPoolsFor，
 // 构造 (f,m)/(f,f)/(m,f)/(m,m)/(x,x) 各视角，连抽 N≥200 题，断言：
 //   直女(f,m)     → 0 条 gay 命中
@@ -35,8 +35,8 @@ function poolOf(q) {
 }
 
 // 模拟 worker.drawQuestion 的池内去重抽题：只从 filterQuestionsForViewer 的结果里抽
-function simulateDraws(deck, gender, seeking, n) {
-  const base = filterQuestionsForViewer(BANK, deck, gender, seeking);
+function simulateDraws(gender, seeking, n) {
+  const base = filterQuestionsForViewer(BANK, gender, seeking);
   const drawn = [];
   let used = [];
   for (let i = 0; i < n; i++) {
@@ -56,19 +56,19 @@ function tally(drawn) {
 }
 
 const cases = [
-  { label: "直女 满分男 (deck=man, gender=f, seeking=m)", deck: "man", gender: "f", seeking: "m", forbid: ["gay", "lesbian", "straight-f"] },
-  { label: "男同 满分男 (deck=man, gender=m, seeking=m)", deck: "man", gender: "m", seeking: "m", forbid: ["straight-m", "straight-f", "lesbian"] },
-  { label: "直男 满分女 (deck=woman, gender=m, seeking=f)", deck: "woman", gender: "m", seeking: "f", forbid: ["lesbian", "gay", "straight-m"] },
-  { label: "拉拉 满分女 (deck=woman, gender=f, seeking=f)", deck: "woman", gender: "f", seeking: "f", forbid: ["straight-m", "straight-f", "gay"] },
-  { label: "不限 seeking=x (deck=man, gender=f, seeking=x)", deck: "man", gender: "f", seeking: "x", forbid: ["gay", "lesbian", "straight-m", "straight-f"] },
-  { label: "满分老板 boss (deck=boss, gender=f, seeking=m)", deck: "boss", gender: "f", seeking: "m", forbid: ["gay", "lesbian", "straight-m", "straight-f"] },
+  { label: "直女 满分男 (deck=man, gender=f, seeking=m)", gender: "f", seeking: "m", forbid: ["gay", "lesbian", "straight-f"] },
+  { label: "男同 (gender=m, seeking=m)", gender: "m", seeking: "m", forbid: ["straight-m", "straight-f", "lesbian"] },
+  { label: "直男 (gender=m, seeking=f)", gender: "m", seeking: "f", forbid: ["lesbian", "gay", "straight-m"] },
+  { label: "拉拉 (gender=f, seeking=f)", gender: "f", seeking: "f", forbid: ["straight-m", "straight-f", "gay"] },
+  { label: "不限 seeking=x (gender=f)", gender: "f", seeking: "x", forbid: ["gay", "lesbian", "straight-m", "straight-f"] },
+  { label: "无档案主角（散客未选，gender/seeking 缺失）", gender: undefined, seeking: undefined, forbid: ["gay", "lesbian", "straight-m", "straight-f"] },
 ];
 
 let failed = 0;
 console.log(`== 隔离铁桶证明（每档抽 ${N} 题）==\n`);
 for (const c of cases) {
-  const allowed = allowedPoolsFor(c.deck, c.gender, c.seeking);
-  const { drawn } = simulateDraws(c.deck, c.gender, c.seeking, N);
+  const allowed = allowedPoolsFor(c.gender, c.seeking);
+  const { drawn } = simulateDraws(c.gender, c.seeking, N);
   const t = tally(drawn);
   const hits = c.forbid.reduce((s, p) => s + (t[p] || 0), 0);
   const ok = hits === 0;
@@ -80,9 +80,9 @@ for (const c of cases) {
 }
 
 // R4 三项硬指标单独回显
-const zhinu = tally(simulateDraws("man", "f", "m", N).drawn);
-const lala = tally(simulateDraws("woman", "f", "f", N).drawn);
-const anyx = tally(simulateDraws("man", "f", "x", N).drawn);
+const zhinu = tally(simulateDraws("f", "m", N).drawn);
+const lala = tally(simulateDraws("f", "f", N).drawn);
+const anyx = tally(simulateDraws("f", "x", N).drawn);
 console.log("== R4 三项硬指标 ==");
 console.log(`直女 gay 命中: ${zhinu.gay || 0}`);
 console.log(`拉拉 straight-m/straight-f/gay 命中: ${(lala["straight-m"] || 0) + (lala["straight-f"] || 0) + (lala.gay || 0)}`);

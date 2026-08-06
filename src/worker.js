@@ -60,13 +60,13 @@ export default {
 
     // 建房：POST /api/room  -> { code, deck }
     // body（可选）：{ visibility: "public"|"private"（默认 private）, solo: true（1 人可开局）,
-    //               deck: "man"|"woman"|"agent"（卡组，默认 "man"） }
+    //               deck: 任意旧值（man/woman/boss/bestie/lover）——R9 一律规整为 "lover" }
     if (url.pathname === "/api/room" && req.method === "POST") {
       let body = {};
       try { body = await readJson(req); } catch {}
       const visibility = body.visibility === "public" ? "public" : "private";
       const solo = body.solo === true;
-      const deck = ROOM_DECK_IDS.includes(body.deck) ? body.deck : "man";
+      const deck = normalizeRoomDeck(body.deck);
       for (let i = 0; i < 15; i++) {
         const code = String(Math.floor(1000 + Math.random() * 9000));
         const stub = env.ROOM.get(env.ROOM.idFromName(code));
@@ -88,7 +88,7 @@ export default {
       let body = {};
       try { body = await readJson(req); } catch {}
       const visibility = body.visibility === "private" ? "private" : "public";
-      const deck = ROOM_DECK_IDS.includes(body.deck) ? body.deck : "man";
+      const deck = normalizeRoomDeck(body.deck);
       const stub = env.ROOM.get(env.ROOM.idFromName("table-" + tm[1]));
       return stub.fetch(`https://do/table/join?table=${tm[1]}&visibility=${visibility}&deck=${deck}`);
     }
@@ -326,7 +326,7 @@ async function handleUserCodex(req, id, env) {
   try { body = await readJson(req); } catch { return jsonRes({ error: "body 不是合法 JSON" }, 400); }
   const deck = body.deck;
   const typeId = body.typeId;
-  if (!ROOM_DECK_IDS.includes(deck)) return jsonRes({ error: "deck 不合法" }, 400);
+  if (!CODEX_DECK_IDS.includes(deck)) return jsonRes({ error: "deck 不合法" }, 400);
   if (!Number.isInteger(typeId) || typeId < 1 || typeId > 16) {
     return jsonRes({ error: "typeId 必须是 1..16 的整数" }, 400);
   }
@@ -632,8 +632,42 @@ const LAOK_BUILTIN_POOL = Object.freeze({
   ],
 });
 
-// 卡组（R2/R4）：开桌选「今晚聊什么」——R4 删 agent、加 boss（满分老板）
-const ROOM_DECK_IDS = Object.freeze(["man", "woman", "boss", "bestie"]);
+/* ============ R9 第一期功能开关（PRD-R9-PHASE1 §四：关不删，二期拨回即用）============
+ * gallery        图鉴 UI（前端隐藏；/api/user/:id/codex 端点保留可写）
+ * lifeEntry      满分人生入口（前端隐藏）
+ * deckBoss       满分老板卡组 —— 本期建房一律回退 lover
+ * deckBestie     满分闺蜜卡组 —— 本期建房一律回退 lover
+ * showcaseSocial 展示柜赞评互动 UI（前端隐藏；端点保留）
+ * 二期恢复：把对应 flag 拨 true，并把 ROOM_DECK_IDS 恢复成
+ * ["lover","boss","bestie"]（或按需），normalizeRoomDeck 的回退分支即自动失效——代码不删。 */
+export const PHASE1_FLAGS = Object.freeze({
+  gallery: false,
+  lifeEntry: false,
+  deckBoss: false,
+  deckBestie: false,
+  showcaseSocial: false,
+});
+
+// 卡组（R9）：满分男/满分女合并为一个「恋爱局 lover」——房主不再替全桌选性别，
+// 题目按当轮主角(被拷问者)的 gender×seeking 抽（见 allowedPoolsFor / drawQuestion）。
+const ROOM_DECK_IDS = Object.freeze(["lover"]);
+// 旧链接/旧客户端会带这些 deck：man/woman（R2 分性别卡组）、boss/bestie（R4 多模组）。
+// PHASE1_FLAGS 关不删，二期恢复多模组：deckBoss/deckBestie 拨回 true 并把 boss/bestie
+// 加回 ROOM_DECK_IDS 即恢复，本期一律规整为 lover（不 400，旧链接照常进房）。
+export const LEGACY_ROOM_DECK_ALIASES = Object.freeze(["man", "woman", "boss", "bestie"]);
+
+// 建房/入桌 deck 规整：任何取值（含 man/woman/boss/bestie/缺省/垃圾）都收敛到 lover，永不 400。
+function normalizeRoomDeck(deck) {
+  if (ROOM_DECK_IDS.includes(deck)) return deck;
+  // PHASE1_FLAGS 关不删，二期恢复多模组：这里就是 boss/bestie（及 man/woman）的回退处，
+  // 二期把它们加回 ROOM_DECK_IDS 后本分支自动不再命中，无需改调用方。
+  if (LEGACY_ROOM_DECK_ALIASES.includes(deck)) return "lover";
+  return "lover";
+}
+
+// 图鉴 codex 的 deck 维度是「历史存档 key」，跟房间卡组解耦：老账号里已有 man/woman/boss/bestie
+// 的收集进度，端点保留（PHASE1_FLAGS.gallery=false 只是前端不调用），取值集合保持不变。
+const CODEX_DECK_IDS = Object.freeze(["man", "woman", "boss", "bestie"]);
 
 // public/laok-lines.js 由 P 线程新建，可能尚不存在：
 // 用「运行期拼接的动态 import + try/catch」绕开 esbuild 的构建期解析，文件缺失时降级内置池。
@@ -759,29 +793,33 @@ const MAX_KING_TEXT = 100;
 // 取向池（PRD V2 §3.4 / qa/QUESTION-SPEC.md）
 const VALID_POOLS = Object.freeze(["all", "straight-f", "straight-m", "gay", "lesbian", "neutral"]);
 
-/* ============ 隔离铁桶（R4 §1.3，P0，唯一真源）============
- * (卡组 deck × viewer.gender × viewer.seeking) → 允许的 pools 集合。
- * 铁律：任何未命中下表的组合一律只给 neutral，杜绝取向黑话串池。
- *   满分男 man + 直女(g=f,seek=m) → neutral+straight-m（排除 gay）
- *   满分男 man + 男同(g=m,seek=m) → neutral+gay
- *   满分女 woman + 直男(g=m,seek=f) → neutral+straight-f（排除 lesbian）
- *   满分女 woman + 拉拉(g=f,seek=f) → neutral+lesbian
- *   seeking=x（不限）/ boss（满分老板，职场向）/ 任何错配 → neutral only
- * 导出供 qa/isolation-proof.mjs 直接调用（纯函数、无副作用）。 */
-export function allowedPoolsFor(deck, gender, seeking) {
-  if (deck === "boss" || deck === "bestie") return ["neutral"]; // 满分老板/满分闺蜜：非取向向，全 neutral
-  if (seeking !== "m" && seeking !== "f") return ["neutral"]; // 含 seeking=x/未知
-  if (deck === "man" && seeking === "m") {
+/* ============ 隔离铁桶（R4 §1.3 → R9「题随被拷问者」，P0，唯一真源）============
+ * R9 变更：入参去掉 deck（卡组已合并为 lover），改为「当轮主角(被拷问者)自己的
+ * gender × seeking」。映射逻辑本身一字不改，改的只是「拿谁的取向来问」——
+ * 房主卡组不再决定全桌题池，女同坐进局里拿到的就是姬圈题。
+ *   直女 (g=f, seek=m) → neutral+straight-m（排除 gay）
+ *   男同 (g=m, seek=m) → neutral+gay
+ *   直男 (g=m, seek=f) → neutral+straight-f（排除 lesbian）
+ *   姬圈 (g=f, seek=f) → neutral+lesbian
+ *   seeking=x（都行）/ 主角无档案（散客没选，seeking/gender 缺失）→ neutral only
+ * 铁律：任何未命中上表的组合一律只给 neutral，杜绝取向黑话串池。
+ * 导出供测试/审计脚本直接调用（纯函数、无副作用）。 */
+export function allowedPoolsFor(gender, seeking) {
+  if (seeking !== "m" && seeking !== "f") return ["neutral"]; // 含 seeking=x/主角无档案
+  if (seeking === "m") {
     if (gender === "f") return ["neutral", "straight-m"]; // 直女看男
     if (gender === "m") return ["neutral", "gay"]; // 男同看男
-    return ["neutral"];
+    return ["neutral"]; // 主角没填自己的性别 → 只给中性池
   }
-  if (deck === "woman" && seeking === "f") {
-    if (gender === "m") return ["neutral", "straight-f"]; // 直男看女
-    if (gender === "f") return ["neutral", "lesbian"]; // 拉拉看女
-    return ["neutral"];
-  }
-  return ["neutral"]; // 卡组/取向错配（如 man+seek=f）→ 安全兜底
+  if (gender === "m") return ["neutral", "straight-f"]; // 直男看女
+  if (gender === "f") return ["neutral", "lesbian"]; // 姬圈看女
+  return ["neutral"]; // 安全兜底
+}
+
+// 主角 seeking → 全桌题面渲染方向（与 FRONT 线的契约字段 current.renderGender）：
+// m→"m"（满分男，他…） f→"f"（满分女，她…） 其它/缺失→"n"（理想型，TA…）
+export function renderGenderOf(seeking) {
+  return seeking === "m" ? "m" : seeking === "f" ? "f" : "n";
 }
 
 // 单题是否落在允许池：legacy/boss 的 "all" 视为通吃（保证旧库/无 pools 题可玩）
@@ -791,16 +829,18 @@ export function questionInAllowedPools(q, allowedSet) {
   return pools.some((p) => allowedSet.has(p));
 }
 
-// 按 viewer 过滤题库；空集兜底至少 neutral（含 all 通吃），彻底空则返回原集不阻塞开局
-export function filterQuestionsForViewer(questions, deck, gender, seeking) {
+// 按当轮主角过滤题库；空集兜底至少 neutral（含 all 通吃），彻底空则返回原集不阻塞开局
+export function filterQuestionsForViewer(questions, gender, seeking) {
   const list = Array.isArray(questions) ? questions : [];
-  const allowedSet = new Set(allowedPoolsFor(deck, gender, seeking));
+  const allowedSet = new Set(allowedPoolsFor(gender, seeking));
   const filtered = list.filter((q) => questionInAllowedPools(q, allowedSet));
   if (filtered.length) return filtered;
   const neutralOnly = list.filter((q) => questionInAllowedPools(q, new Set(["neutral"])));
   return neutralOnly.length ? neutralOnly : list;
 }
-const DEFAULT_NOUN = Object.freeze({ m: "满分男", f: "满分女", n: "满分TA" });
+// R9 两端对齐：n 档名词统一为「理想型」（与品牌名同源，前端 PRD 用的也是这个），
+// 避免同屏出现「这是一个满分TA…」+「XX的理想型」打架。最终文案 Kim 自审。
+const DEFAULT_NOUN = Object.freeze({ m: "满分男", f: "满分女", n: "理想型" });
 const DECK_NAMES = Object.freeze({
   qingtang: "清汤锅底",
   fanqie: "番茄锅底",
@@ -833,7 +873,8 @@ export class RoomDO {
       if (this.room) {
         if (this.room.visibility !== "public") this.room.visibility = "private";
         if (typeof this.room.solo !== "boolean") this.room.solo = false;
-        if (!ROOM_DECK_IDS.includes(this.room.deck)) this.room.deck = "man";
+        // R9：旧存档里的 man/woman/boss/bestie 房，重启后一律规整为 lover 恋爱局
+        this.room.deck = normalizeRoomDeck(this.room.deck);
         if (!Array.isArray(this.room.chat)) this.room.chat = [];
         if (typeof this.room.chatSeq !== "number") this.room.chatSeq = 0;
         if (!Array.isArray(this.room.socialFeed)) this.room.socialFeed = [];
@@ -851,6 +892,9 @@ export class RoomDO {
           if (!this.room.settings.moduleName) this.room.settings.moduleName = "满分爱人";
           if (!VALID_POOLS.includes(this.room.settings.pool)) this.room.settings.pool = "all";
           if (!this.room.settings.noun) this.room.settings.noun = { ...DEFAULT_NOUN };
+          // R9 两端对齐：在飞的旧房存档里 n 档还是「满分TA」→ 就地换成「理想型」，
+          // 免得房间没过 TTL 时前后端名词打架（房主自定义过的 noun 不动）。
+          if (this.room.settings.noun.n === "满分TA") this.room.settings.noun.n = DEFAULT_NOUN.n;
         }
         if (this.room.current) {
           if (!this.room.current.penalties) this.room.current.penalties = {};
@@ -903,7 +947,7 @@ export class RoomDO {
         phase: this.room.phase,
         players: this.room.players.filter((p) => !p.left).length,
         visibility: this.room.visibility || "private",
-        deck: this.room.deck || "man",
+        deck: normalizeRoomDeck(this.room.deck),
       });
     }
 
@@ -940,9 +984,7 @@ export class RoomDO {
   async tableJoin(url) {
     const table = Number(url.searchParams.get("table")) || 0;
     const visibility = url.searchParams.get("visibility") === "private" ? "private" : "public";
-    const deck = ROOM_DECK_IDS.includes(url.searchParams.get("deck"))
-      ? url.searchParams.get("deck")
-      : "man";
+    const deck = normalizeRoomDeck(url.searchParams.get("deck"));
     // 简易互斥：并发 join 串行化，防止同桌同时开出两个房
     this.tableLock = (this.tableLock || Promise.resolve()).then(async () => {
       const saved = (await this.ctx.storage.get("table")) || null;
@@ -981,7 +1023,7 @@ export class RoomDO {
       code: info.visibility === "public" ? saved.code : null,
       players: info.players,
       phase: info.phase,
-      deck: info.deck || "man",
+      deck: normalizeRoomDeck(info.deck),
       active: true,
     });
   }
@@ -993,7 +1035,7 @@ export class RoomDO {
       phase: "lobby",
       visibility: opts.visibility === "public" ? "public" : "private",
       solo: opts.solo === true, // solo 房允许 1 人开局
-      deck: ROOM_DECK_IDS.includes(opts.deck) ? opts.deck : "man", // 卡组（R2/R4）：man|woman|boss
+      deck: normalizeRoomDeck(opts.deck), // R9 卡组恒为 lover（恋爱局），旧值全部规整
       table: opts.table || null, // 由几号桌开出（非桌房为 null）
       settings: {
         rounds: 5,
@@ -1247,6 +1289,7 @@ export class RoomDO {
       // 抽签阶段、签未弹出前隐藏主角名字（保持悬念）
       const hideHero = r.phase === "picking" && !cur.drawn;
       const shakerP = r.players.find((p) => p.token === cur.shaker);
+      const heroP = r.players.find((p) => p.token === cur.protagonist);
       curView = {
         protagonist: hideHero
           ? null
@@ -1256,6 +1299,9 @@ export class RoomDO {
         youAreShaker: cur.shaker === token,
         youAreProtagonist: cur.protagonist === token,
         gender: cur.gender,
+        // 与 FRONT 线的契约（R9）：当轮主角 seeking 映射 m→"m" f→"f" 其它/缺失→"n"，
+        // 全桌拿它渲染题面变体（满分男他… / 满分女她… / 理想型 TA…）。
+        renderGender: renderGenderOf(heroP?.seeking),
         roundIndex: cur.roundIndex,
         totalRounds: r.settings.rounds,
         question: cur.question
@@ -1292,7 +1338,7 @@ export class RoomDO {
       phase: r.phase,
       settings: r.settings,
       solo: !!r.solo,
-      deck: r.deck || "man",
+      deck: normalizeRoomDeck(r.deck),
       // 房主视角可见当前公开/私密状态（set_visibility 可改）
       ...(me?.isHost ? { visibility: r.visibility || "private" } : {}),
       you: me ? { ...this.pub(me), token: me.token, isHost: me.isHost, seeking: me.seeking || null, seatNo: myKingChance ? (myKingChance.seat[me.id] || null) : null } : null,
@@ -2077,8 +2123,10 @@ export class RoomDO {
     const r = this.room;
     const cur = r.current;
     const hero = r.players.find((p) => p.token === cur.protagonist);
-    // 隔离铁桶（R4 §1.3）：先按主角(viewer) gender×seeking×卡组筛允许池，再池内去重抽题。
-    const base = filterQuestionsForViewer(r.questions, r.deck, hero?.gender, hero?.seeking);
+    // 隔离铁桶（R4 §1.3 → R9「题随被拷问者」）：只按当轮主角自己的 gender×seeking 筛允许池
+    // （与房间卡组完全无关——卡组已合并为 lover），再池内去重抽题。
+    // 同一局内换主角就换池：直女那轮只出 neutral+straight-m，男同那轮只出 neutral+gay。
+    const base = filterQuestionsForViewer(r.questions, hero?.gender, hero?.seeking);
     const baseIds = new Set(base.map((q) => q.id));
     let pool = base.filter((q) => !r.usedQuestionIds.includes(q.id));
     if (!pool.length) {
@@ -2088,7 +2136,10 @@ export class RoomDO {
     }
     const q = pool[Math.floor(Math.random() * pool.length)];
     r.usedQuestionIds.push(q.id);
-    // boss 卡组 gender=n → 主用 n 变体（TA），绝不默认男性；m/f 卡组用各自方向变体
+    // 题面方向变体：gender=n → 主用 n 变体（TA），绝不默认男性；m/f 用各自方向变体。
+    // R9 契约：全桌渲染以广播里的 current.renderGender（= 主角 seeking 映射）为准；
+    // 服务端这份文本仍按主角本轮 set_gender 的选择出（旧客户端兼容），FRONT 会把
+    // set_gender 与入座时的 seeking 对齐，二者天然一致。
     let g = cur.gender;
     let variant;
     if (g === "n") variant = q.n || q.m || q.f;

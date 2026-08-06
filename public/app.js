@@ -15,6 +15,31 @@ import { LAOK_POOL } from "./laok-lines.js";
 const $app = document.getElementById("app");
 const $toast = document.getElementById("toast");
 
+/* ============================================================
+   R9 一期功能开关（PRD-R9-PHASE1 §四「关不删」）
+   一期把非核心功能全部开关式下线：代码、函数、样式一律保留，只用 flag 短路渲染/调用。
+   二期恢复 = 把对应项拨 true，无需考古（存档 tag: archive/r8-full）。
+   后端另有一份同名常量（src/worker.js），两边独立，改一边不影响另一边跑通。
+   ============================================================ */
+const PHASE1_FLAGS = Object.freeze({
+  // 图鉴（R8 CODEX）：顶栏 📖 按钮 + gallery 屏 + aha 结束后的 codex 上报（maybeReportCodex）。
+  // 二期拨 true 即恢复：按钮回顶栏、renderGallery 可进入、上报恢复。
+  gallery: false,
+  // 满分人生（付费深度报告占位入口）：图鉴页顶部的 gx-life 卡 + openLifeModal。
+  // 二期拨 true 即恢复（注意它挂在图鉴页里，实际可见还需 gallery:true）。
+  lifeEntry: false,
+  // 满分老板卡组：首页 boss 卡 + 大厅 boss 题库装载/noun 下发。
+  // 二期拨 true 即恢复：首页重新出现「满分老板」卡，建房 deck 送 "boss"。
+  deckBoss: false,
+  // 满分闺蜜卡组：首页 bestie 卡 + 大厅 bestie 题库装载/noun 下发。
+  // 二期拨 true 即恢复：首页重新出现「满分闺蜜」卡，建房 deck 送 "bestie"。
+  deckBestie: false,
+  // 展示柜赞评互动（点赞 + 评论）：UI 全部在 public/u.html（本轮不在 FRONT 写入范围）。
+  // app.js 这边不产出任何赞评 UI，此项只作为一期开关注册表的完整登记；
+  // 二期拨 true 即恢复：u.html 的 like-btn / comment-input 一并放开。
+  showcaseSocial: false,
+});
+
 // 首屏只加载游戏壳和实时互动；题库、二维码、理想型和海报在进入对应环节后再取。
 const lazyModules = {};
 function lazyImport(key, path) {
@@ -53,14 +78,53 @@ const deckLabel = (name) => DECK_DISPLAY[name] || name || "";
 
 /* ---------- 卡组（R2）：开桌时选「今晚聊什么」 ----------
    随建房 POST /api/room body.deck 传后端；全桌以 state.deck 为准。
-   g = 该卡组的题面方向（protagonist_setup 阶段由前端自动代发 set_gender）。 */
+   R9：man/woman 合并成一个恋爱局 lover——题面方向不再由房主定，改由每轮被拷问者的
+   seeking 决定（后端每轮广播 current.renderGender）。man/woman 只作为旧链接/旧房间别名保留。
+   g = 该卡组的兜底题面方向（仅在服务端没下发 renderGender 时用）。 */
 const ROOM_DECKS = {
+  lover: { name: "满分男 · 满分女", g: "n", line: "今晚拷问谁的理想型" },
   man: { name: "满分男", g: "m", line: "给男人打分，从来没这么理直气壮过" },
   woman: { name: "满分女", g: "f", line: "满分女的标准答案，今晚现场对" },
   boss: { name: "满分老板", g: "n", line: "落座，聊聊你那位满分老板的糟心操作" },
   bestie: { name: "满分闺蜜", g: "n", line: "闺蜜局开桌，今晚聊聊那个满分的她" },
 };
-const roomDeckName = (key) => ROOM_DECKS[key]?.name || "满分男";
+// 卡组显示名（R9 起题面称谓改走 roundWords，这里只剩卡组本身的名字；保留供二期模组用）
+const roomDeckName = (key) => ROOM_DECKS[key]?.name || ROOM_DECKS.lover.name;
+
+/* 首页卡片清单（R9）：恋爱局单卡常驻；老板/闺蜜藏在一期 flag 后（关不删）。
+   二期把 PHASE1_FLAGS.deckBoss / deckBestie 拨 true，对应卡自动回到首页。 */
+const HOME_DECK_CARDS = [
+  { key: "lover", on: true },
+  { key: "boss", on: PHASE1_FLAGS.deckBoss },      // 一期下线：满分老板卡
+  { key: "bestie", on: PHASE1_FLAGS.deckBestie },  // 一期下线：满分闺蜜卡
+];
+
+/* 旧值规整：localStorage / 旧链接里的 man|woman 一律回落 lover；
+   被 flag 关掉的卡组也回落 lover，避免用户卡在一个首页选不到的桌上。 */
+function normalizeDeck(key) {
+  if (key === "boss") return PHASE1_FLAGS.deckBoss ? "boss" : "lover";
+  if (key === "bestie") return PHASE1_FLAGS.deckBestie ? "bestie" : "lover";
+  return "lover"; // lover / man / woman / 脏值 一律恋爱局（后端同样把别名规整为 lover）
+}
+
+/* ---------- 题面方向（R9 与 BACK 线契约）----------
+   契约：服务端每轮广播 current.renderGender: "m"|"f"|"n"（按当轮被拷问者的 seeking 定），
+   全桌按它选题面变体与称谓名词。题面正文由服务端拼好（cur.question.text），
+   前端消费的是这一层的「名词/代词」：m→满分男/他，f→满分女/她，n→理想型/TA。
+   缺失时兜底 "n"（旧 worker 只有同义的 current.gender，先认它，再退 n）。 */
+const RENDER_WORDS = Object.freeze({
+  m: { g: "m", noun: "满分男", pronoun: "他", pick: "男" },
+  f: { g: "f", noun: "满分女", pronoun: "她", pick: "女" },
+  n: { g: "n", noun: "理想型", pronoun: "TA", pick: "都行" },
+});
+function roundGender(s, aha) {
+  const raw = s?.current?.renderGender ?? s?.current?.gender ?? aha?.gender;
+  return raw === "m" || raw === "f" ? raw : "n";
+}
+// 本轮称谓词包：所有题面/称谓/按钮文案统一从这里取
+function roundWords(s, aha) {
+  return RENDER_WORDS[roundGender(s, aha)];
+}
 
 /* ---------- 每题国王（R2.5 号码对抗版）：指令卡池 ----------
    正式池来自 public/laok-lines.js 的 KING_ORDERS（P 线交付，可能晚到）；
@@ -145,9 +209,13 @@ const ui = {
     GLASS_EMOJI[readCocktail()?.glass] ||
     "🍺",
   drink: localStorage.getItem("mfn_drink") || "beer",
-  deck: ROOM_DECKS[localStorage.getItem("mfn_deck")] ? localStorage.getItem("mfn_deck") : "man",
+  deck: normalizeDeck(localStorage.getItem("mfn_deck")), // R9：旧 man/woman 一律规整为 lover
   codexDeck: "man", // 图鉴当前翻开的本（R8：man|woman|boss|bestie）
-  seeking: null, // 注册档案「想看的取向」m|f|x（resolveSeeking 异步填充，join 时带上）
+  // 入座第四问「想品鉴谁」m|f|x：已登录取档案 seeking 作默认，可在本桌临时改；join 时带上
+  seeking: ["m", "f", "x"].includes(localStorage.getItem("mfn_seeking"))
+    ? localStorage.getItem("mfn_seeking")
+    : null,
+  seekingTouched: false, // 本机这次手动选过 → 档案值不再覆盖（本桌临时改优先）
   gender: null, // 注册档案 viewer 自身性别 m|f（隔离铁桶用：直女/男同、直男/拉拉区分）
   solo: PARAMS.get("solo") === "1",
   table: /^[1-9]$/.test(PARAMS.get("table") || "") ? PARAMS.get("table") : "",
@@ -229,7 +297,7 @@ function sendOrWarn(obj) {
 
 /* ---------- 连接 ---------- */
 
-async function createRoom({ solo = false, deck = "man" } = {}) {
+async function createRoom({ solo = false, deck = "lover" } = {}) {
   // solo:true 走同一入口，后端支持 1 人开局；deck = 今晚聊什么（R2 卡组）
   const res = await fetch("/api/room", {
     method: "POST",
@@ -275,7 +343,8 @@ function resolveSeeking() {
       }
       return { seeking, gender };
     })().then((v) => {
-      ui.seeking = v.seeking;
+      // R9：入座第四问已手动选过就不再被档案覆盖（PRD §3.2「本桌临时改」）
+      if (!ui.seekingTouched && v.seeking) ui.seeking = v.seeking;
       ui.gender = v.gender;
       return v;
     });
@@ -533,6 +602,8 @@ function derivedSubmitted(s) {
 /* ---------- 渲染 ---------- */
 
 function render() {
+  // 一期 flag：gallery=false 时图鉴屏不可达（renderGallery 函数保留，二期拨 true 即恢复）
+  if (ui.screen === "gallery" && !PHASE1_FLAGS.gallery) ui.screen = "home";
   // 入场 class 只存在于真正的 screen/phase 切换；同阶段重绘不会让新 DOM 再次闪入。
   const key = ui.screen + ":" + (ui.state?.phase || "");
   const phaseChanged = key !== render._key;
@@ -596,7 +667,10 @@ function header(s, sub) {
   return `<div class="row">
     <div class="grow"><div class="brand-title"><span class="brand-mark" aria-hidden="true">${BRAND_MARK_SVG}</span><h1 class="neon">理想型<span class="amber">·</span>加载中</h1></div>
     ${sub ? `<div class="dim">${sub}</div>` : ""}</div>
-    <button class="btn ghost small" id="galleryBtn" title="图鉴" aria-label="打开图鉴">📖</button>
+    ${/* 一期 flag：gallery=false 隐藏顶栏图鉴入口（按钮 HTML 保留，二期拨 true 即恢复） */
+      PHASE1_FLAGS.gallery
+        ? `<button class="btn ghost small" id="galleryBtn" title="图鉴" aria-label="打开图鉴">📖</button>`
+        : ""}
     <button class="btn ghost small me-btn" id="meBtn" aria-label="进入我的主页">我的</button>
     <button class="btn ghost small" id="sndBtn">${sound.enabled ? "🔊" : "🔇"}</button>
   </div>`;
@@ -609,7 +683,9 @@ function bindSound() {
     render();
   });
   document.getElementById("meBtn")?.addEventListener("click", goMyPage);
+  // 一期 flag：gallery=false 时按钮根本不渲染，这里再短路一道（绑定逻辑保留）
   document.getElementById("galleryBtn")?.addEventListener("click", () => {
+    if (!PHASE1_FLAGS.gallery) return;
     ui._galleryReturn = ui.screen;
     ui.screen = "gallery";
     render();
@@ -617,22 +693,42 @@ function bindSound() {
 }
 
 /* --- 首页 --- */
+// 入座第四问「想品鉴谁」（R9 PRD §3.2）：每人一份、私密语义、无圈层标签。
+// 值随 join 送 { seeking }，服务端按被拷问者的 seeking 决定当轮 renderGender。
+const SEEK_OPTIONS = [
+  { id: "m", label: "男", emoji: "🕺" },
+  { id: "f", label: "女", emoji: "💃" },
+  { id: "x", label: "都行", emoji: "✨" },
+];
+
 function renderHome() {
   const cocktail = readCocktail();
+  // 有档案就把「想看的取向」拉回来当第四问默认值（拉到了会重绘一次首页）
+  resolveSeeking().then((v) => {
+    if (ui.screen === "home" && !ui.seekingTouched && v.seeking && v.seeking !== renderHome._seekPainted) {
+      renderHome._seekPainted = v.seeking;
+      renderHome();
+    }
+  }).catch(() => {});
   const deepJoin = !ui.solo && /^\d{4}$/.test(ui.code); // ?room 深链：入座是唯一主按钮
   const joinLabel = ui.table ? `在 ${esc(ui.table)} 号桌入座` : `在 ${esc(ui.code)} 桌入座`;
   const sub = ui.solo ? "吧台第一个位子，留给一个人来的" : "打分，猜分，罚酒";
-  // 今晚聊什么（R2 卡组）：开桌才选；?room 深链跟桌走，不给选
+  // 今晚聊什么（R2 卡组 → R9 合并卡）：开桌才选；?room 深链跟桌走，不给选。
+  // 一期只剩「满分男 · 满分女」一张恋爱局卡；老板/闺蜜卡藏在 PHASE1_FLAGS 后（关不删）。
+  const homeCards = HOME_DECK_CARDS.filter((c) => c.on && ROOM_DECKS[c.key]);
   const deckPickHtml = deepJoin ? "" : `
     <div class="glass stack deck-pick">
       <label class="dim">今晚聊什么</label>
-      <div class="deck-cards" id="deckCards">
-        ${Object.entries(ROOM_DECKS).map(([k, d]) => `
-        <button type="button" class="deck-card ${k === ui.deck ? "sel" : ""}" data-deck="${k}">
+      <div class="deck-cards${homeCards.length === 1 ? " single" : ""}" id="deckCards">
+        ${homeCards.map(({ key }) => {
+          const d = ROOM_DECKS[key];
+          return `
+        <button type="button" class="deck-card ${key === ui.deck ? "sel" : ""}" data-deck="${key}">
           <span class="dc-kicker">TONIGHT'S MENU</span>
           <b>${d.name}</b>
           <span class="dc-line">${d.line}</span>
-        </button>`).join("")}
+        </button>`;
+        }).join("")}
       </div>
     </div>`;
   $app.innerHTML = `
@@ -654,6 +750,11 @@ function renderHome() {
       <div class="emoji-grid drink-choice-grid" id="drinkGrid">
         ${DRINK_OPTIONS.map((d) => `<button data-drink="${d.id}" class="${d.id === ui.drink ? "sel" : ""}" title="${d.label}">${d.emoji}<small>${d.label}</small></button>`).join("")}
       </div>
+      <label class="dim">今晚想品鉴谁</label>
+      <div class="emoji-grid drink-choice-grid seek-choice-grid" id="seekGrid">
+        ${SEEK_OPTIONS.map((o) => `<button data-seek="${o.id}" class="${o.id === ui.seeking ? "sel" : ""}" title="${o.label}">${o.emoji}<small>${o.label}</small></button>`).join("")}
+      </div>
+      <div class="dim seek-note">轮到你被拷问时，题目按这个方向出，随时能改。</div>
     </div>
     ${deckPickHtml}
     ${ui.solo ? `
@@ -693,17 +794,27 @@ function renderHome() {
   document.getElementById("deckCards")?.addEventListener("click", (ev) => {
     const b = ev.target.closest("button[data-deck]");
     if (!b) return;
-    ui.deck = b.dataset.deck;
+    ui.deck = normalizeDeck(b.dataset.deck);
     localStorage.setItem("mfn_deck", ui.deck);
+    renderHome();
+  });
+  // 第四问：想品鉴谁（本机记住上次选择；不回写注册档案，档案只在 /u 改）
+  document.getElementById("seekGrid")?.addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-seek]");
+    if (!b) return;
+    ui.seeking = b.dataset.seek;
+    ui.seekingTouched = true;
+    try { localStorage.setItem("mfn_seeking", ui.seeking); } catch {}
     renderHome();
   });
   const go = async (create) => {
     sound.unlock();
     if (!ui.name) return toast("先留个称呼，我好记住你。");
     try {
-      await resolveSeeking(); // 有注册档案就把「想看的取向」带上桌
+      await resolveSeeking(); // 有注册档案就把「想看的取向」带上桌（第四问手动选过则以手动为准）
       let code = deepJoin ? ui.code : (document.getElementById("codeIn")?.value.trim() || ui.code);
-      if (create) code = await createRoom({ solo: ui.solo, deck: ui.deck });
+      // R9：恋爱局统一送 deck="lover"（后端把旧 man/woman 也规整成它）
+      if (create) code = await createRoom({ solo: ui.solo, deck: normalizeDeck(ui.deck) });
       else {
         if (!/^\d{4}$/.test(code)) return toast("房间码是 4 位数字。");
         const chk = await fetch("/api/room/" + code).then((r) => r.json()).catch(() => null);
@@ -793,10 +904,12 @@ function renderGallery() {
     <div class="gx-soon"><b>${name}</b><span>敬请期待</span></div>`).join("");
   $app.innerHTML = `
     ${header(null, "图鉴 · 收集你解锁过的满分型号")}
+    ${/* 一期 flag：lifeEntry=false 隐藏「满分人生」付费入口（卡片 HTML + openLifeModal 全保留） */
+      PHASE1_FLAGS.lifeEntry ? `
     <div class="glass gx-life stack">
       <div class="grow"><b class="gx-life-title">满分人生 ✦</b><span class="dim">付费深度报告 · 把你的所有满分类型合成一份人生档案</span></div>
       <button class="btn" id="lifeBtn2">解锁满分人生 ✦</button>
-    </div>
+    </div>` : ""}
     ${loggedIn ? "" : `<div class="glass gx-banner">登录后开始收集 · 图鉴进度跟账号走</div>`}
     <div class="gx-codex${loggedIn ? "" : " gx-locked-page"}" ${loggedIn ? "" : `aria-disabled="true"`}>
       <div class="gx-book-tabs">${tabs}</div>
@@ -821,7 +934,11 @@ function renderGallery() {
     ui.screen = ui._galleryReturn && ui._galleryReturn !== "gallery" ? ui._galleryReturn : "home";
     render();
   });
-  document.getElementById("lifeBtn2")?.addEventListener("click", openLifeModal);
+  // 一期 flag：lifeEntry=false 时按钮不渲染，这里再短路一道（openLifeModal 保留不删）
+  document.getElementById("lifeBtn2")?.addEventListener("click", () => {
+    if (!PHASE1_FLAGS.lifeEntry) return;
+    openLifeModal();
+  });
   bindSound();
 }
 
@@ -865,7 +982,7 @@ function renderLobby(s) {
   const cocktail = readCocktail();
   const soloTable = ui.solo && s.players.length === 1;
   const canStart = decks && (s.players.length >= 2 || soloTable);
-  const deckMeta = ROOM_DECKS[s.deck] || ROOM_DECKS.man;
+  const deckMeta = ROOM_DECKS[s.deck] || ROOM_DECKS.lover; // R9：兜底恋爱局，不再默认满分男
   $app.innerHTML = `
     ${header(s, soloTable ? "吧台位。就你，和我" : "桌子留好了，把人叫来吧")}
     <div class="glass center stack">
@@ -922,7 +1039,11 @@ function renderLobby(s) {
     catch { toast(invite); }
   });
   if (me.isHost && !renderLobby._q) {
-    Promise.all([loadQuestions(), loadBoss().catch(() => null), loadBestie().catch(() => null)]).then(([q, boss, bestie]) => {
+    // 一期 flag：deckBoss/deckBestie=false → 不再拉这两个模组题库（首页也进不去这两个卡组）。
+    // 二期拨 true 即恢复：动态 import 与下面的 noun 下发逻辑原样保留。
+    const bossP = PHASE1_FLAGS.deckBoss ? loadBoss().catch(() => null) : Promise.resolve(null);
+    const bestieP = PHASE1_FLAGS.deckBestie ? loadBestie().catch(() => null) : Promise.resolve(null);
+    Promise.all([loadQuestions(), bossP, bestieP]).then(([q, boss, bestie]) => {
       // 契约：模组文件导出名为 MODULE（兼容 *_MODULE 命名）
       renderLobby._q = {
         DECKS: q.DECKS,
@@ -947,12 +1068,14 @@ function renderLobby(s) {
       sound.unlock();
       const selectedDeck = decks[s.settings.deck] || decks.qingtang || Object.values(decks)[0];
       const startMsg = { type: "start", questions: selectedDeck.questions };
-      if (s.deck === "boss") {
+      // 一期 flag：deckBoss/deckBestie=false → s.deck 不可能是 boss/bestie，这两支自然不走。
+      // 分支保留不删（含 noun 契约），二期拨 true 即恢复。
+      if (s.deck === "boss" && PHASE1_FLAGS.deckBoss) {
         const bm = renderLobby._q.BOSS_MODULE;
         startMsg.module = "boss";
         startMsg.moduleName = bm?.name || "满分老板";
         startMsg.noun = bm?.noun || { m: "满分老板", f: "满分老板", n: "满分老板" };
-      } else if (s.deck === "bestie") {
+      } else if (s.deck === "bestie" && PHASE1_FLAGS.deckBestie) {
         const bm = renderLobby._q.BESTIE_MODULE;
         startMsg.module = "bestie";
         startMsg.moduleName = bm?.name || "满分闺蜜";
@@ -1121,16 +1244,19 @@ function animateCup(intensity) {
 }
 
 /* --- 主角设定 ---
-   R2：题面方向由本桌卡组（state.deck）决定，不再让主角二选一。
-   主角端自动代发 set_gender（按题去重防重发），这屏只是过场。 */
+   R9：题面方向随「被拷问者」——服务端按主角 seeking 算出 current.renderGender 广播全桌。
+   主角端把这个方向原样回送 set_gender：服务端拼题面正文用的是 cur.gender，
+   回送后两者严格一致（BACK 线契约注释里的「FRONT 会把 set_gender 与 seeking 对齐」）。
+   旧 worker 不下发 renderGender 时，退回本桌卡组方向兜底，老房间照样有方向。 */
 function renderSetup(s) {
   const cur = s.current;
   const p = cur.protagonist;
+  const W = roundWords(s);
   if (cur.youAreProtagonist) {
     const key = `${s.code}:${p?.name || ""}:${cur.roundIndex}`;
     if (ui.genderSentFor !== key) {
       ui.genderSentFor = key;
-      send({ type: "set_gender", gender: ROOM_DECKS[s.deck]?.g || "m" });
+      send({ type: "set_gender", gender: cur.renderGender || ROOM_DECKS[s.deck]?.g || "n" });
     }
   }
   $app.innerHTML = `
@@ -1138,8 +1264,8 @@ function renderSetup(s) {
     <div class="glass stack center">
       <h2>${cur.youAreProtagonist ? "主角是你。杯子端稳。" : `主角是 ${esc(p.name)}。`}</h2>
       <div class="dim">${cur.youAreProtagonist
-        ? `今晚聊${esc(roomDeckName(s.deck))}。我去拿题，你先喝一口。`
-        : "题马上上桌。你先想想怎么猜。"}</div>
+        ? `今晚拷问你的${esc(W.noun)}。我去拿题，你先喝一口。`
+        : `题马上上桌。等会儿猜的是 ${esc(p.name)} 的${esc(W.noun)}。`}</div>
     </div>`;
   bindSound();
 }
@@ -1217,14 +1343,18 @@ function renderAnswering(s) {
   const me = cur.youAreProtagonist;
   const solo = !!s.solo;
   const waiting = cur.submitted.guessers;
+  // R9：题面正文由服务端按 renderGender 拼好；这里只挑「XX 的满分男/满分女/理想型」这类称谓
+  const W = roundWords(s);
   // solo 开局：老K先开口（solo_open），一局一次；先同步取兜底，再异步取 LLM 版
   if (solo) {
     const openKey = `open:${s.code}`;
     if (!laokMemo.has(openKey)) laokMemo.set(openKey, pickPool("solo_open"));
-    laokFetch("solo_open", { deck: roomDeckName(s.deck), rounds: cur.totalRounds }, openKey);
+    laokFetch("solo_open", { deck: W.noun, rounds: cur.totalRounds }, openKey);
   }
   $app.innerHTML = `
-    ${header(s, solo ? `跟我聊的第 ${cur.roundIndex}/${cur.totalRounds} 题` : `${esc(cur.protagonist.name)}的第 ${cur.roundIndex}/${cur.totalRounds} 题`)}
+    ${header(s, solo
+      ? `聊你的${esc(W.noun)} · 第 ${cur.roundIndex}/${cur.totalRounds} 题`
+      : `${esc(cur.protagonist.name)}的${esc(W.noun)} · 第 ${cur.roundIndex}/${cur.totalRounds} 题`)}
     ${solo ? laokBoxHtml(`open:${s.code}`) : ""}
     <div class="glass question-card">
       ${esc(cur.question.text)}
@@ -1237,7 +1367,7 @@ function renderAnswering(s) {
       ` : `
         <div class="dim">${me
           ? (solo ? "跟我不用装。10=仍然满分，0=直接火化。" : "你的真实打分（10=仍然满分，0=直接火化）")
-          : `盲猜 ${esc(cur.protagonist.name)} 会打几分。差 2 分以上，罚酒。`}</div>
+          : `盲猜 ${esc(cur.protagonist.name)} 给${esc(W.pronoun)}打几分。差 2 分以上，罚酒。`}</div>
         <div class="score-val" id="sv">${ui.slider}</div>
         <input type="range" id="slider" min="0" max="10" step="1" value="${ui.slider}" aria-label="打分" />
         <div class="slider-ticks">${Array.from({ length: 11 }, (_, i) => `<span>${i}</span>`).join("")}</div>
@@ -1403,6 +1533,7 @@ function renderReveal(s) {
   const rv = cur.reveal;
   const me = s.you;
   const solo = !!s.solo;
+  const W = roundWords(s); // R9：本轮称谓随 current.renderGender
 
   // 悬念节奏（只在首次进入本轮开牌时播）：先各人猜分逐个亮 → 主角真分砸出 → 罚酒判定逐条弹
   const revealKey = `${cur.roundIndex}-${esc(cur.protagonist?.name || "")}-${rv.score}`;
@@ -1432,7 +1563,7 @@ function renderReveal(s) {
   }, laokKey);
 
   $app.innerHTML = `
-    ${header(s, `开牌 · 第 ${cur.roundIndex}/${cur.totalRounds} 题`)}
+    ${header(s, `开牌 · ${esc(cur.protagonist?.name || "")}的${esc(W.noun)} · 第 ${cur.roundIndex}/${cur.totalRounds} 题`)}
     <div class="glass center stack">
       <div class="dim">${esc(rv.question)}</div>
       <div class="big-score ${fresh ? "seq-score" : ""}" ${fresh ? `style="--d:${scoreDelay.toFixed(2)}s"` : ""}>${rv.score}<span class="unit">分</span></div>
@@ -1454,7 +1585,7 @@ function renderReveal(s) {
       <input type="text" id="cmtIn" maxlength="100" placeholder="补刀一句（可选）" class="grow" value="${esc(ui.commentDraft)}" />
       <button class="btn ghost small" id="cmtBtn">发</button>
     </div>` : ""}
-    ${me.isHost ? `<button class="btn" id="nextBtn">${rv.results.some((x) => x.drink) ? "进入罚酒仪式" : (cur.roundIndex >= cur.totalRounds ? "看 TA 的理想型" : "下一题")}</button>` : `<div class="dim center">酒还没醒，房主手里的牌还没翻。稍等。</div>`}`;
+    ${me.isHost ? `<button class="btn" id="nextBtn">${rv.results.some((x) => x.drink) ? "进入罚酒仪式" : (cur.roundIndex >= cur.totalRounds ? `看 ${esc(cur.protagonist?.name || "TA")} 的${esc(W.noun)}` : "下一题")}</button>` : `<div class="dim center">酒还没醒，房主手里的牌还没翻。稍等。</div>`}`;
   bindSound();
   mountLaokAvatar();
   bindKingChance(s);
@@ -1495,6 +1626,7 @@ function renderDrinking(s) {
   const cur = s.current;
   const ceremony = cur.drinking || { drinkers: [], completed: 0, total: 0 };
   const finished = ceremony.allDone || ceremony.skipped;
+  const W = roundWords(s); // R9：本轮称谓随 current.renderGender
   $app.innerHTML = `
     ${header(s, `罚酒仪式 · 第 ${cur.roundIndex}/${cur.totalRounds} 题`)}
     <section class="chug-stage">
@@ -1512,7 +1644,7 @@ function renderDrinking(s) {
       <div class="chug-actions">
         ${ceremony.canConfirm ? `<button class="btn" id="drinkDoneBtn">我喝完了</button>` : ""}
         ${s.you.isHost && !finished ? `<button class="btn ghost" id="skipDrinkBtn">这轮我请，跳过</button>` : ""}
-        ${s.you.isHost && finished ? `<button class="btn" id="nextBtn">${cur.roundIndex >= cur.totalRounds ? "看 TA 的理想型" : "下一题"}</button>` : ""}
+        ${s.you.isHost && finished ? `<button class="btn" id="nextBtn">${cur.roundIndex >= cur.totalRounds ? `看 ${esc(cur.protagonist?.name || "TA")} 的${esc(W.noun)}` : "下一题"}</button>` : ""}
       </div>
       ${!s.you.isHost && !ceremony.canConfirm && !finished ? `<div class="center dim">等他们把杯子放下。</div>` : ""}
     </section>`;
@@ -1643,6 +1775,9 @@ function persistSavedCodexKeys() {
   try { localStorage.setItem(CODEX_SAVED_LS, JSON.stringify([...savedCodexKeys].slice(-50))); } catch {}
 }
 async function maybeReportCodex(s, aha, profile) {
+  // 一期 flag：gallery=false → 图鉴整体下线，前端不再调 codex 端点（后端端点保留）。
+  // 二期拨 true 即恢复：上报逻辑、判重、乐观锁一行没删。
+  if (!PHASE1_FLAGS.gallery) return;
   const typeId = profile?.type?.id; // TYPE 线契约字段；缺失（旧档案/旧 worker）则不上报
   if (!Number.isInteger(typeId) || typeId < 1 || typeId > 16) return;
   if (!aha?.protagonist?.name || aha.protagonist.name !== s.you?.name) return; // 只记自己的局
@@ -1710,7 +1845,10 @@ function renderAha(s, aha, isFinal) {
   }
   const primary = safeProfileColor(portrait.palette?.primary, "#ff2d78");
   const accent = safeProfileColor(portrait.palette?.accent, "#2de2ff");
-  const stages = ["理想型亮相", "相亲人物档案", "相处细节"];
+  // R9：亮相页称谓以「这条 aha 自己的方向」为准（finished 回看时 current 早换人了），
+  // 缺失才退回本轮 current.renderGender，再退 n。亮相链路的图/角标/海报一律不动。
+  const W = ["m", "f", "n"].includes(aha.gender) ? RENDER_WORDS[aha.gender] : roundWords(s);
+  const stages = [`${W.noun}亮相`, "相亲人物档案", "相处细节"];
   const stage = Math.max(0, Math.min(2, ui.ahaStage || 0));
   const lt = aha.light || { burst: 0, off: 0, voted: 0, total: 0, mine: null, burstNames: [], offNames: [] };
   const mine = lt.mine ?? lt.yours ?? null;
@@ -1775,14 +1913,14 @@ function renderAha(s, aha, isFinal) {
     </div>`;
 
   $app.innerHTML = `
-    ${header(s, `${esc(aha.protagonist?.name || "")} 的理想型来了`)}
-    <div class="aha-stage-nav" role="tablist" aria-label="理想型报告阶段">
+    ${header(s, `${esc(aha.protagonist?.name || "")} 的${esc(W.noun)}来了`)}
+    <div class="aha-stage-nav" role="tablist" aria-label="${esc(W.noun)}报告阶段">
       ${stages.map((label, i) => `<button class="${stage === i ? "active" : ""}" data-stage="${i}" role="tab" aria-selected="${stage === i}"><span>0${i + 1}</span>${label}</button>`).join("")}
     </div>
     <div class="flip-scene" id="ahaStage" role="button" tabindex="0" aria-live="polite" aria-label="点击查看${stage < 2 ? stages[stage + 1] : stages[0]}">${stageBody}</div>
-    <button class="stage-next" id="stageNext">${stage < 2 ? `点击继续 · ${stages[stage + 1]}` : "回到理想型立绘"}<span>→</span></button>
+    <button class="stage-next" id="stageNext">${stage < 2 ? `点击继续 · ${stages[stage + 1]}` : `回到${esc(W.noun)}立绘`}<span>→</span></button>
     <div class="glass stack center light-panel">
-      ${solo ? `<div class="dim">你给这张理想型：💗 爆灯 / 🖤 灭灯（点了可改）</div>` : ""}
+      ${solo ? `<div class="dim">你给这张${esc(W.noun)}：💗 爆灯 / 🖤 灭灯（点了可改）</div>` : ""}
       <div class="lamp-row">${lampRow}</div>
       <div class="light-count">爆灯 <b>${lt.burst}</b> · 灭灯 <b>${lt.off}</b><span class="dim"> · 已投 ${lt.voted ?? lt.burst + lt.off}/${lt.total}</span></div>
       ${canVote ? `
@@ -1792,7 +1930,7 @@ function renderAha(s, aha, isFinal) {
         </div>
         <div class="dim">${solo ? "一盏灯，点了可改，记进你的展示柜。" : "灯可以改，最后一票记进海报。"}</div>
       ` : s.current?.youAreProtagonist && !isFinal && !solo
-          ? `<div class="dim">全场在给你的理想型亮灯。别紧张，灯不咬人。</div>`
+          ? `<div class="dim">全场在给你的${esc(W.noun)}亮灯。别紧张，灯不咬人。</div>`
           : lt.burstNames?.length
             ? `<div class="dim">爆灯的人：${lt.burstNames.map(esc).join("、")}</div>`
             : ""}
@@ -2159,9 +2297,13 @@ function mockArt(emoji) {
 
 function buildPreviewState(screen) {
   // QA：?preview=aha&module=boss&g=f 可切模组×性别，验证「你老公/老婆/老板/TA 来咯」彩蛋
+  // R9：?rg=m|f|n 覆盖 current.renderGender，用来截「满分男/满分女/理想型」三种题面变体
   const previewParams = new URLSearchParams(location.search);
   const pModule = previewParams.get("module") || undefined;
   const pGender = previewParams.get("g") || previewParams.get("gender") || null;
+  const rgParam = previewParams.get("rg");
+  // 契约：服务端每轮广播 current.renderGender；预览态自己补上，缺省 m
+  const rg = ["m", "f", "n"].includes(rgParam) ? rgParam : "m";
   const players = [
     { id: "t1", name: "coco", emoji: "🍷", isHost: true, connected: true, token: "t1", done: true },
     { id: "t2", name: "阿豪", emoji: "🍺", isHost: false, connected: true, token: "t2", done: false },
@@ -2182,7 +2324,13 @@ function buildPreviewState(screen) {
       { id: 3, name: "coco", emoji: "🍷", text: "爆灯预备！！", reactions: { "🔥": ["阿豪"] } },
     ],
   };
-  const question = { id: "q1", text: "这是一个满分男，但他留着很长的小拇指指甲，说是用来开快递的，你没见他开过快递。", spice: 3 };
+  // 题面正文线上由服务端按 renderGender 拼好；预览态照同一规则拼，?rg 三档都能截到真实文案
+  const qw = RENDER_WORDS[rg];
+  const question = {
+    id: "q1",
+    text: `这是一个${qw.noun}，但${qw.pronoun}留着很长的小拇指指甲，说是用来开快递的，你没见${qw.pronoun}开过快递。`,
+    spice: 3,
+  };
   const protagonist = { name: "赛百诺女士", emoji: "🥂" };
   const mkAha = (p, seed) => {
     const profile = buildIdealProfileFn({
@@ -2225,6 +2373,7 @@ function buildPreviewState(screen) {
       },
     };
   };
+  const built = (() => {
   switch (screen) {
     case "lobby":
       return { ...base, phase: "lobby" };
@@ -2292,7 +2441,8 @@ function buildPreviewState(screen) {
     case "chemistry":
     case "poster": {
       const ahaObj = mkAha(protagonist, 1);
-      if (pGender) ahaObj.gender = pGender; // QA 覆盖：验证不同性别的「来咯」彩蛋
+      // QA 覆盖：?g 验证「来咯」彩蛋；没给 ?g 就跟随 ?rg，保证一次截图里题面与亮相称谓同向
+      ahaObj.gender = pGender || rg;
       return { ...base, phase: "aha", aha: ahaObj,
         current: { youAreProtagonist: false, protagonist } };
     }
@@ -2302,6 +2452,10 @@ function buildPreviewState(screen) {
     default:
       return null;
   }
+  })();
+  // R9 契约补齐：预览态也要带 current.renderGender，题面/称谓走真实渲染路径（?rg=m|f|n 可切）
+  if (built?.current && built.current.renderGender == null) built.current.renderGender = rg;
+  return built;
 }
 
 function bootPreview(screen) {
