@@ -622,17 +622,64 @@ const MBTI_MAP = [
  * relationship.heading/chemistry/portrait.palette 全部确定性生成。
  * ================================================================ */
 
-// 每维每档一个关键词（相亲档案第 2 页 keyword-row）
+// 每维每档一个「关键词池」（相亲档案第 2 页 keyword-row）。
+// R11 扩池（Kim：标签老是重复）：8 维 × 3 档，每格 ≥3 条同向异说法，
+// seed 确定性抽取（seedIndex 高位法，同一局同一 seed 永远同一批词）。
+// 铁律：每格第 [0] 条 = 扩池前的原词，且与 TYPE_TABLE 型号名同源的那条
+// （5G冲浪/赛博纯真/抽象对频/人形翻译器/岁月静好/月底吃土/彻底放养/全都安排上…）
+// 必须留在池里，否则图鉴型号名和档案关键词对不上。
 const DIM_KEYWORDS = Object.freeze({
-  boundary: { high: "边界感在线", mid: "看场合放松", low: "百无禁忌" },
-  warmth: { high: "情绪价值满格", mid: "外冷内热", low: "嘴硬心软" },
-  money: { high: "精打细算", mid: "选择性大方", low: "月底吃土" },
-  play: { high: "没有淡季", mid: "定期发疯", low: "岁月静好" },
-  control: { high: "全都安排上", mid: "关键时刻出手", low: "彻底放养" },
-  romance: { high: "浪漫超标", mid: "限量浪漫", low: "闷声惊喜" },
-  absurd: { high: "抽象对频", mid: "认真查梗", low: "人形翻译器" },
-  meme: { high: "5G冲浪", mid: "梗慢半拍", low: "赛博纯真" },
+  boundary: Object.freeze({
+    high: Object.freeze(["边界感在线", "分寸感精装修", "手机反扣不用提醒", "你的抽屉从来不开"]),
+    mid: Object.freeze(["看场合放松", "对外客气对内越界", "熟了才拆防线", "分寸随人调档"]),
+    low: Object.freeze(["百无禁忌", "不设防", "什么都能混用", "在你面前没有暗号"]),
+  }),
+  warmth: Object.freeze({
+    high: Object.freeze(["情绪价值满格", "人形充电宝", "接得住你所有崩溃", "永远秒回的那个"]),
+    mid: Object.freeze(["外冷内热", "冷盘管够热菜藏着", "关键时刻才心疼你", "平时装酷偶尔破功"]),
+    low: Object.freeze(["嘴硬心软", "不会安慰但人在", "沉默投喂型", "话难听事都办了"]),
+  }),
+  money: Object.freeze({
+    high: Object.freeze(["精打细算", "记账到小数点", "首席财务官人格", "优惠券永不过期"]),
+    mid: Object.freeze(["选择性大方", "该省省该花花", "对你从不抠", "预算内的任性"]),
+    low: Object.freeze(["月底吃土", "破产美食家", "钱包留不住钱", "先快乐再算账"]),
+  }),
+  play: Object.freeze({
+    high: Object.freeze(["没有淡季", "全年无休的疯", "游乐场厂长", "随时能出发"]),
+    mid: Object.freeze(["定期发疯", "周末限定野生", "攒够了就炸一次", "闹得起也收得住"]),
+    low: Object.freeze(["岁月静好", "沙发钉子户", "在家才充电", "最爱哪都不去"]),
+  }),
+  control: Object.freeze({
+    high: Object.freeze(["全都安排上", "行程总导演", "表格治世", "出门前就排好了"]),
+    mid: Object.freeze(["关键时刻出手", "小事随你大事我来", "该拿主意才拿", "松紧有度"]),
+    low: Object.freeze(["彻底放养", "副驾DJ人格", "全听你的", "计划？没有计划"]),
+  }),
+  romance: Object.freeze({
+    high: Object.freeze(["浪漫超标", "细节收藏家", "纪念日比你记得清", "仪式感不打折"]),
+    mid: Object.freeze(["限量浪漫", "偶尔发作的浪漫", "过节才上强度", "浪漫按季投放"]),
+    low: Object.freeze(["闷声惊喜", "周三魔法师", "不说但都办到了", "浪漫藏在实事里"]),
+  }),
+  absurd: Object.freeze({
+    high: Object.freeze(["抽象对频", "对线艺术家", "一句就能接上暗号", "脑回路同款"]),
+    mid: Object.freeze(["认真查梗", "跟得上但要缓一秒", "抽象需要字幕", "半懂装懂型"]),
+    low: Object.freeze(["人形翻译器", "一本正经", "所有梗都要解释", "字面意思理解大师"]),
+  }),
+  meme: Object.freeze({
+    high: Object.freeze(["5G冲浪", "热梗批发商", "热搜比你先刷到", "全网同步更新"]),
+    mid: Object.freeze(["梗慢半拍", "上周的热梗今天讲", "总在过气那天学会", "延迟上网"]),
+    low: Object.freeze(["赛博纯真", "词典派学者", "互联网绝缘体", "不上网的清白人"]),
+  }),
 });
+
+// 关键词确定性抽取：同一 seed + 同一维度 + 同一档 → 永远同一条。
+// 兼容旧结构（值为字符串而非数组）以防外部改表。
+function pickKeyword(key, tier, seed) {
+  const cell = DIM_KEYWORDS[key]?.[tier];
+  if (!cell) return "";
+  if (typeof cell === "string") return cell;
+  if (!Array.isArray(cell) || !cell.length) return "";
+  return cell[seedIndex(`${seed}|kw|${key}|${tier}`, cell.length)];
+}
 
 // 身份（生活状态一行）：按模组给池，seed 确定性抽取
 const IDENTITY_POOL = Object.freeze({
@@ -919,19 +966,22 @@ export function buildIdealProfile({ records, genderPreference, seeking, seed }) 
   const details = pickDetails(scores, genderPreference, seed, recList, module);
 
   const figGender = pickFigureGender(module, seeking, genderPreference, seed);
-  const figure = FIGURE_DESC[figGender] || FIGURE_DESC.n;
+  // FIGURE_DESC（V4/V5 的「有脸年轻好看」描述）随 V6 回退一并停用，表本身保留备查。
   const dimDesc = `${DIMENSION_LABELS[top1.key] || "charm"}-focused, ${DIMENSION_LABELS[top2.key] || "playful"}`;
-  // 生图 V5「审美风」（海报法则：本版 UI 精致 → 立绘走审美风，不走嘲弄风）。
-  // 硬要求保留：有清晰的脸和五官、年轻、好看。
-  // 变的是气质：有风情、构图讲究、暖夜酒吧光——琥珀主光 + 少量霓虹点缀，
-  // 底色暖黑深酒红（故事圣经 §四），去掉赛博霓虹堆料与高饱和油彩噪感。
-  // 继续用 dimDesc（top 维度）让人物气质呼应画像分布。
-  const prompt = `elegant editorial portrait illustration of ${figure}, beautiful expressive face with refined delicate features, quiet alluring confidence, ${dimDesc} temperament shown in the eyes and posture, tasteful well-tailored outfit, seated at the polished brass counter of a warm dimly lit late-night cocktail bar, deep amber key light from a low lamp, one small pink neon sign glowing softly far in the background bokeh, dark warm wine-red interior, wood and glass and velvet textures, shallow depth of field, considered cinematic composition with negative space, soft painterly semi-realistic illustration, clean refined line work, restrained warm color grading, high quality, no text`;
+  // 生图 V6 = 回退 V1「嘲弄风」（R11 · Kim：V5 审美风「太严肃而且更低级」）。
+  // 考古出处：commit a74d66e「feat(v2): backend 101/101 green + buildIdealProfile implemented」，
+  // 原文：`pixel art portrait of a ${gTag}, ${dimDesc} personality, cyberpunk neon bar background,
+  //        vivid colors, detailed, 8-bit style`（兜底原文见下方 fallbackUrl，出自同一版 52e8ce7）。
+  // 就是那版劣质 AI 味的廉价像素图——理想型本来就该是加载不出来的抽象玩意儿，越"努力"越好笑。
+  // 与 V1 的唯一差别：gTag 不再直接吃 genderPreference，而是走 R7 之后的 pickFigureGender，
+  // 保证「非恋人模组不默认出男图」这条不被回退带崩（figGender → GENDER_TAGS 同一张表）。
+  const gTag = GENDER_TAGS[figGender] || GENDER_TAGS.any;
+  const prompt = `pixel art portrait of a ${gTag}, ${dimDesc} personality, cyberpunk neon bar background, vivid colors, detailed, 8-bit style`;
 
   const encodedPrompt = encodeURIComponent(prompt);
   const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&seed=${hashStr(seed) % 99999}&referrer=idealtype&nologo=true`;
-  // 兜底立绘：更短的 prompt + 不同 seed，主图挂了再试一次（同样有脸、年轻、同一套暖夜酒吧审美）
-  const fallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(`elegant portrait illustration of ${figure} with a beautiful refined face, alluring and stylish, warm amber lamp light in a dim wood-and-brass cocktail bar, soft painterly style, no text`)}?width=512&height=512&seed=${(hashStr(seed + "fb") % 99999)}&referrer=idealtype&nologo=true`;
+  // 兜底立绘：更短的 prompt + 不同 seed，主图挂了再试一次（V1 原版兜底文案）
+  const fallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(`pixel art portrait of a ${gTag}, neon bar, 8-bit style`)}?width=512&height=512&seed=${(hashStr(seed + "fb") % 99999)}&referrer=idealtype&nologo=true`;
 
   const modProf = MODULE_PROFILES[module] || MODULE_PROFILES.lover;
   const introTemplate = seedPick(modProf.intros, seed + "intro");
@@ -950,7 +1000,7 @@ export function buildIdealProfile({ records, genderPreference, seeking, seed }) 
   /* ---- 相亲档案字段（第 2 页契约） ---- */
   // 关键词：最突出的 4 个维度各出一个
   const keywords = ranked.slice(0, 4)
-    .map(({ key, score }) => DIM_KEYWORDS[key]?.[dimTier(score)])
+    .map(({ key, score }) => pickKeyword(key, dimTier(score), seed))
     .filter(Boolean);
   // 出生日期/星座：seed 确定性推（1992-2001 年段）
   const bYear = 1992 + seedIndex(seed + "yy", 10);

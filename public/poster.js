@@ -3,12 +3,23 @@
 //   与 UI 同一个色彩系统同一个气质 —— 暖黑酒红底、大比例琥珀灯、黄铜压条、
 //   马天尼粉只给「酒桌称号」这一处心动时刻。排版讲究：立绘顶天，
 //   信息区靠黄铜细线分栏，不再靠霓虹描边把每块都框起来。
-// 布局：立绘 → 称号横幅 → 人物档案 → 酒桌数据 → 二维码（扫码直接进当前房间）
+// 布局：立绘 → 称号横幅 → 人物档案 → 酒桌数据 → 二维码（R11 起指向站点落地首页）
+//
+// R11 交付要点（Kim 手机验收）：
+//  · 输出必须是 canvas 合成后的单张 dataURL（见结尾 canvas.toDataURL），
+//    调用方直接塞进一个 <img>，手机长按 = 存整张图，不做 DOM 拼接/背景分层。
+//  · 立绘等图超时时间放宽到 15s，并优先复用亮相页已经加载成功的那张图
+//    （同一 URL 命中浏览器缓存，秒回），避免「海报洗出来但人没进来」的半张图。
+//  · 立绘真没来时画「你老公来咯 + 🪽🪽」占位，跟亮相页等待态同一块视觉。
 import { drawQR } from "./qrcode.js";
 
 const W = 1080;
 const H = 1920;
 const IMG_H = 900;
+
+// 等图/失败占位（与 app.js WAITING_FALLBACK 同一套说法）
+const POSTER_WAITING = { m: "你老公来咯", f: "你老婆来咯", n: "你的TA来咯" };
+const POSTER_WINGS = "🪽🪽";
 
 /* ---------- 配色真源：public/theme-v2.css ----------
    海报配色不在这里硬编码，而是启动时从 :root 的 CSS 变量读取，
@@ -138,14 +149,23 @@ export async function renderPoster(aha, siteUrl) {
   brassBar(ctx, 0, H - 44, W, 9, true);
 
   /* ---- 立绘：全幅占上 55% ---- */
+  // 候选顺序：亮相页已确认加载成功的 URL（走缓存，最稳）→ 主图 → 兜底图。
+  // 旧版主图只等 3.5s，pollinations 现生成经常超时 → 海报常年缺立绘，
+  // 这就是 Kim「长按保存好像不是完整海报」的来源。
+  const srcCandidates = [aha.loadedImageUrl, portrait.imageUrl || aha.imageUrl, portrait.fallbackUrl]
+    .filter((u, i, arr) => u && arr.indexOf(u) === i);
   try {
-    let img;
-    try {
-      img = await loadImage(portrait.imageUrl || aha.imageUrl, 3500);
-    } catch (error) {
-      if (!portrait.fallbackUrl) throw error;
-      img = await loadImage(portrait.fallbackUrl, 8000);
+    let img = null;
+    let lastError = null;
+    for (const src of srcCandidates) {
+      try {
+        img = await loadImage(src, 15000);
+        break;
+      } catch (error) {
+        lastError = error;
+      }
     }
+    if (!img) throw lastError || new Error("no portrait source");
     // cover 裁切
     const scale = Math.max(W / img.width, IMG_H / img.height);
     const dw = img.width * scale, dh = img.height * scale;
@@ -156,11 +176,17 @@ export async function renderPoster(aha, siteUrl) {
     ctx.drawImage(img, (W - dw) / 2, (IMG_H - dh) / 2, dw, dh);
     ctx.restore();
   } catch {
+    // 立绘没来：跟亮相页等待态同一块——大字居中 +（下一行）两只翅膀，没有别的字。
+    const heroLine = String(aha.waitingText || "").replace(/🪽/g, "").trim()
+      || POSTER_WAITING[aha.gender] || POSTER_WAITING.n;
     ctx.fillStyle = C.band;
     ctx.fillRect(0, 0, W, IMG_H);
-    ctx.font = font("bold", 52);
     ctx.textAlign = "center";
-    neonText(ctx, "立绘迟到了，人先到了", W / 2, IMG_H / 2, C.pinkHot, C.pink);
+    ctx.font = font("900", 88);
+    neonText(ctx, heroLine, W / 2, IMG_H / 2 - 10, M.amberHi, C.amber, 30);
+    ctx.font = font("900", 76);
+    ctx.fillStyle = C.text;
+    ctx.fillText(POSTER_WINGS, W / 2, IMG_H / 2 + 96);
   }
   // 立绘区描边 + 底部渐入暗紫底
   let g = ctx.createLinearGradient(0, IMG_H - 200, 0, IMG_H);
@@ -337,7 +363,7 @@ export async function renderPoster(aha, siteUrl) {
   ctx.font = font("bold", 30);
   drawCard(cardX, y, boardW, cBoard.label, [fitText(ctx, cBoard.value, boardW - 64)], C.amber, 30, 42);
 
-  /* ---- 底部：二维码（扫码直接进这桌）+ slogan ---- */
+  /* ---- 底部：二维码（R11 改指站点落地首页 = 链路第一环）+ slogan ---- */
   const qrSize = 176;
   const qrX = W - 100 - qrSize, qrY = H - 120 - qrSize;
   roundRect(ctx, qrX - 16, qrY - 16 + 9, qrSize + 32, qrSize + 32, 18);
@@ -353,7 +379,8 @@ export async function renderPoster(aha, siteUrl) {
   ctx.strokeStyle = M.brass;
   ctx.lineWidth = 2.5;
   ctx.stroke();
-  // 深色码点 + 纯白底，扫码稳定；siteUrl 由调用方用 location.origin + 房间码动态拼
+  // 深色码点 + 纯白底，扫码稳定；R11 起 siteUrl = 站点落地首页（不再是房间码深链），
+  // 海报是拉新素材，扫码人先进首页调一杯，别被塞进一桌陌生人里。
   drawQR(ctx, siteUrl, qrX, qrY, qrSize, { dark: C.deep, light: C.white });
 
   ctx.textAlign = "left";
@@ -361,7 +388,8 @@ export async function renderPoster(aha, siteUrl) {
   neonText(ctx, "今晚谁最懂 TA？", 100, H - 154, M.amberHi, C.amber, 26);
   ctx.fillStyle = C.textDim;
   ctx.font = font("bold", 30);
-  ctx.fillText("扫码坐进这桌 · 猜不中的都在罚酒", 100, H - 104);
+  // 占位文案，等 Kim 终审；铁律：不提「这桌/这个房间」
+  ctx.fillText("扫码来 99% 酒吧调一杯", 100, H - 104);
 
   return canvas.toDataURL("image/png");
 }

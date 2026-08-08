@@ -108,7 +108,7 @@ export default {
       return handleShowcaseComment(req, env);
     }
 
-    // 酒保老K：LLM 锐评 / 画像文案
+    // 酒保雪克：LLM 锐评 / 画像文案
     if (url.pathname === "/api/bartender" && req.method === "POST") {
       return handleBartender(req, env);
     }
@@ -125,7 +125,7 @@ export default {
     if (url.pathname === "/api/recover" && req.method === "POST") {
       return handleRecover(req, env);
     }
-    // 老K LLM 代理：永不 5xx，失败降级预写池
+    // 雪克 LLM 代理：永不 5xx，失败降级预写池
     if (url.pathname === "/api/laok" && req.method === "GET") {
       return handleLaok(url);
     }
@@ -540,9 +540,9 @@ async function handleShowcaseComment(req, env) {
   return jsonRes({ comments: found.rec.comments.slice(-COMMENT_STORE_LIMIT).reverse() });
 }
 
-/* ============ 酒保老K（LLM）============ */
+/* ============ 酒保雪克（LLM）============ */
 
-const BARTENDER_SYSTEM = `你是「老K」，一间像素赛博酒吧的浪子酒保。你见过所有人的醉态：表白失败的、装醉真哭的、嘴硬心软的。你嘴毒心软，锐评从不留情但从不伤人身份，只损具体行为。永远说中文。锐评必须 60 字以内，短平快，像酒保擦着杯子随口甩出来的那句话。句尾偶尔（不是每次）加一句过来人的漂亮话。不要用"作为AI"之类的话，你就是老K。`;
+const BARTENDER_SYSTEM = `你是「雪克」，一间像素赛博酒吧的浪子酒保。你见过所有人的醉态：表白失败的、装醉真哭的、嘴硬心软的。你嘴毒心软，锐评从不留情但从不伤人身份，只损具体行为。永远说中文。锐评必须 60 字以内，短平快，像酒保擦着杯子随口甩出来的那句话。句尾偶尔（不是每次）加一句过来人的漂亮话。不要用"作为AI"之类的话，你就是雪克。`;
 
 const BARTENDER_FALLBACK = {
   round_comment: [
@@ -552,11 +552,11 @@ const BARTENDER_FALLBACK = {
     "行，这轮谁都别装了，酒杯见底再说话。",
     "我看这不叫打分，这叫互相递刀。爱是刀口舔蜜，慢用。",
     "分差这么大，建议你们先统一一下人生观再玩。",
-    "这个分数，老K只能说：懂的都懂，不懂的喝一杯就懂了。",
+    "这个分数，雪克只能说：懂的都懂，不懂的喝一杯就懂了。",
   ],
   profile_text: [
     "TA大概是那种，嘴上说随便、心里有满分答案的人。跟这种人过日子，你得学会读空气，也得学会关掉空气。",
-    "这位理想型，优点是真实，缺点是太真实。老K的建议：爱一个人之前，先确认你笑点和TA的雷点错得开。",
+    "这位理想型，优点是真实，缺点是太真实。雪克的建议：爱一个人之前，先确认你笑点和TA的雷点错得开。",
     "看这画像，是个能陪你疯也能陪你怂的主。别急着满分，留一分给日子慢慢打。",
   ],
 };
@@ -583,7 +583,7 @@ function bartenderFallback(scene) {
 async function handleBartender(req, env) {
   const ip = req.headers.get("cf-connecting-ip") || "local";
   if (!bartenderAllow(ip)) {
-    return jsonRes({ error: "rate_limited", msg: "老K忙不过来了，一分钟后再来" }, 429);
+    return jsonRes({ error: "rate_limited", msg: "雪克忙不过来了，一分钟后再来" }, 429);
   }
   let body;
   try { body = await readJson(req, 64 * 1024); } catch { return jsonRes({ error: "body 不是合法 JSON" }, 400); }
@@ -596,7 +596,7 @@ async function handleBartender(req, env) {
 
   const model = scene === "profile_text" ? "claude-fable-5" : "claude-haiku-4-5-20251001";
   const userPrompt = scene === "profile_text"
-    ? `根据下面这局酒桌游戏的数据，用老K的口吻给主角写一段理想型画像文案（150 字以内，不用锐评字数限制），核心画像要贴合数据，相处细节可以发散但要具体、不套模板：\n${JSON.stringify(context).slice(0, 4000)}`
+    ? `根据下面这局酒桌游戏的数据，用雪克的口吻给主角写一段理想型画像文案（150 字以内，不用锐评字数限制），核心画像要贴合数据，相处细节可以发散但要具体、不套模板：\n${JSON.stringify(context).slice(0, 4000)}`
     : `锐评本轮（60 字以内）。本轮数据：\n${JSON.stringify(context).slice(0, 4000)}`;
 
   try {
@@ -711,10 +711,10 @@ async function handleRecover(req, env) {
   return jsonRes({ userId: user.id, token: user.token });
 }
 
-/* ============ 老K LLM 代理（/api/laok，永不 5xx） ============ */
+/* ============ 雪克 LLM 代理（/api/laok，永不 5xx） ============ */
 
 // 定稿于 docs/LAOK-PROMPT.md，改动需同步该文档
-const LAOK_SYSTEM = `你是老K，酒吧「99%」的老板，也是酒桌游戏《理想型·加载中》里的常驻角色。客人在玩"满分男/满分女/满分Agent"打分游戏：主角给缺点打分，其他人猜分，猜偏罚酒。你在吧台看着，轮到你时搭一句。
+const LAOK_SYSTEM = `你是雪克，酒吧「99%」的老板，也是酒桌游戏《理想型·加载中》里的常驻角色。客人在玩"满分男/满分女/满分Agent"打分游戏：主角给缺点打分，其他人猜分，猜偏罚酒。你在吧台看着，轮到你时搭一句。
 
 人设：知世故而不世故。你什么人间戏码都见过，所以什么都不惊讶；跟谁都能聊两句、接得住梗，但从不越界。幽默是随口顺一句的松弛感，不是段子。你平视客人，不俯视不讨好。
 
@@ -835,7 +835,7 @@ async function handleLaok(url) {
     try {
       const prompt =
         `${LAOK_SYSTEM}\n\n[场景] ${scene}\n[现场情况] ${JSON.stringify(ctx).slice(0, 2000)}\n` +
-        `请以老K的身份，就现场情况说一句话（不超过40个字，只输出这句话本身）。`;
+        `请以雪克的身份，就现场情况说一句话（不超过40个字，只输出这句话本身）。`;
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 5 * 1000);
       const res = await fetch(
@@ -864,7 +864,7 @@ async function handleLaok(url) {
   }
 }
 
-/* ---- 打分档位称号（99% 酒吧口吻，九八在说话）----
+/* ---- 打分档位称号（99% 酒吧口吻，雪克在说话）----
  * 结构不动：仍是 min 阈值降序表，仍由 TITLES.find(t => avg >= t.min) 命中档位。
  * 变的只有内容：每档从 1 条扩到 6 条，同一局按 seed 确定性抽一条
  *（同 records + 同 seed → 同称号），解决「每次玩都撞同一个称号」。

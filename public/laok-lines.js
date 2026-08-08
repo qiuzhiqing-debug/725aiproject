@@ -1,7 +1,7 @@
-// 九八 语录池 + 国王指令卡（线程P · 2026-07-29）
+// 马丁 语录池 + 国王指令卡（线程P · 2026-07-29）
 // 纯数据 ES module：无浏览器 API、无副作用，前后端共用（src/worker.js 会 import）。
 // LAOK_POOL：/api/laok 实时生成失败时的兜底池，也可直接客户端抽取。
-// 所有语录已过 docs/LAOK-PERSONA.md v2；KING_ORDERS 是卡面语言，不是九八说的话。
+// 所有语录已过 docs/LAOK-PERSONA.md v2；KING_ORDERS 是卡面语言，不是马丁说的话。
 
 export const LAOK_POOL = {
   // 每题结算：全场猜得准
@@ -123,7 +123,7 @@ export const LAOK_POOL = {
 
 // 国王指令卡：国王点人执行。卡面语言，酒桌可执行、有趣、不低俗不危险。
 // 国王指令卡：国王报两个匿名号码执行（不点人）。text 用 {a}{b} 占位两个号码。
-// 卡面语言，不是九八说的话。酒桌可执行、有趣，不低俗不危险。
+// 卡面语言，不是马丁说的话。酒桌可执行、有趣，不低俗不危险。
 export const KING_ORDERS = [
   { id: "kg01", text: "{a}号和{b}号斗鸡对喝，输的选一首歌当众放" },
   { id: "kg02", text: "{a}号和{b}号同时说一句真心话，撞词的那个喝" },

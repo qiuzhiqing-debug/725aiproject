@@ -651,6 +651,30 @@
   <div id="main"><div class="loading">稍等，我去里屋把档案翻出来。</div></div>
 
   <script type="module">
+    /* ---- R11「重新调一杯」：清本机调酒/账号缓存 → 回调酒页走生面孔流 ----
+       key 列表与 app.js RESET_COCKTAIL_KEYS 保持一致（两处入口清一样的东西）：
+       ideal_cocktail / ideal_userId / ideal_token / ideal_gender / ideal_seeking /
+       mfn_seeking / mfn_name / mfn_emoji / mfn_drink / mfn_deck /
+       mfn_aha_saved / mfn_codex_saved / statsKey + 前缀 mfn_token_*。
+       不动 mfn_sound（音量偏好），也不动 liked:*（点赞去重与身份无关）。 */
+    const RESET_COCKTAIL_KEYS = [
+      "ideal_cocktail", "ideal_userId", "ideal_token", "ideal_gender", "ideal_seeking",
+      "mfn_seeking", "mfn_name", "mfn_emoji", "mfn_drink", "mfn_deck",
+      "mfn_aha_saved", "mfn_codex_saved", "statsKey",
+    ];
+    function resetCocktailIdentity() {
+      try {
+        for (const k of RESET_COCKTAIL_KEYS) localStorage.removeItem(k);
+        const doomed = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith("mfn_token_")) doomed.push(k);
+        }
+        doomed.forEach(k => localStorage.removeItem(k));
+      } catch (e) { /* 隐私模式清不了也别拦跳转 */ }
+      location.href = "/v2/cocktail.html";
+    }
+
     /* ---- 工具 ---- */
     function esc(s) {
       return String(s ?? "").replace(/[&<>"']/g, c =>
@@ -827,8 +851,14 @@
               </div>`;
           }).join("");
 
+      // R11：主页也留一个「重新调一杯」小链接（清本地调酒/账号缓存 → 回调酒页走生面孔流）
       const actionBar = isSelf
-        ? `<div class="action-bar"><a class="btn-lobby" href="/v2/lobby.html">进大厅再玩一局</a></div>`
+        ? `<div class="action-bar"><a class="btn-lobby" href="/v2/lobby.html">进大厅再玩一局</a></div>
+           <div style="text-align:center;margin:10px 0 4px">
+             <button type="button" id="resetCocktailBtn"
+               style="background:none;border:0;padding:4px 8px;color:var(--ink-mid,#c9ac90);font-size:13px;text-decoration:underline;cursor:pointer"
+               title="清掉本机的调酒与账号缓存，按生面孔重走一遍">重新调一杯</button>
+           </div>`
         : "";
 
       const cocktailHtml = data.cocktail?.name
@@ -885,6 +915,7 @@
       if (isSelf) bindEyeToggles($main);
       bindLikes($main);
       bindComments($main);
+      document.getElementById("resetCocktailBtn")?.addEventListener("click", resetCocktailIdentity);
 
       document.title = `${data.nick} 的理想型档案`;
     }
@@ -1031,7 +1062,7 @@
       });
     }
 
-    /* ---- 错误状态（老K口吻包一层，服务端原文放小字） ---- */
+    /* ---- 错误状态（雪克口吻包一层，服务端原文放小字） ---- */
     function renderError(msg, offerRecover) {
       const recoverBtn = offerRecover
         ? `<div style="margin-top:14px"><button type="button" id="errRecover" class="recover-back" style="margin-top:0">换了设备？对暗号找回 →</button></div>`
@@ -1135,7 +1166,7 @@
           setTimeout(() => location.replace("/u.html?id=" + data.userId), 800);
           return;
         }
-        // 403 口令不对 / 404 没这名字：COPY-PACK 合并为同一句老K口吻提示
+        // 403 口令不对 / 404 没这名字：COPY-PACK 合并为同一句雪克口吻提示
         if (res.status === 403 || res.status === 404) {
           $err.textContent = "暗号对不上。再想想——实在想不起来，就回吧台重调一杯。";
         } else {

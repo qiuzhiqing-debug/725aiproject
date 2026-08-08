@@ -77,11 +77,42 @@ const loadBestie = () => lazyImport("bestie", "./questions-v2/bestie.js");
 const loadQr = () => lazyImport("qr", "./qrcode.js");
 const loadPoster = () => lazyImport("poster", "./poster.js");
 const loadIdealProfile = () => lazyImport("idealProfile", "./ideal-profile.js");
-// 九八立绘（v2 共用模块，只 import 不改）：锐评 NPC 的小头像
+// 雪克立绘（v2 共用模块，只 import 不改）：锐评 NPC 的小头像
 const loadBartender = () => lazyImport("bartender", "./v2/bartender.js");
 let buildIdealProfileFn = null;
 // R6「你老公来咯」彩蛋：从 ideal-profile.js 读 MODULE_PROFILES.waiting（只读不改）。
 let moduleProfiles = null;
+
+/* ---------- R11 生图等待占位（Kim 点名必做） ----------
+   立绘 / 海报在等 pollinations 出图时，屏幕上只留这一句大字 + 下一行两只翅膀，
+   原来的人设文字（原型名 / 呈现方式）全部让位；图加载失败的兜底也用同一块。
+   方向变体按 renderGender：m→你老公来咯 / f→你老婆来咯 / n→你的TA来咯；
+   模组另有说法时（满分老板/满分闺蜜…）优先用 MODULE_PROFILES.waiting，
+   免得非恋人模组默认蹦出"老公"。 */
+/* R11 海报二维码目标：站点落地首页（链路第一环），不再是「进这个房间」的深链。
+   写死线上域名而不是 location.origin —— 海报会被转发出去，预览/本地域名扫了打不开。 */
+const SITE_LANDING_URL = "https://ideal-type-loading.kimnin-iup.workers.dev/";
+
+const WAITING_FALLBACK = { m: "你老公来咯", f: "你老婆来咯", n: "你的TA来咯" };
+const WAITING_WINGS = "🪽🪽";
+
+// 取大字正文：模组彩蛋文案优先，去掉句尾翅膀（翅膀单独占第二行）；缺失退性别默认。
+function waitingHeroLine(waitingText, gender) {
+  const stripped = String(waitingText || "").replace(/🪽/g, "").trim();
+  return stripped || WAITING_FALLBACK[gender] || WAITING_FALLBACK.n;
+}
+
+// 等待/失败占位块。样式走内联（视觉线正在改 CSS，这里不新增选择器）：
+// z-index 0 压在 <img> 之下，图一加载成功就被盖住，不用再删节点。
+function waitingHeroHtml(line) {
+  // 不复用 .art-fallback：那个类的 ::before 会顶出一枚「100% MATCH」小徽章，
+  // 等待态要求只留大字 + 翅膀，所以背墙底图也一并内联。
+  return `<div class="art-waiting" id="artWaiting" role="status" aria-live="polite"
+      style="position:absolute;inset:0;z-index:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:0 16px;background-color:var(--bar-bg-wall);background-image:var(--scene-backbar);background-repeat:no-repeat;background-position:50% 30%;background-size:cover">
+      <b style="max-width:92%;font-family:var(--font-pixel);font-size:clamp(30px,9vw,48px);line-height:1.15;font-weight:700;color:var(--ink-hi);text-shadow:0 3px 0 rgba(0,0,0,.7),0 0 30px var(--glow-amber-25)">${esc(line)}</b>
+      <span aria-hidden="true" style="font-size:clamp(28px,8vw,44px);line-height:1;letter-spacing:.06em">${WAITING_WINGS}</span>
+    </div>`;
+}
 
 const EMOJIS = ["🍺", "🍷", "🥃", "🍶", "🍸", "🍹", "🥂", "🍻", "🫗", "🧉"];
 const DRINK_OPTIONS = [
@@ -211,6 +242,39 @@ function kingOrderText(orderId, nums) {
   return t;
 }
 
+/* ---------- R11「重新调一杯」：清本地调酒/账号缓存，回到新用户流 ----------
+   Kim 每次进来都被历史特调认出来，测不了生面孔链路。清掉下面这批 key 后跳调酒页。
+   逐个列全（按 grep localStorage 全站清点）：
+     ideal_cocktail  今晚特调（首页/大厅/主页都读它认人）
+     ideal_userId / ideal_token  账号与令牌（清掉才算生面孔）
+     ideal_gender / ideal_seeking  注册时存的性别与想看的取向
+     mfn_seeking / mfn_name / mfn_emoji / mfn_drink / mfn_deck  桌局侧的昵称/杯子/罚酒/锅底预选
+     mfn_aha_saved / mfn_codex_saved  展示柜与图鉴的去重台账（跟账号走，一起清）
+     statsKey  stats.html 的查看口令
+     mfn_token_*  各房间的回座令牌（前缀匹配，逐个删）
+   不动 mfn_sound（音量偏好不属于身份缓存）。 */
+const RESET_COCKTAIL_KEYS = Object.freeze([
+  "ideal_cocktail", "ideal_userId", "ideal_token", "ideal_gender", "ideal_seeking",
+  "mfn_seeking", "mfn_name", "mfn_emoji", "mfn_drink", "mfn_deck",
+  "mfn_aha_saved", "mfn_codex_saved", "statsKey",
+]);
+
+function resetCocktailIdentity() {
+  try {
+    for (const k of RESET_COCKTAIL_KEYS) localStorage.removeItem(k);
+    // 房间回座令牌是 mfn_token_<code>，key 数量不定，前缀扫一遍
+    const doomed = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith("mfn_token_")) doomed.push(k);
+    }
+    doomed.forEach((k) => localStorage.removeItem(k));
+  } catch {
+    /* 隐私模式写不了 localStorage：清不了也别拦着跳转 */
+  }
+  location.href = "/v2/cocktail.html";
+}
+
 // 调酒身份（/v2/cocktail.html 存的 ideal_cocktail）：跟人走，不让用户重选
 function readCocktail() {
   try {
@@ -281,7 +345,7 @@ const ui = {
   kingPick: { nums: [], orderId: null }, // 每题国王（号码版）：我选的两个号 + 指令卡
   kingSent: false,
   kingOrderPage: 0,
-  laok: null, // 九八锐评 { key, text, loading }
+  laok: null, // 雪克锐评 { key, text, loading }
 };
 
 let ws = null;
@@ -819,6 +883,7 @@ function renderHome() {
         <b>点一杯</b>
         <small>${cocktail ? `你的今晚特调：${esc(cocktail.name)}` : "调一杯，留下你的口味档案"}</small>
       </button>
+      <button class="link-btn" id="resetCocktailBtn" title="清掉本地调酒与账号缓存，按生面孔重走一遍">重新调一杯</button>
       <div class="glass landing-how">
         ${HOME_HOW_LINES.map((l) => `<p>${esc(l)}</p>`).join("")}
       </div>
@@ -832,6 +897,7 @@ function renderHome() {
   document.getElementById("cocktailBtn").addEventListener("click", () => {
     location.href = "/v2/cocktail.html";
   });
+  document.getElementById("resetCocktailBtn")?.addEventListener("click", resetCocktailIdentity);
   document.getElementById("feedbackBtn").addEventListener("click", openFeedbackModal);
   bindSound();
 }
@@ -851,7 +917,7 @@ function openFeedbackModal() {
       <input type="text" id="fbContact" maxlength="60" placeholder="联系方式（可不填）" />
       <div class="row fb-actions">
         <button class="btn ghost small grow" id="fbCancel">先不说</button>
-        <button class="btn small grow" id="fbSend">递给九八</button>
+        <button class="btn small grow" id="fbSend">递给雪克</button>
       </div>
     </div>`;
   const close = () => { wrap.remove(); ui.feedbackBusy = false; };
@@ -1010,7 +1076,7 @@ function renderTable() {
       ${deckPickHtml}
       ${seatsHtml}
       <div class="table-cta">
-        <button class="btn" id="createBtn">${soloish ? "坐下，跟九八喝一杯" : "生成房间码"}</button>
+        <button class="btn" id="createBtn">${soloish ? "坐下，跟雪克喝一杯" : "生成房间码"}</button>
         <div class="dim center">${soloish ? "" : "桌子我给你留，人你自己叫。"}</div>
       </div>
     ` : `
@@ -1406,7 +1472,7 @@ function renderLobby(s) {
 }
 
 /* --- 抽酒签 --- */
-// 摇签过程播报：进度条配文案，九八在旁边看着
+// 摇签过程播报：进度条配文案，雪克在旁边看着
 function stickChargeText(pct) {
   if (pct <= 0) return "";
   if (pct < 40) return `签筒醒了 · ${pct}%`;
@@ -1588,7 +1654,7 @@ function renderSetup(s) {
   bindSound();
 }
 
-/* --- 九八锐评 NPC（R2）：/api/laok 非阻塞取词，到了再淡入，失败静默 --- */
+/* --- 雪克锐评 NPC（R2）：/api/laok 非阻塞取词，到了再淡入，失败静默 --- */
 
 const laokMemo = new Map(); // key -> 文案（"" = 请求中或失败，失败即静默）
 
@@ -1620,7 +1686,7 @@ function laokBoxHtml(key) {
   const text = laokMemo.get(key);
   return `<div class="laok-box ${text ? "show" : ""}" data-laok-key="${esc(key)}">
     <span class="laok-avatar" aria-hidden="true"></span>
-    <div class="laok-line"><b>九八</b><p class="laok-text">${esc(text)}</p></div>
+    <div class="laok-line"><b>雪克</b><p class="laok-text">${esc(text)}</p></div>
   </div>`;
 }
 
@@ -1663,7 +1729,7 @@ function renderAnswering(s) {
   const waiting = cur.submitted.guessers;
   // R9：题面正文由服务端按 renderGender 拼好；这里只挑「XX 的满分男/满分女/理想型」这类称谓
   const W = roundWords(s);
-  // solo 开局：九八先开口（solo_open），一局一次；先同步取兜底，再异步取 LLM 版
+  // solo 开局：雪克先开口（solo_open），一局一次；先同步取兜底，再异步取 LLM 版
   if (solo) {
     const openKey = `open:${s.code}`;
     if (!laokMemo.has(openKey)) laokMemo.set(openKey, pickPool("solo_open"));
@@ -1865,7 +1931,7 @@ function renderReveal(s) {
 
   // R5：答题 reveal 页不再有任何爆灯/灭灯 UI（爆灯灭灯只在 aha 立绘亮相那一刻）。
 
-  // 九八锐评：先同步取一条兜底文案（立即可见），再非阻塞异步取 LLM 版到了后替换
+  // 雪克锐评：先同步取一条兜底文案（立即可见），再非阻塞异步取 LLM 版到了后替换
   const laokKey = `rv:${s.code}:${revealKey}`;
   const avgDiff = n ? rv.results.reduce((a, x) => a + (Number(x.diff) || 0), 0) / n : 0;
   const laokScene = solo
@@ -2193,6 +2259,8 @@ function renderAha(s, aha, isFinal) {
   const waitGenderKey = { m: "masc", f: "femme", n: "androgynous" }[aha.gender] || "any";
   const waiting = moduleProfiles?.[waitModule]?.waiting || null;
   const waitingText = waiting ? (waiting[waitGenderKey] || waiting.any || waiting.androgynous || "") : "";
+  // R11：等图占位大字 = 同一句彩蛋，去掉句尾翅膀（翅膀单独占第二行居中）。
+  const waitingLine = waitingHeroLine(waitingText, aha.gender);
   // R8 型号角标（亮相页第一页）：#07 · 名称；隐藏款加 ✦。type 数据缺失则整个角标不渲染。
   const typeInfo = profile.type && profile.type.code && profile.type.name ? profile.type : null;
   const typeBadgeHtml = typeInfo
@@ -2205,10 +2273,10 @@ function renderAha(s, aha, isFinal) {
   const stageBody = stage === 0 ? `
     <div class="aha-stage portrait-stage" style="--profile-primary:${primary};--profile-accent:${accent}">
       <div class="art-wrap" id="artWrap">
-        <div class="art-fallback"><b>${esc(chipText)}</b><span>${esc(card.presentation || "")}</span></div>
+        ${waitingHeroHtml(waitingLine)}
         <img id="artImg" src="${esc(portrait.imageUrl || aha.imageUrl || "")}" alt="${esc(portrait.alt || (chipText ? `${chipText}理想型立绘` : "理想型立绘"))}" />
         ${chipText ? `<span class="archetype-chip">${esc(chipText)}</span>` : ""}
-        ${waitingText ? `<div class="waiting-egg" role="status">${esc(waitingText)}</div>` : ""}
+        ${waitingText ? `<div class="waiting-egg" role="status" id="waitingEgg" style="display:none">${esc(waitingText)}</div>` : ""}
       </div>
       <div class="caption">
         ${typeBadgeHtml}
@@ -2261,7 +2329,7 @@ function renderAha(s, aha, isFinal) {
             : ""}
     </div>
     ${ui.posterUrl
-      ? `<img class="poster-img" src="${ui.posterUrl}" alt="理想型海报" /><div class="dim center">长按保存。扫码的人直接进这桌。</div><button class="btn" id="posterHomeBtn">进入我的主页</button>`
+      ? `<img class="poster-img" src="${ui.posterUrl}" alt="理想型海报" /><div class="dim center">长按保存整张海报。扫码的人来 99% 酒吧调一杯。</div><button class="btn" id="posterHomeBtn">进入我的主页</button>`
       : `<button class="btn ghost" id="posterBtn" ${ui.posterBusy ? "disabled" : ""}>${ui.posterBusy ? "海报在暗房里洗…" : "生成海报"}</button>`}
     ${!isFinal ? (me.isHost
       ? `<button class="btn" id="nextBtn">${s.players.some((p) => !p.done) ? "下一位主角" : "收局看总榜"}</button>`
@@ -2291,6 +2359,9 @@ function renderAha(s, aha, isFinal) {
     const artLoaded = () => {
       clearTimeout(fallbackTimer);
       artWrap?.classList.add("loaded");
+      // 图到了：大字占位被 <img> 盖住，「你老公来咯」缩回顶部那枚小胶囊常驻。
+      const egg = document.getElementById("waitingEgg");
+      if (egg) egg.style.display = "";
       // 立绘确认可用 → 用实际加载成功的 URL 写展示柜（含 fallback 场景）
       ui.ahaArtUrl = artImg.currentSrc || artImg.src || "";
       clearTimeout(ui.ahaSaveTimer);
@@ -2330,8 +2401,21 @@ function renderAha(s, aha, isFinal) {
     render();
     try {
       const { renderPoster } = await loadPoster();
-      ui.posterUrl = await renderPoster({ ...aha, profile }, `${location.origin}/?room=${s.code}`);
-      // 埋点 poster_shared：一期不新增 UI，海报没有独立「分享」按钮（出图后是长按保存 + 扫码进桌），
+      // R11：
+      //  · loadedImageUrl = 亮相页确认加载成功的那张立绘，海报优先复用（走缓存，不再等超时）；
+      //  · waitingText = 图真没来时海报占位用的那句「你老公来咯」；
+      //  · 二维码目标改成站点落地首页（SITE_LANDING_URL），不再是本房间深链。
+      ui.posterUrl = await renderPoster(
+        {
+          ...aha, profile, waitingText: waitingLine,
+          // 只有当这张已加载的图确实属于当前这条 aha 时才复用（finished 回看会来回翻页，
+          // ui.ahaArtUrl 是上一条的就必须丢掉，否则海报会贴错人的立绘）。
+          loadedImageUrl: [portrait.imageUrl, portrait.fallbackUrl, aha.imageUrl]
+            .includes(ui.ahaArtUrl) ? ui.ahaArtUrl : "",
+        },
+        SITE_LANDING_URL,
+      );
+      // 埋点 poster_shared：一期不新增 UI，海报没有独立「分享」按钮（出图后是长按保存 + 扫码进店），
       // 所以把「海报洗出来了」这一刻当作一次分享意图，只在生成成功后记一次。
       track("poster_shared", { roomCode: s.code });
     } catch (e) {
@@ -2383,8 +2467,9 @@ function renderFinished(s) {
   again.textContent = "散场，再开一桌";
   again.onclick = () => location.href = "/";
   $app.appendChild(again);
-  document.getElementById("prevAha").onclick = () => { renderFinished._idx = idx - 1; ui.posterUrl = null; ui.ahaStage = 0; render(); };
-  document.getElementById("nextAha").onclick = () => { renderFinished._idx = idx + 1; ui.posterUrl = null; ui.ahaStage = 0; render(); };
+  // 翻页换人：海报、阶段、已确认立绘 URL 一起清（ahaArtUrl 留着会让海报贴错人的图）
+  document.getElementById("prevAha").onclick = () => { renderFinished._idx = idx - 1; ui.posterUrl = null; ui.ahaStage = 0; ui.ahaArtUrl = null; render(); };
+  document.getElementById("nextAha").onclick = () => { renderFinished._idx = idx + 1; ui.posterUrl = null; ui.ahaStage = 0; ui.ahaArtUrl = null; render(); };
 }
 
 /* ---------- 非诚勿扰互动体系：弹幕 / 灯光特效 / 聊天抽屉（PRD §9） ---------- */

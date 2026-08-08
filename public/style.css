@@ -65,9 +65,10 @@ body::after {
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(ellipse 62% 34% at 26% 4%, var(--glow-amber-25), transparent 62%),
-    radial-gradient(ellipse 52% 28% at 82% 8%, var(--glow-amber-12), transparent 60%),
-    radial-gradient(ellipse 128% 92% at 50% 44%, transparent 48%, rgba(8, 4, 5, 0.7) 100%);
+    radial-gradient(ellipse 66% 36% at 22% 2%, var(--glow-purple-45), transparent 62%),
+    radial-gradient(ellipse 56% 30% at 84% 6%, var(--glow-pink-18), transparent 60%),
+    radial-gradient(ellipse 70% 30% at 56% 100%, var(--glow-cyan-16), transparent 66%),
+    radial-gradient(ellipse 128% 92% at 50% 44%, transparent 48%, rgba(5, 3, 12, 0.72) 100%);
 }
 
 button,
@@ -96,18 +97,17 @@ select:focus-visible,
   gap: 14px;
 }
 
-/* 顶端：吧台黄铜挂杆（画出来的铜条，挂着这一屏的所有东西） */
+/* 顶端：吧台挂杆（R11 = 一根通电的粉色霓虹灯管，不再是铜条） */
 .app::before {
   content: "";
-  height: 8px;
+  height: 6px;
   width: min(140px, 38%);
-  margin: 0 auto 6px;
+  margin: 0 auto 8px;
   border-radius: var(--radius-pill);
   background-image: linear-gradient(
     180deg,
-    var(--brass-hi) 0 20%, var(--brass) 20% 52%,
-    var(--brass-dim) 52% 82%, var(--brass-shade) 82% 100%);
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.6), 0 0 18px var(--glow-amber-25);
+    var(--neon-pink-hot) 0 34%, var(--neon-pink) 34% 100%);
+  box-shadow: 0 0 10px var(--glow-pink-70), 0 0 26px var(--glow-pink-40);
 }
 
 /* 大标题保留像素字（Kim 过关资产：logo + 大标题），正文一律不用 */
@@ -285,9 +285,9 @@ h2 {
   to { opacity: 1; transform: none; }
 }
 
-/* ---------- 按钮 = 黄铜牌（主）/ 木杯垫（次） ----------
-   主按钮：一块打过蜡的黄铜牌，字是刻上去的（压凹 + 上棱受光）。
-   注意：主按钮不是粉色 —— 粉是心动色，不是「可点击」色。 */
+/* ---------- 按钮 = 霓虹粉按键（主）/ 木杯垫（次） ----------
+   R11（Kim：「不兴奋」）：主 CTA 从黄铜牌换成霓虹粉/紫。
+   发光预算放宽到「主 CTA + 激活态 + 招牌」三处，仅此三处，仍禁满屏发光。 */
 .btn {
   position: relative;
   display: block;
@@ -296,39 +296,35 @@ h2 {
   padding: 14px 16px;
   border: 0;
   border-radius: var(--radius-btn);
-  color: var(--wood-dim);
+  color: #fff;
   background-image: linear-gradient(
-    172deg,
-    var(--brass-hi) 0%, var(--brass) 14%, var(--brass-dim) 46%,
-    var(--brass) 68%, var(--brass-hi) 84%, var(--brass-dim) 100%);
-  box-shadow:
-    var(--edge-brass),
-    0 4px 0 var(--brass-shade),
-    0 12px 24px rgba(0, 0, 0, 0.5),
-    0 0 22px var(--glow-amber-25);
+    168deg,
+    var(--neon-pink-hot) 0%, var(--neon-pink) 46%,
+    #e01d6b 74%, var(--neon-purple) 100%);
+  box-shadow: var(--box-neon-cta);
   font-family: var(--font-display);
   font-size: 19px;
   line-height: 1.2;
   font-weight: 800;
   letter-spacing: 0.08em;
-  text-shadow: 0 1px 0 rgba(255, 226, 178, 0.55), 0 -1px 0 rgba(0, 0, 0, 0.28);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.32), 0 0 12px rgba(255, 255, 255, 0.35);
   cursor: pointer;
   transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
 }
 
 .btn:hover:not(:disabled) {
-  filter: brightness(1.07);
+  filter: brightness(1.08);
   box-shadow:
-    var(--edge-brass),
-    0 4px 0 var(--brass-shade),
-    0 14px 28px rgba(0, 0, 0, 0.5),
-    0 0 34px var(--glow-amber-55);
+    var(--edge-neon),
+    0 4px 0 #8f1240,
+    0 0 40px var(--glow-pink-70),
+    0 16px 34px rgba(0, 0, 0, 0.55);
 }
 
-/* 按下去 = 铜牌被按进木头里 */
+/* 按下去 = 灯管被按进台面里（光同时收一档） */
 .btn:active:not(:disabled) {
   transform: translateY(4px);
-  box-shadow: var(--edge-brass), 0 0 0 var(--brass-shade), 0 4px 10px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--edge-neon), 0 0 0 #8f1240, 0 0 16px var(--glow-pink-40), 0 4px 10px rgba(0, 0, 0, 0.55);
 }
 
 /* 失效 = 没擦的旧铜牌，蒙了一层灰 */
@@ -352,9 +348,9 @@ h2 {
 }
 
 .btn.ghost:hover:not(:disabled) {
-  color: var(--amber-hi);
+  color: var(--neon-cyan-soft);
   filter: none;
-  box-shadow: var(--edge-wood), 0 3px 0 var(--wood-dim), 0 8px 18px rgba(0, 0, 0, 0.45), 0 0 20px var(--glow-amber-25);
+  box-shadow: var(--edge-wood), 0 3px 0 var(--wood-dim), 0 8px 18px rgba(0, 0, 0, 0.45), 0 0 18px var(--glow-cyan-16);
 }
 
 .btn.small {
@@ -384,7 +380,7 @@ h2 {
   cursor: pointer;
 }
 
-.link-btn:hover { color: var(--amber-hi); }
+.link-btn:hover { color: var(--neon-cyan-soft); }
 
 /* 输入框 / 下拉 = 刻进木头里的凹槽（写在点单本上的那一行） */
 input[type="text"],
@@ -568,21 +564,21 @@ select option {
 
 /* 房间码 = 包厢门牌（圣经 §五）：钉在门上的黄铜牌，号码是刻上去再镀暗的。
    四角四颗螺丝由 ::before 画出，牌面木底衬在铜牌后 → 一眼看懂是「门牌」。 */
+/* R11：门牌从「黄铜刻字」换成「霓虹门号」—— 号码本身是灯管，牌面是暗紫板。
+   这是大厅三件事里的第一件，必须是全屏最亮最大的一块。 */
 .roomcode {
   position: relative;
   padding: 22px 16px 20px;
   border: 0;
   border-radius: var(--radius-btn);
-  color: var(--brass-hi);
-  background-image: linear-gradient(
-    172deg,
-    var(--brass) 0%, var(--brass-dim) 22%, var(--brass-shade) 50%,
-    var(--brass-dim) 74%, var(--brass) 100%);
+  color: #fff;
+  background-color: var(--bar-bg-deep);
+  background-image: radial-gradient(ellipse 82% 78% at 50% 44%, rgba(255, 45, 120, 0.16), transparent 72%);
   box-shadow:
-    var(--edge-brass),
-    0 8px 0 var(--brass-shade),
-    0 18px 34px rgba(0, 0, 0, 0.6),
-    0 0 30px var(--glow-amber-25);
+    inset 0 0 0 2px rgba(255, 140, 185, 0.45),
+    inset 0 0 22px -6px var(--glow-pink-40),
+    0 0 26px var(--glow-pink-40),
+    0 18px 34px rgba(0, 0, 0, 0.6);
   font-family: var(--font-pixel);
   font-size: clamp(50px, 14.5vw, 74px);
   line-height: 1;
@@ -590,11 +586,12 @@ select option {
   text-align: center;
   letter-spacing: 0.1em;
   font-variant-numeric: tabular-nums;
-  /* 刻字：上缘暗、下缘亮 = 凹进金属 */
+  /* 灯管字：白芯 + 粉晕 */
   text-shadow:
-    0 -1px 0 rgba(0, 0, 0, 0.85),
-    0 1px 0 rgba(255, 232, 190, 0.5),
-    0 4px 10px rgba(0, 0, 0, 0.55);
+    0 0 2px rgba(255, 255, 255, 0.95),
+    0 0 12px var(--neon-pink-hot),
+    0 0 30px var(--glow-pink-70),
+    0 0 60px var(--glow-pink-40);
 }
 
 /* 门牌四角的螺丝 */
@@ -604,12 +601,21 @@ select option {
   inset: 9px;
   border-radius: 6px;
   pointer-events: none;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4), inset 0 0 0 2px rgba(255, 226, 178, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4), inset 0 0 0 2px rgba(201, 166, 255, 0.14);
+  /* R11 修 bug：原写法 `circle 4px at 6px 6px` 的最后一个色标会把**整块**填成
+     brass-shade（不透明），把房间码数字整个盖住。改成四张 9×9 的小图各定位到
+     一个角，角外一律 transparent —— 只画螺丝，不遮字。 */
   background-image:
-    radial-gradient(circle 4px at 6px 6px, var(--brass-hi) 0 42%, var(--brass-shade) 44% 100%),
-    radial-gradient(circle 4px at calc(100% - 6px) 6px, var(--brass-hi) 0 42%, var(--brass-shade) 44% 100%),
-    radial-gradient(circle 4px at 6px calc(100% - 6px), var(--brass-hi) 0 42%, var(--brass-shade) 44% 100%),
-    radial-gradient(circle 4px at calc(100% - 6px) calc(100% - 6px), var(--brass-hi) 0 42%, var(--brass-shade) 44% 100%);
+    radial-gradient(circle at 50% 50%, var(--brass-hi) 0 32%, var(--brass-shade) 36% 80%, transparent 82%),
+    radial-gradient(circle at 50% 50%, var(--brass-hi) 0 32%, var(--brass-shade) 36% 80%, transparent 82%),
+    radial-gradient(circle at 50% 50%, var(--brass-hi) 0 32%, var(--brass-shade) 36% 80%, transparent 82%),
+    radial-gradient(circle at 50% 50%, var(--brass-hi) 0 32%, var(--brass-shade) 36% 80%, transparent 82%);
+  background-size: 9px 9px;
+  background-position:
+    3px 3px,
+    calc(100% - 3px) 3px,
+    3px calc(100% - 3px),
+    calc(100% - 3px) calc(100% - 3px);
   background-repeat: no-repeat;
 }
 
@@ -815,16 +821,20 @@ select option {
   font-weight: 700;
 }
 
-/* 大比分：刻在铜牌上的数字（不发霓虹光，靠金属棱立体） */
+/* 大比分（R11）：从「刻在铜牌上」改成「霓虹管数字」—— 打分是心动时刻 */
 .score-val {
-  color: var(--amber-hi);
+  color: #fff;
   font-family: var(--font-pixel);
   font-size: clamp(90px, 24vw, 132px);
   line-height: 0.98;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   text-align: center;
-  text-shadow: var(--neon-text-amber);
+  text-shadow:
+    0 0 2px rgba(255, 255, 255, 0.95),
+    0 0 14px var(--neon-pink-hot),
+    0 0 34px var(--glow-pink-70),
+    0 0 68px var(--glow-pink-40);
   transition: transform 0.1s ease;
 }
 
@@ -842,15 +852,15 @@ input[type="range"] {
   touch-action: pan-x;
 }
 
-/* 打分滑杆 = 量酒杯的刻度槽：越往右酒越满，握把是一枚黄铜旋钮 */
+/* 打分滑杆（R11）= 霓虹刻度槽：越往右灯越亮，握把是一枚发光粉旋钮 */
 input[type="range"]::-webkit-slider-runnable-track {
   height: 20px;
   border: var(--stroke-thin) solid var(--brass-dim);
   border-radius: var(--radius-pill);
   background-color: var(--bar-bg-deep);
   background-image:
-    linear-gradient(180deg, rgba(255, 236, 200, 0.4) 0 22%, transparent 22% 64%, rgba(0, 0, 0, 0.34) 64% 100%),
-    linear-gradient(90deg, var(--liquor-deep) 0 12%, var(--liquor) 52%, var(--neon-amber) 100%);
+    linear-gradient(180deg, rgba(255, 236, 245, 0.32) 0 22%, transparent 22% 64%, rgba(0, 0, 0, 0.38) 64% 100%),
+    linear-gradient(90deg, var(--neon-purple) 0 10%, #d92a8e 52%, var(--neon-pink-hot) 100%);
   box-shadow: var(--edge-carve);
 }
 
@@ -864,8 +874,8 @@ input[type="range"]::-webkit-slider-thumb {
   border-radius: 50%;
   background-image:
     linear-gradient(122deg, transparent 0 42%, rgba(0, 0, 0, 0.28) 42% 58%, transparent 58% 100%),
-    radial-gradient(circle at 34% 28%, var(--brass-hi) 0 18%, var(--brass) 42%, var(--brass-dim) 74%, var(--brass-shade) 100%);
-  box-shadow: var(--edge-brass), 0 4px 0 var(--brass-shade), 0 8px 16px rgba(0, 0, 0, 0.6);
+    radial-gradient(circle at 34% 28%, #ffe3ee 0 16%, var(--neon-pink-hot) 40%, var(--neon-pink) 72%, #a3134c 100%);
+  box-shadow: var(--edge-neon), 0 4px 0 #8f1240, 0 0 20px var(--glow-pink-40), 0 8px 16px rgba(0, 0, 0, 0.6);
 }
 
 input[type="range"]::-moz-range-track {
@@ -874,8 +884,8 @@ input[type="range"]::-moz-range-track {
   border-radius: var(--radius-pill);
   background-color: var(--bar-bg-deep);
   background-image:
-    linear-gradient(180deg, rgba(255, 236, 200, 0.4) 0 22%, transparent 22% 64%, rgba(0, 0, 0, 0.34) 64% 100%),
-    linear-gradient(90deg, var(--liquor-deep) 0 12%, var(--liquor) 52%, var(--neon-amber) 100%);
+    linear-gradient(180deg, rgba(255, 236, 245, 0.32) 0 22%, transparent 22% 64%, rgba(0, 0, 0, 0.38) 64% 100%),
+    linear-gradient(90deg, var(--neon-purple) 0 10%, #d92a8e 52%, var(--neon-pink-hot) 100%);
 }
 
 input[type="range"]::-moz-range-thumb {
@@ -883,8 +893,8 @@ input[type="range"]::-moz-range-thumb {
   height: 46px;
   border: 0;
   border-radius: 50%;
-  background-image: radial-gradient(circle at 34% 28%, var(--brass-hi) 0 18%, var(--brass) 42%, var(--brass-dim) 74%, var(--brass-shade) 100%);
-  box-shadow: var(--edge-brass), 0 4px 0 var(--brass-shade);
+  background-image: radial-gradient(circle at 34% 28%, #ffe3ee 0 16%, var(--neon-pink-hot) 40%, var(--neon-pink) 72%, #a3134c 100%);
+  box-shadow: var(--edge-neon), 0 4px 0 #8f1240, 0 0 20px var(--glow-pink-40);
 }
 
 .slider-ticks {
@@ -1298,7 +1308,7 @@ input[type="range"]::-moz-range-thumb {
   animation: pop 0.35s ease;
 }
 
-/* toast = 九八递过来的一张便条 */
+/* toast = 马丁递过来的一张便条 */
 .toast {
   position: fixed;
   z-index: 300;
@@ -2964,7 +2974,7 @@ body:not(.has-dmbar) .chat-fab {
 }
 
 /* ============================================================
-   R2 新组件：卡组选择 / 老K锐评 / 每题灯 / 号码国王
+   R2 新组件：卡组选择 / 马丁锐评 / 每题灯 / 号码国王
    （移动优先，390 宽不溢出；配色一律走 theme 变量）
    ============================================================ */
 
@@ -3054,8 +3064,8 @@ body:not(.has-dmbar) .chat-fab {
 .settings-row label { flex: 0 0 auto; }
 .settings-row select { flex: 1 1 auto; min-width: 0; }
 
-/* --- 老K锐评 NPC --- */
-/* 九八锐评 = 他从吧台里递过来的一张小条 */
+/* --- 马丁锐评 NPC --- */
+/* 马丁锐评 = 他从吧台里递过来的一张小条 */
 .laok-box {
   display: flex;
   gap: 11px;
@@ -3498,7 +3508,7 @@ body:not(.has-dmbar) .chat-fab {
   width: 100%;
   height: auto;
   display: block;
-  /* logo 是马天尼杯 + 那颗橄榄（九八天线上的同一颗）：心动色的合法出场地 */
+  /* logo 是马天尼杯 + 那颗橄榄（马丁天线上的同一颗）：心动色的合法出场地 */
   filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.7)) drop-shadow(0 0 18px var(--glow-pink-40));
 }
 
@@ -3709,18 +3719,18 @@ body:not(.has-dmbar) .chat-fab {
   transition: background 0.3s ease, box-shadow 0.3s ease;
 }
 
-/* 坐稳了 = 满上 */
+/* 坐稳了 = 满上（R11：激活态吃发光预算，粉的） */
 .ready-badge.on {
-  color: var(--amber-hi);
-  border-color: var(--brass);
-  background-color: rgba(232, 167, 92, 0.1);
-  box-shadow: 0 0 12px var(--glow-amber-25);
+  color: var(--neon-pink-hot);
+  border-color: var(--neon-pink);
+  background-color: var(--glow-pink-18);
+  box-shadow: 0 0 12px var(--glow-pink-40);
 }
 
 .ready-badge.on::before {
-  box-shadow: inset 0 0 0 1.5px var(--brass);
+  box-shadow: inset 0 0 0 1.5px var(--neon-pink);
   background-image:
-    linear-gradient(180deg, var(--foam) 0 2px, var(--neon-amber) 2px 30%, var(--liquor) 30% 100%);
+    linear-gradient(180deg, var(--foam) 0 2px, var(--neon-pink-hot) 2px 30%, var(--neon-pink) 30% 100%);
 }
 
 .seat-count { font-size: 13px; font-weight: 500; }
@@ -3849,4 +3859,140 @@ body:not(.has-dmbar) .chat-fab {
   .player .dim { font-size: 12px; }
   .player .ready-badge { padding: 2px 6px; font-size: 10px; }
   .player .tag { padding: 2px 6px; font-size: 10px; }
+}
+
+/* ==========================================================================
+   R11 靶3 · 大厅收窄（Kim：「大厅设计 UI 还是复杂，要按竖屏手机页面去想体验」）
+   --------------------------------------------------------------------------
+   390 竖屏下，大厅只允许有三件事，其余一律降级：
+     ① 房码（大）      —— .roomcode，全屏最亮最大的一块
+     ② 成员 + 准备状态（中）—— .players / .ready-badge
+     ③ 底部主按钮（大） —— .lobby-cta .btn
+   降级对象（压缩为一行式 / 缩小 / 排到最后，不删功能）：
+     卡组卡 .deck-chip、二维码 .qr-wrap、邀请链接按钮、
+     局数 .settings-row、锅底 .stove-block。
+   本块只用 CSS（隐藏/压缩/重排），不动 app.js 的 DOM。
+   放在文件最末 = 同优先级下必胜。
+   ========================================================================== */
+@media (max-width: 480px) {
+
+  /* ---- 顶栏压扁（全屏通用）----
+     30px 像素字在 390 宽会折成「理想型 / 加载中」两行，
+     且像素字形超出 line-height:1.08 的行盒 → 压在副标（"桌子留好了，把人叫来吧"）上。
+     降到 24px 正好一行，行高放松到 1.3，副标补一口气：顶栏省下约 40px 竖屏空间。 */
+  .brand-title { gap: 8px; }
+  .brand-mark { width: 36px; height: 36px; flex: 0 0 36px; }
+  .brand-mark svg { width: 26px; height: 26px; }
+  .brand-title h1 { font-size: 24px; line-height: 1.3; letter-spacing: 0.02em; }
+  .brand-title + .dim { margin-top: 3px; font-size: 12.5px; }
+
+  /* ---- 通用：卡片内边距收一档，一屏能多装一件事 ---- */
+  .app { gap: 11px; padding-left: 14px; padding-right: 14px; }
+  .app > .glass { padding: 15px 14px 14px; }
+  .app > .glass.stack { gap: 10px; }
+
+  /* ---- ① 房码：唯一的大块。牌面撑满，字给到最大 ---- */
+  .roomcode {
+    order: 0;
+    padding: 18px 12px 16px;
+    font-size: clamp(58px, 17vw, 72px);
+    letter-spacing: 0.12em;
+  }
+
+  /* 二维码降级：从 180 缩到 96，只是「顺手能扫」，不再占半屏 */
+  .qr-wrap { order: 1; padding: 6px; margin: 0 auto; border-width: 1px; }
+  .qr-wrap canvas { width: 96px; height: 96px; }
+
+  /* 邀请链接按钮降级为一行式小按钮（不再是通栏） */
+  #copyBtn {
+    order: 2;
+    align-self: center;
+    min-height: 38px;
+    padding: 7px 14px;
+    font-size: 13px;
+    letter-spacing: 0.02em;
+  }
+
+  /* 卡组卡降级：排到本卡最后 + 压成一行，超出省略号 */
+  .deck-chip {
+    order: 9;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    max-width: 100%;
+    gap: 6px;
+    padding: 5px 11px;
+    box-shadow: none;
+    border-color: var(--line-neon);
+    background-color: transparent;
+    opacity: 0.82;
+  }
+  .deck-chip b { font-size: 12.5px; white-space: nowrap; }
+  .deck-chip .dc-kicker { font-size: 8.5px; letter-spacing: 0.14em; flex: none; }
+  .deck-chip .dc-line {
+    font-size: 11px;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* 今晚特调小条同样压成一行 */
+  .cocktail-chip { padding: 8px 10px; font-size: 12px; }
+  .cocktail-chip span:not(.ck-glass) { display: none; }
+
+  /* ---- ② 成员 + 准备状态：保持「中」的量级，别再瘦 ---- */
+  .app > .glass.stack h2 { font-size: 18px; letter-spacing: 0.02em; }
+  .seat-count { font-size: 12px; }
+  .players { gap: 7px; }
+  .player b { font-size: 15px; }
+  .player .ready-badge { font-size: 10.5px; padding: 3px 7px 3px 19px; }
+  .player .ready-badge::before { left: 6px; width: 8px; height: 11px; margin-top: -5.5px; }
+  /* 「请离」在手机上退成图标级小按钮，别跟准备状态抢视线 */
+  .player .kickBtn {
+    min-width: 34px;
+    min-height: 34px;
+    padding: 4px 7px;
+    font-size: 11px;
+    opacity: 0.6;
+  }
+
+  /* ---- 降级：局数 / 酒劲 / 位子数 全部压成一行式 ---- */
+  .settings-row { gap: 8px; }
+  .settings-row label { font-size: 12.5px; flex: none; }
+  .settings-row select {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 118px;
+    max-width: 60%;
+    margin-left: auto;
+    min-height: 40px;
+    padding: 7px 10px;
+    font-size: 14px;
+  }
+
+  .stove-block {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 6px 9px;
+  }
+  .stove-block > label { font-size: 12.5px; }
+  .stove-block .stove-fire { grid-column: 2; gap: 6px; }
+  .stove-block .stove-fire button {
+    min-height: 40px;
+    padding: 4px 2px;
+    font-size: 12px;
+    line-height: 1.15;
+  }
+  .stove-block .stove-fire button small { font-size: 9px; }
+  .stove-block > .dim { grid-column: 1 / -1; font-size: 11px; line-height: 1.4; }
+
+  /* ---- ③ 底部主按钮：这一屏的终点，给到最大 ---- */
+  .lobby-cta { margin-top: 2px; gap: 6px; }
+  .lobby-cta .btn {
+    min-height: 60px;
+    font-size: 21px;
+    letter-spacing: 0.14em;
+  }
+  .lobby-cta .dim { font-size: 12.5px; }
 }

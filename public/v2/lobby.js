@@ -6,13 +6,13 @@
      （接口没就绪时静默兜底：保持默认空桌，不报错）
    - 吧台单人位 → /?solo=1
    - 找朋友：吧台电话 → 输 4 位房间码 → /?room=CODE
-   - 老K氛围语录（低密度淡入淡出）、竖屏提示自动淡出
+   - 马丁氛围语录（低密度淡入淡出）、竖屏提示自动淡出
    ========================================================================== */
 import { createBartender } from "./bartender.js";
 
 const isPortrait = matchMedia("(orientation: portrait)").matches;
 
-/* ---------------- 老K氛围语录（原地淡入淡出，不横飞不刷屏） ---------------- */
+/* ---------------- 马丁氛围语录（原地淡入淡出，不横飞不刷屏） ---------------- */
 const QUOTES = [
   "灯我调暗了点，看人更清楚。",
   "第一杯别喝太快。",
@@ -48,7 +48,7 @@ function loopQuotes() {
 }
 setTimeout(loopQuotes, 2600);
 
-/* ---------------- 酒保老K ---------------- */
+/* ---------------- 酒保马丁 ---------------- */
 const K_LINES = [
   "今晚想喝点什么故事？",
   "先挑张桌子坐下，喝的我来想。",
@@ -204,7 +204,7 @@ if (homeEntry) {
     }
   });
 }
-// 生面孔（无 ideal_userId）：顶部挂一条老K口吻的引导横幅
+// 生面孔（无 ideal_userId）：顶部挂一条马丁口吻的引导横幅
 if (!myUserId && guestBanner) {
   guestBanner.hidden = false;
   document.body.classList.add("guest-mode");

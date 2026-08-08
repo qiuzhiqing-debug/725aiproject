@@ -9,8 +9,10 @@
      · 剪影三要素 = 圆头 + 酒保马甲 + 天线顶一颗橄榄。
        —— 涂黑仍可认（剪影测试）：头是纯圆，肩是梯形马甲，天线是一根
        细杆顶一颗球。**禁方头**：头部只有一个 r=52 的正圆。
-     · 表情 = 正经的呆：两颗圆眼「半垂」（上眼睑压下三分之一）+ 一条直线嘴。
-       呆感来自过度认真，**禁卖萌**：没有腮红、没有星星眼、没有笑弧。
+     · 表情 = 正经的呆（R11 改）：两颗**圆睁的完整圆眼** + 一条放松的短线嘴
+       （两端极轻微上扬）。呆感来自「睁得太圆 + 坐得太正」的过度认真，
+       **禁苦相**（不许半垂眼睑/耷拉嘴，那是"一直在干活"的疲惫脸），
+       **禁卖萌**（没有腮红、没有星星眼、没有咧嘴笑弧）。
      · 镜头重点在动作不在脸：手上永远有活（擦杯 / 摇壶 / 倒酒）。
      · 三色纪律（IP-AND-ART-RESEARCH §一.2）：黄铜 + 马甲深酒红 + 橄榄绿，完。
 
@@ -43,8 +45,13 @@ const P = {
   woodDim: "#2b160c",
   glass: "#e9dcc4",     // 玻璃杯
   liquor: "#d98b33",    // 酒液
-  ink: "#241009",       // 眼/嘴（不是纯黑：暖褐）
+  ink: "#1a1226",       // 眼/嘴底罩（R11：暖褐 → 夜紫黑，跟着全站配色走）
   shine: "#fff4dd",     // 高光
+  // R11 场景光（人物本身不动，只给他身后的墙）：霓虹粉 / 电紫 / 汽水青
+  neonPink: "#ff2d78",
+  neonPinkSoft: "#ff9ec4",
+  neonViolet: "#a24bff",
+  neonCyan: "#2de2ff",
 };
 
 /* 后吧台背景：木层板 + 酒瓶剪影 + 一盏吊灯的光池。
@@ -53,7 +60,28 @@ const BG = `
   <g clip-path="url(#nbClip)">
     <rect x="6" y="6" width="308" height="308" fill="url(#nbWall)"/>
 
-    <!-- 吊灯：黄铜灯罩 + 锥形光池（画出来的光，不是滤镜）。
+    <!-- R11 霓虹洗墙：粉从右上、紫从左下、青一条冷边。
+         光源主角从琥珀换成霓虹，木与铜降格为暗部结构。 -->
+    <ellipse cx="252" cy="46" rx="150" ry="112" fill="url(#nbWashPink)"/>
+    <ellipse cx="48" cy="250" rx="140" ry="120" fill="url(#nbWashViolet)"/>
+
+    <!-- 后墙霓虹小招牌（粉管外框 + 青管一条）：这店不安静 -->
+    <g>
+      <rect x="200" y="20" width="98" height="30" rx="15" fill="none"
+            stroke="${P.neonPink}" stroke-width="10" opacity="0.14"/>
+      <rect x="200" y="20" width="98" height="30" rx="15" fill="none"
+            stroke="${P.neonPink}" stroke-width="4" opacity="0.6"/>
+      <rect x="200" y="20" width="98" height="30" rx="15" fill="none"
+            stroke="${P.neonPinkSoft}" stroke-width="1.5"/>
+      <path d="M216 35 L232 35 M240 27 L240 43 M248 35 L264 35 M272 27 L272 43"
+            fill="none" stroke="${P.neonCyan}" stroke-width="5" opacity="0.2"
+            stroke-linecap="round"/>
+      <path d="M216 35 L232 35 M240 27 L240 43 M248 35 L264 35 M272 27 L272 43"
+            fill="none" stroke="${P.neonCyan}" stroke-width="2" opacity="0.95"
+            stroke-linecap="round"/>
+    </g>
+
+    <!-- 吧台小台灯：黄铜灯罩 + 锥形光池（琥珀降级为点缀，不再是主光）。
          刻意偏左：正对头顶会把天线上那颗橄榄压进灯罩里，剪影就废了。 -->
     <rect x="66.5" y="8" width="3" height="22" fill="${P.brassDim}"/>
     <path d="M40 56c0-16 12-26 28-26s28 10 28 26z" fill="url(#nbShade)"/>
@@ -172,30 +200,35 @@ const ANTENNA = `
   <ellipse cx="156.4" cy="37.5" rx="3" ry="4" fill="${P.oliveHi}" opacity="0.85"/>
   <ellipse cx="160" cy="42" rx="3.3" ry="4" fill="#c8324f"/>`;
 
-/* ---- 五官（状态层）：正经的呆 ----
-   眼：两颗圆眼，上眼睑压下约 1/3 = 半垂；瞳是暖琥珀（机器亮着但不刺眼）。
-   嘴：一条直线，端点方头，绝不上扬。 */
+/* ---- 五官（状态层）：正经的呆 —— R11 修（Kim：「表情不行，太苦命了」）----
+   旧版把上眼睑压下 1/3（半垂）+ 一条直线嘴 = 疲惫、苦命、一直在干活。已删除。
+   新版：
+     眼 = 两颗圆睁的完整圆眼（清醒、专注、亮着），瞳孔居中不斜视，
+          一点高光说明他在待命而不是熬夜。**没有眼睑压条**。
+     嘴 = 一条放松的短线，两端极轻微上扬 —— 不是笑弧（幅度 1.2px），
+          是「待命的从容」。
+   「正经的呆」现在靠：圆睁大眼 + 端正到过分的姿态（领结/正襟的马甲/居中的瞳），
+   不靠苦相。禁腮红、禁星星眼、禁咧嘴笑。 */
 const EYES_OPEN = `
   <g>
-    <circle cx="147" cy="127" r="8" fill="${P.brassHi}"/>
-    <circle cx="147" cy="128.5" r="4.4" fill="${P.brassDeep}"/>
-    <circle cx="173" cy="127" r="8" fill="${P.brassHi}"/>
-    <circle cx="173" cy="128.5" r="4.4" fill="${P.brassDeep}"/>
-    <!-- 上眼睑压到眼球一半：这一笔就是「过度认真的呆」，不是萌 -->
-    <rect x="138" y="115" width="18" height="12.5" fill="${P.ink}"/>
-    <rect x="164" y="115" width="18" height="12.5" fill="${P.ink}"/>
-    <!-- 眼睑下缘那道铜边（机械感的眼皮） -->
-    <rect x="139" y="126" width="16" height="1.6" rx="0.8" fill="${P.brassDim}"/>
-    <rect x="165" y="126" width="16" height="1.6" rx="0.8" fill="${P.brassDim}"/>
+    <!-- 左眼：眼白（暖铜白）→ 瞳孔 → 高光。整颗圆，不被任何东西压住 -->
+    <circle cx="147" cy="127.5" r="9" fill="${P.brassHi}" stroke="${P.brassDim}" stroke-width="1.4"/>
+    <circle cx="147" cy="127.5" r="4.6" fill="${P.brassDeep}"/>
+    <circle cx="144.6" cy="125" r="1.9" fill="${P.shine}" opacity="0.92"/>
+    <!-- 右眼 -->
+    <circle cx="173" cy="127.5" r="9" fill="${P.brassHi}" stroke="${P.brassDim}" stroke-width="1.4"/>
+    <circle cx="173" cy="127.5" r="4.6" fill="${P.brassDeep}"/>
+    <circle cx="170.6" cy="125" r="1.9" fill="${P.shine}" opacity="0.92"/>
   </g>`;
 const EYES_SHUT = `
   <g>
-    <rect x="139" y="126" width="16" height="3" rx="1.5" fill="${P.brassDim}"/>
-    <rect x="165" y="126" width="16" height="3" rx="1.5" fill="${P.brassDim}"/>
+    <rect x="138" y="126" width="18" height="3.2" rx="1.6" fill="${P.brassDim}"/>
+    <rect x="164" y="126" width="18" height="3.2" rx="1.6" fill="${P.brassDim}"/>
   </g>`;
 
-// 嘴：一条直线（默认）/ 说话时张成一条窄缝
-const MOUTH_IDLE = `<rect x="148" y="145" width="24" height="4.4" rx="1.4" fill="${P.brass}"/>`;
+// 嘴：放松的短线 + 极轻微上扬（默认）/ 说话时张成一条窄缝
+const MOUTH_IDLE = `<path d="M150.5 147.2 Q160 149.6 169.5 147.2" fill="none"
+                    stroke="${P.brass}" stroke-width="4" stroke-linecap="round"/>`;
 const MOUTH_OPEN = `<rect x="150" y="142" width="20" height="9" rx="2.6" fill="${P.brassDeep}"/>
                     <rect x="150" y="142" width="20" height="2.6" rx="1.3" fill="${P.brass}"/>`;
 
@@ -246,11 +279,22 @@ export function createBartender(el, state = "idle") {
      style="display:block;width:100%;height:100%">
   <defs>
     <clipPath id="nbClip"><rect x="8" y="8" width="304" height="304" rx="18"/></clipPath>
+    <!-- R11：墙从「暖黑酒红」换回「深夜紫黑」（#14101f 量级） -->
     <linearGradient id="nbWall" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#120b0e"/>
-      <stop offset="0.42" stop-color="#301c1e"/>
-      <stop offset="1" stop-color="#180e12"/>
+      <stop offset="0" stop-color="#0e0b18"/>
+      <stop offset="0.42" stop-color="#241a3a"/>
+      <stop offset="1" stop-color="#14101f"/>
     </linearGradient>
+    <radialGradient id="nbWashPink" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="${P.neonPink}" stop-opacity="0.4"/>
+      <stop offset="0.55" stop-color="${P.neonPink}" stop-opacity="0.13"/>
+      <stop offset="1" stop-color="${P.neonPink}" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="nbWashViolet" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="${P.neonViolet}" stop-opacity="0.34"/>
+      <stop offset="0.58" stop-color="${P.neonViolet}" stop-opacity="0.1"/>
+      <stop offset="1" stop-color="${P.neonViolet}" stop-opacity="0"/>
+    </radialGradient>
     <linearGradient id="nbPlank" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="${P.woodHi}"/>
       <stop offset="1" stop-color="${P.woodDim}"/>
