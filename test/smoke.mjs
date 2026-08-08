@@ -30,6 +30,16 @@ async function waitUntil(predicate, ms = 5000) {
   return false;
 }
 
+// R10 §4.2 开局门：客人必须点准备，房主的按钮就是开局键（服务端 readyOf 里房主恒 true）。
+// 所有多人局开局前都要先过这道闸，所以抽成公共步骤。
+async function readyUp(players, ms = 5000) {
+  for (const p of players) {
+    if (p.state?.you?.isHost) continue;
+    p.send({ type: "ready", ready: true });
+  }
+  return waitUntil(() => players.some((p) => p.state?.allReady === true), ms);
+}
+
 class Player {
   constructor(name, emoji, drink = "beer", seeking = null, gender = null) {
     this.name = name;
@@ -220,6 +230,7 @@ async function main() {
   // 设置 3 轮 + 开局（题库客户端下发）
   A.send({ type: "set_settings", rounds: 3, deck: "qingtang", deckName: "清汤锅底" });
   await sleep(150);
+  await readyUp([A, B, C]);
   A.send({ type: "start", questions: DECKS.qingtang.questions });
   await A.waitPhase("picking");
   ok(true, "开局 → picking（抽酒签）");
@@ -531,6 +542,8 @@ async function main() {
   const P = new Player("琪琪", "🍸", "cocktail"), Q = new Player("阿澈", "🍺"), R = new Player("十三", "🥃");
   await P.connect(code2); await Q.connect(code2); await R.connect(code2);
   const table2 = [P, Q, R];
+  await waitUntil(() => P.state?.players?.length === 3);
+  await readyUp(table2);
   P.send({
     type: "start",
     module: "boss", moduleName: "满分老板",
@@ -632,6 +645,8 @@ async function main() {
   const { code: code3 } = await (await fetch(BASE + "/api/room", { method: "POST" })).json();
   const X = new Player("小新", "🍺"), Y = new Player("小葵", "🍷");
   await X.connect(code3); await Y.connect(code3);
+  await waitUntil(() => X.state?.players?.length === 2);
+  await readyUp([X, Y]);
   X.lastError = null;
   X.send({ type: "start", pool: "lesbian", questions: v2Questions.filter((q) => q.pools[0] === "straight-m") });
   await waitUntil(() => !!X.lastError);
@@ -647,6 +662,8 @@ async function main() {
   const table4 = [H, M, L];
   H.send({ type: "set_settings", rounds: 3 });
   await sleep(150);
+  await waitUntil(() => H.state?.players?.length === 3);
+  await readyUp(table4);
   H.send({ type: "start", module: "lover", pool: "all", deck: "qingtang", rounds: 3, questions: v2Questions });
   await H.waitPhase("picking");
   const shaker4 = table4.find((p) => p.state.current.youAreShaker);
@@ -1059,6 +1076,7 @@ async function main() {
   ok(K1.state.you.seeking === "f" && K2.state.you.seeking === "m" && K3.state.you.seeking === "x",
     "join 透传 seeking → state.you.seeking");
 
+  await readyUp(kt);
   K1.send({ type: "start", rounds: 3, questions: v2Questions });
   await K1.waitPhase("picking");
   const kShaker = kt.find((p) => p.state.current.youAreShaker);
@@ -1278,6 +1296,7 @@ async function main() {
   const duo = [D1, D2];
   await waitUntil(() => D1.state?.players?.length === 2);
   ok(D1.state.deck === "lover", "⑤ 旧 man 链接开的房，广播里已是 lover");
+  await readyUp(duo);
   D1.send({ type: "start", rounds: R9_ROUNDS, questions: r9Bank });
 
   const drawnBy = new Map(); // 主角昵称 -> 该主角轮次抽到的题 id 集合
@@ -1323,6 +1342,388 @@ async function main() {
     "⑤ 两位主角各自抽到了自己取向的专属题（池确实换了，不是都退化成 neutral）");
   ok(rgBy.get("直女姐") === "m" && rgBy.get("男同弟") === "m",
     "⑤ 同局内 renderGender 按各自主角 seeking 广播");
+
+  /* ================= R10：seats / ready / 开局门 / 方向确认（PRD-R10 §4.2-4.3） ================= */
+  console.log("\n-- R10 桌局组件：seats + ready + 开局门 --");
+
+  const newRoom = (body) =>
+    fetch(BASE + "/api/room", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(body) })
+      .then((res) => res.json());
+
+  // ① 建房 seats（Kim 终审口径）：合法域 1-10、缺省 6；
+  //    0/负数/非法/缺失 → 回落 6；>10 → 夹到 10；1 合法（= 单人局）
+  const seatDefault = await (await fetch(BASE + "/api/room", { method: "POST" })).json();
+  ok(seatDefault.seats === 6, `① 建房 seats 缺省 = 6（拿到 ${seatDefault.seats}）`);
+  for (const [raw, want] of [
+    [1, 1], [2, 2], [6, 6], [10, 10], // 合法域两端 + 缺省值
+    [11, 10], [99, 10], // 高位越界 → 夹到 10
+    [0, 6], [-5, 6], // 0/负数 → 回落缺省 6（不是夹到 1）
+    [3.6, 4], ["5", 5], // 小数四舍五入 / 数字串
+    ["abc", 6], [null, 6], [true, 6], [{}, 6], // 非法/缺失 → 回落缺省 6
+  ]) {
+    const rm = await newRoom({ seats: raw });
+    ok(rm.seats === want, `① 建房 seats=${JSON.stringify(raw)} → ${want}`);
+  }
+
+  // ①b seats=1 = 单人局：1 人可开、allReady 天然成立、第二人坐不进来
+  const oneRoom = await newRoom({ seats: 1 });
+  ok(oneRoom.seats === 1, "①b seats=1 建房成功（不被当非法值拒掉）");
+  const S1 = new Player("一人食", "🍺");
+  await S1.connect(oneRoom.code);
+  await waitUntil(() => S1.state?.players?.length === 1);
+  ok(S1.state.seats === 1 && S1.state.solo === true,
+    "①b seats=1 房广播 solo=true（走现有单人局语义）");
+  ok(S1.state.allReady === true, "①b seats=1 房 allReady 天然成立");
+  const S2 = new Player("凑热闹", "🍷");
+  const oneFull = await S2.connect(oneRoom.code);
+  ok(oneFull.type === "error" && oneFull.code === "table_full", "①b seats=1 房第二人被拒");
+  try { S2.ws.close(); } catch {}
+  S1.lastError = null;
+  S1.send({ type: "start", rounds: 3, questions: v2Questions });
+  await S1.waitPhase("picking");
+  ok(S1.state.phase === "picking" && !S1.lastError, "①b seats=1 房 1 人直接开局成功（不被 2 人下限挡）");
+  ok(await playToAha([S1]), "①b seats=1 房能一路玩到 aha（单人自评即开牌，没卡死）");
+  try { S1.ws.close(); } catch {}
+
+  // ② ready 广播 / allReady 翻转 / 开局门
+  const gateRoom = await newRoom({ seats: 4 });
+  const G1 = new Player("门主", "🍺"), G2 = new Player("门客", "🍷");
+  await G1.connect(gateRoom.code);
+  await G2.connect(gateRoom.code);
+  await waitUntil(() => G1.state?.players?.length === 2);
+  const gPub = (name) => G1.state.players.find((p) => p.name === name);
+  ok(G1.state.seats === 4, `② state 广播 seats（${G1.state.seats}）`);
+  ok(gPub("门主").ready === true, "② 房主 ready 恒为 true（他的按钮就是开局键）");
+  ok(gPub("门客").ready === false, "② 客人初始 ready=false");
+  ok(G1.state.allReady === false, "② 客人没准备 → allReady=false");
+
+  G1.lastError = null;
+  G1.send({ type: "start", rounds: 3, questions: v2Questions });
+  await waitUntil(() => !!G1.lastError);
+  ok(G1.lastError?.code === "not_all_ready", `② 未全员准备时 start 被拒：${G1.lastError?.msg}`);
+  ok(G1.state.phase === "lobby", "② 被拒后仍停在 lobby（没偷偷开局）");
+
+  G2.send({ type: "ready", ready: true });
+  await waitUntil(() => G1.state?.allReady === true);
+  ok(G1.state.allReady === true && gPub("门客").ready === true,
+    "② 客人 ready → players[].ready 与 allReady 一起翻 true");
+  G2.send({ type: "ready", ready: false });
+  await waitUntil(() => G1.state?.allReady === false);
+  ok(G1.state.allReady === false && gPub("门客").ready === false, "② 取消准备 → allReady 翻回 false");
+  G2.send({ type: "ready", ready: true });
+  await waitUntil(() => G1.state?.allReady === true);
+  G1.send({ type: "start", rounds: 3, questions: v2Questions });
+  await G1.waitPhase("picking");
+  ok(G1.state.phase === "picking", "② 全员 ready 后 start 通过 → picking");
+
+  // ②b 抽签后：awaitDirection + confirm_direction 权限与鉴权
+  const gPair = [G1, G2];
+  const gShaker = gPair.find((p) => p.state.current.youAreShaker);
+  gShaker.send({ type: "draw_stick" });
+  await waitUntil(() => G1.state?.current?.drawn === true);
+  gShaker.send({ type: "stick_done" });
+  await G1.waitPhase("protagonist_setup");
+  const gHero = gPair.find((p) => p.state.current.youAreProtagonist);
+  const gOther = gPair.find((p) => p !== gHero);
+  ok(G1.state.current.awaitDirection === true,
+    "②b protagonist_setup 广播 awaitDirection=true（等被拷问者选方向）");
+  gOther.send({ type: "confirm_direction", seeking: "m", gender: "m" });
+  await sleep(250);
+  ok(G1.state.phase === "protagonist_setup", "②b 非被拷问者发 confirm_direction 无效");
+  gHero.lastError = null;
+  gHero.send({ type: "confirm_direction", seeking: "zzz" });
+  await waitUntil(() => !!gHero.lastError);
+  ok(gHero.lastError?.code === "bad_seeking", "②b 非法 seeking 被拒");
+  gHero.send({ type: "confirm_direction", seeking: "f", gender: "m" });
+  await G1.waitPhase("answering");
+  ok(G1.state.current.renderGender === "f" && G1.state.current.question.text.includes("满分女"),
+    `②b 确认方向 → 直接进答题且题面按方向渲染：${G1.state.current.question.text.slice(0, 16)}…`);
+  ok(G1.state.current.awaitDirection === false, "②b 确认后 awaitDirection 落回 false");
+  try { G1.ws.close(); G2.ws.close(); } catch {}
+
+  // ③ set_seats：仅房主、仅 lobby、1-8 夹取；seats 同时是入座上限
+  const seatRoom = await newRoom({ seats: 2 });
+  const T1 = new Player("桌主", "🍺"), T2 = new Player("桌客", "🍷");
+  await T1.connect(seatRoom.code);
+  await T2.connect(seatRoom.code);
+  await waitUntil(() => T1.state?.players?.length === 2);
+  ok(T1.state.seats === 2, "③ seats=2 的桌");
+  const T3 = new Player("迟到哥", "🥃");
+  const fullRes = await T3.connect(seatRoom.code);
+  ok(fullRes.type === "error" && fullRes.code === "table_full", `③ 坐满 → 第三人被拒：${fullRes.msg}`);
+  try { T3.ws.close(); } catch {}
+
+  T2.send({ type: "set_seats", seats: 6 });
+  await sleep(250);
+  ok(T1.state.seats === 2, "③ 非房主 set_seats 无效");
+  T1.send({ type: "set_seats", seats: 6 });
+  await waitUntil(() => T1.state?.seats === 6 && T2.state?.seats === 6);
+  ok(T1.state.seats === 6 && T2.state.seats === 6, "③ 房主 set_seats=6 生效并广播全桌");
+  T1.send({ type: "set_seats", seats: 99 });
+  await waitUntil(() => T1.state?.seats === 10);
+  ok(T1.state.seats === 10, "③ set_seats=99 → 夹到 10");
+  T1.send({ type: "set_seats", seats: 0 });
+  await sleep(250);
+  ok(T1.state.seats === 10, "③ set_seats=0（非法）→ 保持原值不动");
+  T1.send({ type: "set_seats", seats: -3 });
+  await sleep(250);
+  ok(T1.state.seats === 10, "③ set_seats=负数 → 保持原值不动");
+
+  // ④ 离桌 → ready 清除 → 房主改人数 → 同房码原地重开
+  T1.send({ type: "set_seats", seats: 4 });
+  await waitUntil(() => T1.state?.seats === 4);
+  T2.send({ type: "ready", ready: true });
+  await waitUntil(() => T1.state?.allReady === true);
+  ok(T1.state.allReady === true, "④ 客人准备好了（allReady=true）");
+  T2.send({ type: "leave" });
+  await waitUntil(() => T1.state?.players?.length === 1);
+  ok(T1.state.players.length === 1, "④ lobby 离桌 → 座位释放");
+  const T4 = new Player("补位哥", "🍸");
+  await T4.connect(seatRoom.code);
+  await waitUntil(() => T1.state?.players?.length === 2);
+  ok(T1.state.code === seatRoom.code && T4.state.seats === 4, "④ 同房码复用，人数上限沿用房主改过的 4");
+  ok(T1.state.allReady === false && T1.state.players.find((p) => p.name === "补位哥").ready === false,
+    "④ 离桌换人后 ready 从头来（allReady=false）");
+  T1.lastError = null;
+  T1.send({ type: "start", rounds: 3, questions: v2Questions });
+  await waitUntil(() => !!T1.lastError);
+  ok(T1.lastError?.code === "not_all_ready", "④ 补位客人没准备 → 仍开不了局");
+  T4.send({ type: "ready", ready: true });
+  await waitUntil(() => T1.state?.allReady === true);
+  T1.send({ type: "start", rounds: 3, questions: v2Questions });
+  await T1.waitPhase("picking");
+  ok(T1.state.phase === "picking", "④ 同房码原地重开成功（改过人数、换过人）");
+  T1.send({ type: "set_seats", seats: 2 });
+  await sleep(250);
+  ok(T1.state.seats === 4, "④ 非 lobby 阶段 set_seats 无效");
+  try { T1.ws.close(); T4.ws.close(); } catch {}
+
+  // ⑤ confirm_direction 真的换了当轮抽池（R9 探针法：合成题库按池前缀反推）
+  //    入座时不带任何取向档案（散客 → 默认只有 neutral），全靠 confirm_direction 改池。
+  async function r10DirectionProbe(label, seeking, gender) {
+    const room = await newRoom({ solo: true });
+    const p = new Player(label, "🍺", "beer", null, null);
+    await p.connect(room.code);
+    await waitUntil(() => p.state?.players?.length === 1);
+    const soloAllReady = p.state.allReady === true;
+    p.send({ type: "start", rounds: R9_ROUNDS, questions: r9Bank });
+    await p.waitPhase("picking");
+    p.send({ type: "draw_stick" });
+    await waitUntil(() => p.state?.current?.drawn === true);
+    p.send({ type: "stick_done" });
+    await p.waitPhase("protagonist_setup");
+    const awaited = p.state.current.awaitDirection === true;
+    const defaultSeeking = p.state.current.heroSeeking;
+    p.send({ type: "confirm_direction", seeking, gender });
+    await p.waitPhase("answering");
+    const ids = new Set();
+    const renderGenders = new Set();
+    for (let round = 1; round <= R9_ROUNDS; round++) {
+      if (!(await waitUntil(
+        () => p.state?.phase === "answering" && p.state?.current?.roundIndex === round, 8000))) break;
+      ids.add(p.state.current.question.id);
+      renderGenders.add(p.state.current.renderGender);
+      p.send({ type: "score", v: 5 });
+      if (!(await waitUntil(() => p.state?.phase === "reveal", 8000))) break;
+      p.send({ type: "next" });
+    }
+    await waitUntil(() => p.state?.phase === "aha", 8000);
+    try { p.ws.close(); } catch {}
+    return { ids, renderGenders: [...renderGenders], awaited, soloAllReady, defaultSeeking };
+  }
+
+  const dirGay = await r10DirectionProbe("确认男同", "m", "m");
+  ok(dirGay.soloAllReady === true, "⑤ solo 房 allReady 天然成立（1 人局不被开局门挡）");
+  ok(dirGay.awaited === true && dirGay.defaultSeeking === null,
+    "⑤ 未确认前 heroSeeking = 入座时带的档案（散客为 null）");
+  const dirGayAllowed = r9Allowed("gay");
+  ok([...dirGay.ids].every((id) => dirGayAllowed.has(id)) && dirGay.ids.size === dirGayAllowed.size,
+    `⑤ confirm_direction(seeking=m,gender=m 男同) → 该轮只出 neutral∪gay（${dirGay.ids.size} 题，无 straight-m/f、lesbian）`);
+  ok(dirGay.renderGenders.length === 1 && dirGay.renderGenders[0] === "m",
+    "⑤ 确认男同后 renderGender=m（满分男）");
+
+  const dirStraight = await r10DirectionProbe("确认直男", "f", "m");
+  const dirStraightAllowed = r9Allowed("straight-f");
+  ok([...dirStraight.ids].every((id) => dirStraightAllowed.has(id))
+    && dirStraight.ids.size === dirStraightAllowed.size,
+    "⑤ 同一份题库、同样零档案，confirm_direction(f,m 直男) → 只出 neutral∪straight-f（池确实随确认换了）");
+
+  const dirX = await r10DirectionProbe("确认都行", "x", "f");
+  ok([...dirX.ids].every((id) => R9_IDS.neutral.includes(id))
+    && dirX.renderGenders[0] === "n",
+    "⑤ confirm_direction(seeking=x 都行) → 只出 neutral 且 renderGender=n");
+  ok([...pf.ids].every((id) => r9Allowed("straight-m").has(id)),
+    "⑤ 不发 confirm_direction 时仍走入座 seeking（R9 老路径未被破坏）");
+
+  /* ================= R10：用户反馈 POST /api/feedback（PRD-R10 §4.1） ================= */
+  console.log("\n-- R10 反馈 /api/feedback --");
+  const FB_KEY = process.env.STATS_KEY || "dev-stats";
+  const postFeedback = (body) =>
+    fetch(BASE + "/api/feedback", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(body) });
+  const fbSrc = () => "fb" + Math.random().toString(36).slice(2, 8);
+  const srcA = fbSrc(), srcB = fbSrc(), srcC = fbSrc();
+  const fbText = "R10 冒烟反馈 " + srcA;
+
+  const fb1 = await postFeedback({ text: fbText, contact: "kim@example.com", room: srcA });
+  ok(fb1.status === 201, `⑥ POST /api/feedback → 201（拿到 ${fb1.status}）`);
+  const fb2 = await postFeedback({ text: "同一分钟的第二条", room: srcA });
+  ok(fb2.status === 429, "⑥ 同来源 1 分钟内第二条 → 429 限频");
+  const fb2Body = await fb2.json();
+  ok(fb2Body.error === "rate_limited" && fb2Body.retryAfterMs > 0, "⑥ 429 带 retryAfterMs");
+  const fbEmpty = await postFeedback({ text: "   ", room: fbSrc() });
+  ok(fbEmpty.status === 400, "⑥ 空内容 → 400");
+  const fbLong = await postFeedback({ text: "长".repeat(600), contact: "c".repeat(200), room: srcB });
+  ok(fbLong.status === 201, "⑥ 换一个来源仍可提交（限频按来源，不是全局封）");
+  const fbNoContact = await postFeedback({ text: "只留意见不留联系方式", room: srcC });
+  ok(fbNoContact.status === 201, "⑥ contact 可缺省");
+
+  const fbStats = await (await fetch(
+    `${BASE}/api/stats?days=14&key=${encodeURIComponent(FB_KEY)}`)).json();
+  ok(Array.isArray(fbStats.recent_feedbacks), "⑥ /api/stats 返回体带 recent_feedbacks");
+  const fbMine = fbStats.recent_feedbacks.find((f) => f.text === fbText);
+  ok(!!fbMine && fbMine.contact === "kim@example.com" && fbMine.ts > 0 && /^\d{4}-\d{2}-\d{2}$/.test(fbMine.day),
+    "⑥ 反馈落库：正文/联系方式/ts/day 都可读");
+  const fbLongRow = fbStats.recent_feedbacks.find((f) => f.text.startsWith("长长长"));
+  ok(!!fbLongRow && [...fbLongRow.text].length === 500 && [...fbLongRow.contact].length === 100,
+    "⑥ 正文截到 500 字、联系方式截到 100 字");
+  ok(fbStats.recent_feedbacks.length <= 20, `⑥ recent_feedbacks 最多 20 条（${fbStats.recent_feedbacks.length}）`);
+  ok(fbStats.recent_feedbacks.every((f, i, arr) => i === 0 || arr[i - 1].ts >= f.ts),
+    "⑥ recent_feedbacks 按时间倒序（最新在前）");
+  const fbNoKey = await fetch(BASE + "/api/stats?days=14");
+  ok(fbNoKey.status === 403, "⑥ 无 key 读不到反馈（/api/stats 403）");
+
+  /* ============================================================
+     R9 埋点闭环（PRD-R9-PHASE1 §五）：/api/track + /api/stats
+     放在最后跑：前面几节已经建过房、开过局、玩到过 aha，
+     正好用来验证「服务端直记」那几个事件真的落库了。
+     ============================================================ */
+  console.log("\n-- R9 埋点 /api/track + /api/stats --");
+  const TRACK_HEADERS = { "content-type": "application/json" };
+  const STATS_KEY = process.env.STATS_KEY || "dev-stats"; // worker 未设 secret 时的回退常量
+  const postTrack = (body) =>
+    fetch(BASE + "/api/track", { method: "POST", headers: TRACK_HEADERS, body: JSON.stringify(body) });
+  const getStats = (qs) => fetch(BASE + "/api/stats?" + qs);
+  const readStats = async (days = 14) => {
+    const res = await getStats(`days=${days}&key=${encodeURIComponent(STATS_KEY)}`);
+    return res.ok ? await res.json() : null;
+  };
+  const todayRow = (data) => data.daily.find((d) => d.day === data.today) || null;
+
+  // 前面各节的服务端埋点是 fire-and-forget，给它们一点落库时间再取基线
+  await sleep(400);
+
+  // ① 白名单
+  const trackOk = await postTrack({ event: "poster_shared", roomCode: "9999" });
+  ok(trackOk.status === 204, "① /api/track 白名单事件 → 204");
+  const trackBad = await postTrack({ event: "drink_poured", roomCode: "9999" });
+  ok(trackBad.status === 400, "① /api/track 白名单外事件 → 400");
+  const trackEmpty = await postTrack({});
+  ok(trackEmpty.status === 400, "① /api/track 缺 event → 400");
+  const trackJunk = await fetch(BASE + "/api/track", { method: "POST", headers: TRACK_HEADERS, body: "not-json" });
+  ok(trackJunk.status === 400, "① /api/track body 不是 JSON → 400（不 5xx）");
+
+  // ③a 鉴权（先验，后面几步都要用 key 读数）
+  const noKey = await getStats("days=14");
+  ok(noKey.status === 403, "③ /api/stats 无 key → 403");
+  const wrongKey = await getStats("days=14&key=wrong-one");
+  ok(wrongKey.status === 403, "③ /api/stats key 不对 → 403");
+  const withKey = await getStats(`days=14&key=${encodeURIComponent(STATS_KEY)}`);
+  ok(withKey.status === 200, "③ /api/stats 带 dev key → 200");
+
+  const base = await readStats(14);
+  ok(!!base && Array.isArray(base.daily) && base.daily.length === 14, "③ /api/stats 默认窗口返回 14 行按日数据");
+  ok(!!base && /^\d{4}-\d{2}-\d{2}$/.test(base.today), `③ 日期是 Asia/Shanghai 的 YYYY-MM-DD（${base?.today}）`);
+
+  // ② 同房 game_finished 去重：同一个 roomCode 连发多次，只应计 1
+  const dedupeCode = "smoke-" + Math.random().toString(36).slice(2, 10);
+  const b1 = todayRow(base);
+  await postTrack({ event: "game_finished", roomCode: dedupeCode, players: 3 });
+  const s2 = await readStats(14);
+  const r2 = todayRow(s2);
+  ok(r2.game_finished - b1.game_finished === 1, "② 首次上报 game_finished → 完局数 +1");
+  for (let i = 0; i < 3; i++) await postTrack({ event: "game_finished", roomCode: dedupeCode, players: 3 });
+  const s3 = await readStats(14);
+  const r3 = todayRow(s3);
+  ok(r3.game_finished - r2.game_finished === 0, "② 同房 game_finished 再报 3 次 → 完局数不变（房级去重生效）");
+  // 换一个房间码 → 正常计数（证明去重是按房，不是把事件整体屏蔽了）
+  await postTrack({ event: "game_finished", roomCode: dedupeCode + "-b", players: 3 });
+  const s4 = await readStats(14);
+  const r4 = todayRow(s4);
+  ok(r4.game_finished - r3.game_finished === 1, "② 换一个房间码上报 → 完局数 +1（去重按房不按事件）");
+
+  // ③b finish_rate 计算：逐日 = 完局/开局，汇总 = 14 天完局/14 天开局
+  const rateRows = s4.daily.filter((d) => d.game_started > 0);
+  ok(
+    s4.daily.every((d) =>
+      d.game_started > 0
+        ? Math.abs(d.finish_rate - d.game_finished / d.game_started) < 1e-9
+        : d.finish_rate === null
+    ),
+    `③ 逐日 finish_rate = 完局/开局（有开局的 ${rateRows.length} 天全部吻合，无开局的天为 null）`
+  );
+  const started14 = s4.daily.reduce((a, d) => a + d.game_started, 0);
+  const finished14 = s4.daily.reduce((a, d) => a + d.game_finished, 0);
+  ok(s4.summary.game_started_14d === started14 && s4.summary.game_finished_14d === finished14,
+    "③ 汇总的 14 天开局/完局数 = 按日之和");
+  ok(started14 > 0 && Math.abs(s4.summary.finish_rate_14d - finished14 / started14) < 1e-9,
+    `③ 汇总 finish_rate_14d = ${(s4.summary.finish_rate_14d * 100).toFixed(1)}% 计算正确`);
+  ok(s4.summary.target_finish_rate === 0.75,
+    "③ 汇总带 H1 达标线 0.75（Kim 定：前两周完局率 ≥75%，仪表盘画 75% 线用）");
+
+  // ③c 周汇总：本周(近7天) / 上周(前7天) 都在，且本周 ≥ 本轮冒烟制造的完局数
+  ok(typeof s4.summary.week_finished === "number" && typeof s4.summary.prev_week_finished === "number",
+    `③ 汇总含本周/上周完局桌数（本周 ${s4.summary.week_finished} / 上周 ${s4.summary.prev_week_finished}）`);
+  ok(s4.summary.本周完局桌数 === s4.summary.week_finished, "③ PRD 中文键别名与 ascii 键一致");
+  ok(s4.summary.week_finished >= 2, "③ 本周完局桌数 ≥ 本轮冒烟刚记的 2 桌");
+
+  // ③d days 参数
+  const d7 = await readStats(7);
+  ok(d7.daily.length === 7 && d7.days === 7, "③ days=7 → 返回 7 行");
+  const dBad = await getStats(`days=abc&key=${encodeURIComponent(STATS_KEY)}`);
+  const dBadJson = await dBad.json();
+  ok(dBadJson.days === 14, "③ days 非法 → 回落默认 14");
+  const dBig = await readStats(999);
+  ok(dBig.days === 90, "③ days 超上限 → 夹到 90");
+
+  // ④ 服务端直记：前面几节真跑过建房/入座/开局/亮相，今天这几列必须都 > 0
+  const today = todayRow(s4);
+  ok(today.room_created > 0, `④ 服务端直记 room_created（今日 ${today.room_created}）`);
+  ok(today.player_joined > 0, `④ 服务端直记 player_joined（今日 ${today.player_joined}）`);
+  ok(today.game_started > 0, `④ 服务端直记 game_started（今日 ${today.game_started}）`);
+  ok(today.game_finished > 0, `④ 服务端直记 game_finished（今日 ${today.game_finished}）`);
+  ok(today.register_done > 0, `④ 服务端直记 register_done（今日 ${today.register_done}）`);
+
+  // ④b 一整局真实流程只记 1 桌开局 / 1 桌完局（服务端标记随房落盘，不会重复记）
+  const beforeSolo = todayRow(await readStats(14));
+  const soloTrack = await (await fetch(BASE + "/api/room", {
+    method: "POST", headers: TRACK_HEADERS, body: JSON.stringify({ solo: true }),
+  })).json();
+  const SOLO = new Player("埋点独狼", "🍺", "beer");
+  await SOLO.connect(soloTrack.code);
+  SOLO.send({ type: "start", rounds: 3, questions: DECKS.qingtang.questions });
+  await playToAha([SOLO]);
+  SOLO.send({ type: "finish_game" });
+  await SOLO.waitPhase("finished", 8000);
+  try { SOLO.ws.close(); } catch {}
+  await sleep(500);
+  const afterSolo = todayRow(await readStats(14));
+  ok(afterSolo.room_created - beforeSolo.room_created === 1, "④b 跑完整一局：开桌 +1");
+  ok(afterSolo.player_joined - beforeSolo.player_joined === 1, "④b 跑完整一局：入座 +1");
+  ok(afterSolo.game_started - beforeSolo.game_started === 1, "④b 跑完整一局：开局 +1（不因多次 save 重复记）");
+  ok(afterSolo.game_finished - beforeSolo.game_finished === 1,
+    "④b 跑完整一局：完局 +1（aha 记一次，之后 finished 不再记）");
+
+  // ⑤ 仪表盘页面本体可访问（Kim 直接打开这一页看数）
+  const dash = await fetch(BASE + "/stats.html");
+  const dashHtml = dash.ok ? await dash.text() : "";
+  ok(dash.status === 200, "⑤ GET /stats.html → 200");
+  ok(dashHtml.includes("/api/stats") && dashHtml.includes("本周完局桌数"),
+    "⑤ 仪表盘含北极星大数字与 /api/stats 拉取逻辑");
+  ok(dashHtml.includes("75%") && dashHtml.includes("前两周完局率") && !/达标线\s*60%|过 60%|没到 60%/.test(dashHtml),
+    "⑤ 仪表盘达标线与文案已改到 75%（无 60% 残留）");
+  ok(/left:\s*75%/.test(dashHtml) && dashHtml.includes('content: "75%"'),
+    "⑤ 仪表盘 75% 虚线位置与标签一致");
+  ok(!/<script[^>]+src=/i.test(dashHtml), "⑤ 仪表盘无外部依赖（没有外链 script）");
 
   console.log(`\n== 结果：${passed} 通过 / ${failed} 失败`);
   process.exit(failed ? 1 : 0);

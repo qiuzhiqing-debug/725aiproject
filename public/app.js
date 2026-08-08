@@ -15,6 +15,30 @@ import { LAOK_POOL } from "./laok-lines.js";
 const $app = document.getElementById("app");
 const $toast = document.getElementById("toast");
 
+/* ── 埋点（PRD-R9-PHASE1 §五）────────────────────────────────────────────────
+   前端只补服务端看不见的事件：目前仅 poster_shared。
+   room_created / player_joined / game_started / game_finished / register_done
+   全部由 worker 服务端直记（见 src/worker.js 文件头的记录点总表），这里不许重复发，
+   否则同一件事会被记两次。
+   sendBeacon：页面切走/关掉也送得出去；不可用时退 fetch keepalive；再失败就静默丢弃——
+   埋点永远不能弹错、不能卡住海报流程。
+   ─────────────────────────────────────────────────────────────────────────── */
+function track(event, payload = {}) {
+  try {
+    const body = JSON.stringify({ event, ...payload });
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon("/api/track", new Blob([body], { type: "application/json" }));
+      return;
+    }
+    fetch("/api/track", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+      keepalive: true,
+    }).catch(() => {});
+  } catch {}
+}
+
 /* ============================================================
    R9 一期功能开关（PRD-R9-PHASE1 §四「关不删」）
    一期把非核心功能全部开关式下线：代码、函数、样式一律保留，只用 flag 短路渲染/调用。
@@ -53,7 +77,7 @@ const loadBestie = () => lazyImport("bestie", "./questions-v2/bestie.js");
 const loadQr = () => lazyImport("qr", "./qrcode.js");
 const loadPoster = () => lazyImport("poster", "./poster.js");
 const loadIdealProfile = () => lazyImport("idealProfile", "./ideal-profile.js");
-// 老K立绘（v2 共用模块，只 import 不改）：锐评 NPC 的小头像
+// 九八立绘（v2 共用模块，只 import 不改）：锐评 NPC 的小头像
 const loadBartender = () => lazyImport("bartender", "./v2/bartender.js");
 let buildIdealProfileFn = null;
 // R6「你老公来咯」彩蛋：从 ideal-profile.js 读 MODULE_PROFILES.waiting（只读不改）。
@@ -75,6 +99,8 @@ const DECK_DISPLAY = {
   "重口锅底": "上头款 · 后劲很大",
 };
 const deckLabel = (name) => DECK_DISPLAY[name] || name || "";
+// 灶台三档火：按 decks 顺序（清汤/番茄/重口）给 1/2/3 簇火，火越旺 = 酒劲越上头
+const STOVE_FIRE = ["🔥", "🔥🔥", "🔥🔥🔥"];
 
 /* ---------- 卡组（R2）：开桌时选「今晚聊什么」 ----------
    随建房 POST /api/room body.deck 传后端；全桌以 state.deck 为准。
@@ -202,7 +228,15 @@ const PARAMS = new URLSearchParams(location.search);
 
 /* ---------- 本地状态 ---------- */
 const ui = {
-  screen: "home", // home | game
+  screen: "home", // home（新首页）| table（桌局组件）| gallery | game
+  // R10 §4.2 桌局组件：开一桌(host) / 找桌(guest) 双态
+  tableTab: "host",
+  seats: 6,            // 房主选的一桌人数 1-10，默认 6（POST /api/room body.seats，Kim 定死；1=solo）
+  readySent: false,    // 本地乐观 ready 状态（服务端 player.ready 一到就以服务端为准）
+  dirSeeking: null,    // 方向确认弹层里正在选的 seeking（null=用档案默认）
+  dirGender: null,     // 方向确认弹层里正在选的 gender
+  dirSent: null,       // 已发过 confirm_direction 的判重键
+  feedbackBusy: false,
   name: localStorage.getItem("mfn_name") || "",
   emoji:
     localStorage.getItem("mfn_emoji") ||
@@ -247,7 +281,7 @@ const ui = {
   kingPick: { nums: [], orderId: null }, // 每题国王（号码版）：我选的两个号 + 指令卡
   kingSent: false,
   kingOrderPage: 0,
-  laok: null, // 老K锐评 { key, text, loading }
+  laok: null, // 九八锐评 { key, text, loading }
 };
 
 let ws = null;
@@ -266,6 +300,46 @@ function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   }[c]));
+}
+
+/* ---------- R10 桌局：人数 / 准备状态（与 BACK 线契约的消费层）----------
+   契约（BACK 已并行实现，前端只消费、并对「字段还没到」保持向下兼容）：
+   · POST /api/room { seats:1-10 } → { code, deck, seats }（seats=1 → 改送 solo:true）
+   · WS 出站：{type:"ready",ready:bool} / {type:"set_seats",seats}(仅房主)
+   · WS 入站 state：state.seats、state.players[].ready、state.allReady
+   兼容铁律：state 里完全没有 ready/allReady 字段时（旧后端/回滚），
+   readySupported() 返回 false → 客人不渲染准备按钮、房主按老规矩直接开局，
+   现有多人局链路一行逻辑不变。 */
+/* 一桌人数：Kim 定死的产品常量 —— 合法域 1-10，默认 6（原 1-8/默认 8、2-10 两版均作废）。
+   选 1 = 一个人玩：建房走 solo 语义（body 送 solo:true，房主按钮即开局，不等别人）。
+   ?solo=1 深链入口独立保留，两条路最终落在同一套 ui.solo 逻辑上。 */
+const SEATS_MIN = 1;
+const SEATS_MAX = 10;
+const SEATS_DEFAULT = 6;
+const SEATS_SOLO_NOTE = "一个人玩"; // 「1」那一档的小标注（占位文案，Kim 终审）
+const SEATS_RANGE = Array.from({ length: SEATS_MAX - SEATS_MIN + 1 }, (_, i) => SEATS_MIN + i);
+function clampSeats(n) {
+  const v = Math.round(Number(n));
+  return Number.isFinite(v) ? Math.max(SEATS_MIN, Math.min(SEATS_MAX, v)) : SEATS_DEFAULT;
+}
+function readySupported(s) {
+  if (!s) return false;
+  if (typeof s.allReady === "boolean") return true;
+  return (s.players || []).some((p) => typeof p.ready === "boolean");
+}
+function isReady(s, name) {
+  const p = (s?.players || []).find((x) => x.name === name);
+  return !!p?.ready;
+}
+function allReadyOf(s) {
+  if (!readySupported(s)) return true; // 后端没这套 → 不拦，走旧的开局条件
+  if (typeof s.allReady === "boolean") return s.allReady;
+  const ps = s.players || [];
+  return ps.length > 0 && ps.every((p) => p.ready);
+}
+// 一桌人数：服务端 state.seats 优先，其次本地选的，最后默认 8
+function seatsOf(s) {
+  return clampSeats(s?.seats ?? s?.settings?.seats ?? ui.seats);
 }
 
 // 本地预览模式：?preview=<screen>，仅 127.0.0.1/localhost 生效，供无头截图 QA
@@ -297,12 +371,16 @@ function sendOrWarn(obj) {
 
 /* ---------- 连接 ---------- */
 
-async function createRoom({ solo = false, deck = "lover" } = {}) {
+async function createRoom({ solo = false, deck = "lover", seats = null } = {}) {
   // solo:true 走同一入口，后端支持 1 人开局；deck = 今晚聊什么（R2 卡组）
+  // R10 与 BACK 契约：body.seats 1-10（一桌人数），回 { code, deck, seats }。
+  // 一个人玩（人数选 1 或 ?solo=1）→ 只送 solo:true，一个 seats 字段都不带（后端按单人桌处理）。
+  // 旧后端忽略未知字段，照样回 code，所以这里无条件带上不会打断老链路。
+  const n = clampSeats(seats == null ? ui.seats : seats);
   const res = await fetch("/api/room", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ deck, ...(solo ? { solo: true } : {}) }),
+    body: JSON.stringify(solo ? { deck, solo: true } : { deck, seats: n }),
   });
   const j = await res.json();
   if (!j.code) throw new Error(j.error || "这会儿桌子不够用，稍等再试");
@@ -497,15 +575,17 @@ function onMessage(msg) {
       toast(msg.msg);
     }
     if (msg.code === "name_taken" || msg.code === "game_started") {
-      ui.screen = "home";
+      ui.screen = "table"; // R10：退回桌局组件（不是首页），改个名/换张桌就能再来
       render();
     }
     return;
   }
   if (msg.type === "kicked") {
     localStorage.removeItem("mfn_token_" + ui.code);
-    ui.screen = "home";
+    ui.screen = "table"; // R10：被请离 → 回桌局组件（找桌态），能立刻换一桌
+    ui.tableTab = "guest";
     ui.state = null;
+    ui.readySent = false;
     toast("房主请你先下桌了。门口坐会儿。");
     render();
     return;
@@ -619,6 +699,8 @@ function render() {
     renderGallery();
   } else if (ui.screen === "home") {
     renderHome();
+  } else if (ui.screen === "table") {
+    renderTable();
   } else {
     const s = ui.state;
     if (!s) {
@@ -628,6 +710,9 @@ function render() {
         case "lobby": renderLobby(s); break;
         case "picking": renderPicking(s); break;
         case "protagonist_setup": renderSetup(s); break;
+        // R10 §4.3：BACK 若把方向确认做成独立 phase，底屏沿用 setup（弹层由 updateOverlays 叠上去）
+        case "direction":
+        case "confirm_direction": renderSetup(s); break;
         case "answering": renderAnswering(s); break;
         case "reveal": renderReveal(s); break;
         case "drinking": renderDrinking(s); break;
@@ -701,39 +786,115 @@ const SEEK_OPTIONS = [
   { id: "x", label: "都行", emoji: "✨" },
 ];
 
+/* ---------- R10 §4.1 新首页 ----------
+   竖屏收敛：logo 区 → 「玩一局」主 CTA →「点一杯」次入口 → 玩法说明(≤3 行) → 底部反馈小字。
+   四连问（称呼 / 杯子 / 罚酒 / 想品鉴谁）已下沉到桌局组件 renderTable()，首页不再承担表单。
+   调酒不再是门：index.html 的强制跳转闸已删，「点一杯」是自愿入口（/v2/cocktail.html）。
+   除 logo 外文案全部占位，等 Kim 终审（PRD §六 待拍板项 ①②）。 */
+const HOME_HOW_LINES = [
+  "抽签抽出今晚的主角，全桌猜 TA 给这条标准打几分。",
+  "猜错的喝，猜中的看戏——主角得把自己的底线说清楚。",
+  "一局下来，系统把 TA 的理想型调出来，当场对账。",
+];
+
+// 首页/桌局共用的极简顶栏（只留「我的」和声音，bindSound 认这两个 id）
+function miniTopbar() {
+  return `<div class="row mini-topbar">
+    <div class="grow"></div>
+    <button class="btn ghost small me-btn" id="meBtn" aria-label="进入我的主页">我的</button>
+    <button class="btn ghost small" id="sndBtn">${sound.enabled ? "🔊" : "🔇"}</button>
+  </div>`;
+}
+
 function renderHome() {
   const cocktail = readCocktail();
-  // 有档案就把「想看的取向」拉回来当第四问默认值（拉到了会重绘一次首页）
-  resolveSeeking().then((v) => {
-    if (ui.screen === "home" && !ui.seekingTouched && v.seeking && v.seeking !== renderHome._seekPainted) {
-      renderHome._seekPainted = v.seeking;
-      renderHome();
-    }
-  }).catch(() => {});
-  const deepJoin = !ui.solo && /^\d{4}$/.test(ui.code); // ?room 深链：入座是唯一主按钮
-  const joinLabel = ui.table ? `在 ${esc(ui.table)} 号桌入座` : `在 ${esc(ui.code)} 桌入座`;
-  const sub = ui.solo ? "吧台第一个位子，留给一个人来的" : "打分，猜分，罚酒";
-  // 今晚聊什么（R2 卡组 → R9 合并卡）：开桌才选；?room 深链跟桌走，不给选。
-  // 一期只剩「满分男 · 满分女」一张恋爱局卡；老板/闺蜜卡藏在 PHASE1_FLAGS 后（关不删）。
-  const homeCards = HOME_DECK_CARDS.filter((c) => c.on && ROOM_DECKS[c.key]);
-  const deckPickHtml = deepJoin ? "" : `
-    <div class="glass stack deck-pick">
-      <label class="dim">今晚聊什么</label>
-      <div class="deck-cards${homeCards.length === 1 ? " single" : ""}" id="deckCards">
-        ${homeCards.map(({ key }) => {
-          const d = ROOM_DECKS[key];
-          return `
-        <button type="button" class="deck-card ${key === ui.deck ? "sel" : ""}" data-deck="${key}">
-          <span class="dc-kicker">TONIGHT'S MENU</span>
-          <b>${d.name}</b>
-          <span class="dc-line">${d.line}</span>
-        </button>`;
-        }).join("")}
+  $app.innerHTML = `
+    ${miniTopbar()}
+    <div class="landing">
+      <div class="landing-logo" aria-hidden="true">${BRAND_MARK_SVG}</div>
+      <h1 class="neon landing-title">理想型<span class="amber">·</span>加载中</h1>
+      <div class="dim landing-tag">99% 酒吧 · 今晚拷问谁的理想型</div>
+      <button class="btn landing-cta" id="playBtn">玩一局</button>
+      <button class="btn ghost landing-second" id="cocktailBtn">
+        <b>点一杯</b>
+        <small>${cocktail ? `你的今晚特调：${esc(cocktail.name)}` : "调一杯，留下你的口味档案"}</small>
+      </button>
+      <div class="glass landing-how">
+        ${HOME_HOW_LINES.map((l) => `<p>${esc(l)}</p>`).join("")}
+      </div>
+      <button class="link-btn landing-feedback" id="feedbackBtn">反馈</button>
+    </div>`;
+  document.getElementById("playBtn").addEventListener("click", () => {
+    sound.unlock();
+    ui.screen = "table";
+    render();
+  });
+  document.getElementById("cocktailBtn").addEventListener("click", () => {
+    location.href = "/v2/cocktail.html";
+  });
+  document.getElementById("feedbackBtn").addEventListener("click", openFeedbackModal);
+  bindSound();
+}
+
+/* ---------- 反馈小弹窗（R10 §4.1「不做大组件」）----------
+   一个 textarea + 可选联系方式 → POST /api/feedback {text,contact?} → 成功 toast + 关闭。
+   后端未就绪（404/500）时只提示、不关窗，用户输入不丢。 */
+function openFeedbackModal() {
+  document.getElementById("fbModal")?.remove();
+  const wrap = document.createElement("div");
+  wrap.id = "fbModal";
+  wrap.className = "fb-overlay";
+  wrap.innerHTML = `
+    <div class="fb-modal glass" role="dialog" aria-modal="true" aria-label="反馈">
+      <b class="fb-title">跟我说句话</b>
+      <textarea id="fbText" rows="4" maxlength="500" placeholder="哪儿别扭、哪儿好玩，随便说。"></textarea>
+      <input type="text" id="fbContact" maxlength="60" placeholder="联系方式（可不填）" />
+      <div class="row fb-actions">
+        <button class="btn ghost small grow" id="fbCancel">先不说</button>
+        <button class="btn small grow" id="fbSend">递给九八</button>
       </div>
     </div>`;
-  $app.innerHTML = `
-    ${header(null, sub)}
-    <div class="glass stack">
+  const close = () => { wrap.remove(); ui.feedbackBusy = false; };
+  wrap.addEventListener("click", (ev) => { if (ev.target === wrap) close(); });
+  document.body.appendChild(wrap);
+  document.getElementById("fbCancel").addEventListener("click", close);
+  document.getElementById("fbText").focus();
+  document.getElementById("fbSend").addEventListener("click", async () => {
+    if (ui.feedbackBusy) return;
+    const text = document.getElementById("fbText").value.trim();
+    const contact = document.getElementById("fbContact").value.trim();
+    if (!text) return toast("写一句再递给我。");
+    ui.feedbackBusy = true;
+    const btn = document.getElementById("fbSend");
+    btn.disabled = true;
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, ...(contact ? { contact } : {}) }),
+      });
+      if (!res.ok) throw new Error("bad");
+      toast("收到了。这话我记本子上了。");
+      close();
+    } catch {
+      ui.feedbackBusy = false;
+      btn.disabled = false;
+      toast("没递出去。等会儿再试一次。");
+    }
+  });
+}
+
+/* ---------- R10 §4.2 桌局组件 ----------
+   点「玩一局」进来。双态：开一桌（房主）/ 找桌（客人）。
+   · 房主：四连问 → 选一桌人数(1-8，默认 8) →「生成房间码」（POST /api/room {seats}）→ 进大厅
+   · 客人：房码输入 → 四连问 →「坐下」（入座）→ 进大厅
+   大厅里才出现底部主按钮（renderLobby）：客人=「准备」/「取消准备」，房主=「开局」，各显各词。 */
+
+// 四连问：从旧首页整块搬过来，语义与 join 契约（name/emoji/drink/seeking）一字未改
+function seatFormHtml() {
+  const cocktail = readCocktail();
+  return `
+    <div class="glass stack seat-form">
       ${cocktail ? `
       <div class="cocktail-chip">
         <span class="ck-glass">${GLASS_EMOJI[cocktail.glass] || "🍸"}</span>
@@ -755,48 +916,23 @@ function renderHome() {
         ${SEEK_OPTIONS.map((o) => `<button data-seek="${o.id}" class="${o.id === ui.seeking ? "sel" : ""}" title="${o.label}">${o.emoji}<small>${o.label}</small></button>`).join("")}
       </div>
       <div class="dim seek-note">轮到你被拷问时，题目按这个方向出，随时能改。</div>
-    </div>
-    ${deckPickHtml}
-    ${ui.solo ? `
-    <div class="glass stack">
-      <div class="dim">一个人？正好，吧台这个位置视野最好。今晚我陪你聊。</div>
-      <button class="btn" id="createBtn">坐下，跟老K喝一杯</button>
-    </div>` : deepJoin ? `
-    <div class="glass stack center">
-      <div class="dim">${ui.table
-        ? `${esc(ui.table)} 号桌，位子给你留着。坐下就开始。`
-        : "朋友把你带到这桌了。坐下就开始。"}</div>
-      <button class="btn" id="joinBtn">${joinLabel}</button>
-      ${ui.table ? "" : `<button class="link-btn" id="createBtn">这桌不合适？另开一桌</button>`}
-    </div>` : `
-    <div class="glass stack">
-      <button class="btn" id="createBtn">开一桌</button>
-      <div class="dim center">桌子我给你留，人你自己叫。</div>
-      <div class="row">
-        <input type="text" id="codeIn" inputmode="numeric" maxlength="4" placeholder="4 位房间码" value="${esc(ui.code)}" class="grow" />
-        <button class="btn ghost small" id="joinBtn" style="padding:14px 18px">入座</button>
-      </div>
-    </div>`}`;
+    </div>`;
+}
+
+function bindSeatForm() {
   const nameIn = document.getElementById("nameIn");
-  nameIn.addEventListener("input", () => (ui.name = nameIn.value.trim()));
-  document.getElementById("emojiGrid").addEventListener("click", (ev) => {
+  nameIn?.addEventListener("input", () => (ui.name = nameIn.value.trim()));
+  document.getElementById("emojiGrid")?.addEventListener("click", (ev) => {
     const b = ev.target.closest("button[data-e]");
     if (!b) return;
     ui.emoji = b.dataset.e;
-    renderHome();
+    renderTable();
   });
-  document.getElementById("drinkGrid").addEventListener("click", (ev) => {
+  document.getElementById("drinkGrid")?.addEventListener("click", (ev) => {
     const b = ev.target.closest("button[data-drink]");
     if (!b) return;
     ui.drink = b.dataset.drink;
-    renderHome();
-  });
-  document.getElementById("deckCards")?.addEventListener("click", (ev) => {
-    const b = ev.target.closest("button[data-deck]");
-    if (!b) return;
-    ui.deck = normalizeDeck(b.dataset.deck);
-    localStorage.setItem("mfn_deck", ui.deck);
-    renderHome();
+    renderTable();
   });
   // 第四问：想品鉴谁（本机记住上次选择；不回写注册档案，档案只在 /u 改）
   document.getElementById("seekGrid")?.addEventListener("click", (ev) => {
@@ -805,21 +941,130 @@ function renderHome() {
     ui.seeking = b.dataset.seek;
     ui.seekingTouched = true;
     try { localStorage.setItem("mfn_seeking", ui.seeking); } catch {}
-    renderHome();
+    renderTable();
+  });
+}
+
+function renderTable() {
+  // 有档案就把「想看的取向」拉回来当第四问默认值（拉到了会重绘一次桌局）
+  resolveSeeking().then((v) => {
+    if (ui.screen === "table" && !ui.seekingTouched && v.seeking && v.seeking !== renderTable._seekPainted) {
+      renderTable._seekPainted = v.seeking;
+      renderTable();
+    }
+  }).catch(() => {});
+  /* solo 有两条来路，语义一样但界面不一样：
+     · ?solo=1 深链（soloDeep）：直接就是吧台位，不给 tab、不给人数选择
+     · 人数选到 1（ui.seats===1）：还在「开一桌」里，tab 和人数选择都留着，只是按钮/文案变 solo
+     两条最终都把 ui.solo 置 true，下游（createRoom / 大厅 / 答题）一套逻辑。 */
+  const soloDeep = PARAMS.get("solo") === "1";
+  ui.solo = soloDeep || ui.seats === SEATS_MIN;
+  const solo = soloDeep;
+  const soloish = ui.solo;
+  const host = solo || ui.tableTab !== "guest";
+  // 今晚聊什么（R2 卡组 → R9 合并卡）：只有开桌的人选；一期只剩恋爱局一张（flag 关不删）
+  const homeCards = HOME_DECK_CARDS.filter((c) => c.on && ROOM_DECKS[c.key]);
+  const deckPickHtml = `
+    <div class="glass stack deck-pick">
+      <label class="dim">今晚聊什么</label>
+      <div class="deck-cards${homeCards.length === 1 ? " single" : ""}" id="deckCards">
+        ${homeCards.map(({ key }) => {
+          const d = ROOM_DECKS[key];
+          return `
+        <button type="button" class="deck-card ${key === ui.deck ? "sel" : ""}" data-deck="${key}">
+          <span class="dc-kicker">TONIGHT'S MENU</span>
+          <b>${d.name}</b>
+          <span class="dc-line">${d.line}</span>
+        </button>`;
+        }).join("")}
+      </div>
+    </div>`;
+  // 人数 1-10（默认 6）：1 那一档标注「一个人玩」，选中即走 solo 语义。
+  // ?solo=1 深链进来的人不给选（已经是吧台位），照旧只显示一行说明。
+  const seatsHtml = soloDeep ? "" : `
+    <div class="glass stack seats-pick">
+      <label class="dim">这桌坐几个人</label>
+      <div class="seats-grid" id="seatsGrid">
+        ${SEATS_RANGE.map((n) => `
+        <button type="button" data-seats="${n}" class="${n === ui.seats ? "sel" : ""}${n === 1 ? " seats-solo" : ""}">
+          <b>${n}</b>${n === 1 ? `<small>${SEATS_SOLO_NOTE}</small>` : ""}
+        </button>`).join("")}
+      </div>
+      <div class="dim">${ui.seats === 1 ? "就你和我，一样开局。" : "少一个也能开，人齐了更热闹。"}</div>
+    </div>`;
+  const tabsHtml = solo ? "" : `
+    <div class="table-tabs" id="tableTabs" role="tablist">
+      <button type="button" class="table-tab ${host ? "sel" : ""}" data-tab="host" role="tab" aria-selected="${host}">开一桌</button>
+      <button type="button" class="table-tab ${host ? "" : "sel"}" data-tab="guest" role="tab" aria-selected="${!host}">找桌</button>
+    </div>`;
+  $app.innerHTML = `
+    ${miniTopbar()}
+    <div class="table-head">
+      <button class="link-btn table-back" id="tableBackBtn">← 回门口</button>
+      <b class="table-head-title">${soloish && host ? "吧台位" : host ? "开一桌" : "找桌"}</b>
+    </div>
+    ${tabsHtml}
+    ${host ? `
+      ${soloish ? `<div class="glass dim center">一个人？正好，吧台这个位置视野最好。今晚我陪你聊。</div>` : ""}
+      ${seatFormHtml()}
+      ${deckPickHtml}
+      ${seatsHtml}
+      <div class="table-cta">
+        <button class="btn" id="createBtn">${soloish ? "坐下，跟九八喝一杯" : "生成房间码"}</button>
+        <div class="dim center">${soloish ? "" : "桌子我给你留，人你自己叫。"}</div>
+      </div>
+    ` : `
+      <div class="glass stack code-entry">
+        <label class="dim">朋友给你的房间码</label>
+        <input type="text" id="codeIn" inputmode="numeric" maxlength="4" placeholder="4 位数字" value="${esc(ui.code)}" />
+      </div>
+      ${seatFormHtml()}
+      <div class="table-cta">
+        <button class="btn" id="joinBtn">${ui.table ? `在 ${esc(ui.table)} 号桌入座` : "坐下"}</button>
+        <div class="dim center">坐下之后点「准备」，房主看得见。</div>
+      </div>
+    `}`;
+  bindSeatForm();
+  document.getElementById("tableTabs")?.addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-tab]");
+    if (!b) return;
+    ui.tableTab = b.dataset.tab;
+    renderTable();
+  });
+  document.getElementById("tableBackBtn").addEventListener("click", () => {
+    ui.screen = "home";
+    render();
+  });
+  document.getElementById("deckCards")?.addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-deck]");
+    if (!b) return;
+    ui.deck = normalizeDeck(b.dataset.deck);
+    localStorage.setItem("mfn_deck", ui.deck);
+    renderTable();
+  });
+  document.getElementById("seatsGrid")?.addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-seats]");
+    if (!b) return;
+    ui.seats = clampSeats(b.dataset.seats);
+    ui.solo = ui.seats === SEATS_MIN; // 选 1 = 一个人玩：整条 solo 语义随之切换
+    renderTable();
   });
   const go = async (create) => {
     sound.unlock();
     if (!ui.name) return toast("先留个称呼，我好记住你。");
     try {
       await resolveSeeking(); // 有注册档案就把「想看的取向」带上桌（第四问手动选过则以手动为准）
-      let code = deepJoin ? ui.code : (document.getElementById("codeIn")?.value.trim() || ui.code);
+      let code = document.getElementById("codeIn")?.value.trim() || ui.code;
       // R9：恋爱局统一送 deck="lover"（后端把旧 man/woman 也规整成它）
-      if (create) code = await createRoom({ solo: ui.solo, deck: normalizeDeck(ui.deck) });
+      // R10：seats 随建房带给后端（BACK 契约 POST /api/room {seats:1-8}）
+      if (create) code = await createRoom({ solo: ui.solo, deck: normalizeDeck(ui.deck), seats: ui.seats });
       else {
+        ui.solo = soloDeep; // 去别人的桌 = 不是一个人玩（除非本来就是 ?solo=1 深链）
         if (!/^\d{4}$/.test(code)) return toast("房间码是 4 位数字。");
         const chk = await fetch("/api/room/" + code).then((r) => r.json()).catch(() => null);
         if (!chk?.exists) return toast("这桌还没开。再对一眼房间码。");
       }
+      ui.readySent = false;
       connect(code);
     } catch (e) {
       toast(e.message);
@@ -980,9 +1225,22 @@ function renderLobby(s) {
   const invite = `${location.origin}/?room=${s.code}`;
   const decks = decksForRoom(s.deck);
   const cocktail = readCocktail();
-  const soloTable = ui.solo && s.players.length === 1;
+  // 一个人玩：?solo=1 深链、人数选 1、或服务端标了 solo，都算吧台位（房主按钮即开局，不等别人）
+  const soloTable = (ui.solo || s.solo) && s.players.length === 1;
   const canStart = decks && (s.players.length >= 2 || soloTable);
   const deckMeta = ROOM_DECKS[s.deck] || ROOM_DECKS.lover; // R9：兜底恋爱局，不再默认满分男
+  /* R10 §4.2 底部主按钮（Kim 终稿：两角色各显各词，不再同名）：
+     房主=「开局」（仅 allReady 可点），客人=「准备」/ 已准备后「取消准备」。
+     readySupported(s)=false（旧后端没下发 ready/allReady）→ 整套准备制不渲染，
+     房主按钮回到 R9 的老开局条件，客人还是「等房主开局」，现有链路一行不变。 */
+  const hasReady = readySupported(s) && !soloTable; // 吧台位（solo）没有别人要等，不上准备制
+  const seats = seatsOf(s);
+  const myReady = hasReady ? isReady(s, me.name) : ui.readySent;
+  // 开局门：服务端 allReady 说了算；它没算上房主（房主没有准备按钮）时，
+  // 退一步看「除房主外都准备好了」——宁可服务端再拒一次，也不能让房主永远点不动开局。
+  const guestsReady = (s.players || []).filter((p) => !p.isHost).every((p) => p.ready);
+  const allReady = allReadyOf(s) || guestsReady;
+  const hostCanStart = canStart && (!hasReady || allReady);
   $app.innerHTML = `
     ${header(s, soloTable ? "吧台位。就你，和我" : "桌子留好了，把人叫来吧")}
     <div class="glass center stack">
@@ -998,12 +1256,13 @@ function renderLobby(s) {
       </div>` : ""}
     </div>
     <div class="glass stack">
-      <h2>这桌坐了 ${s.players.length} 个人</h2>
+      <h2>这桌坐了 ${s.players.length} 个人${hasReady && !soloTable ? ` <span class="dim seat-count">/ ${seats} 个位子</span>` : ""}</h2>
       <div class="players">${s.players.map((p) => `
         <div class="player ${p.connected ? "" : "offline"}">
           <span>${esc(p.emoji)}</span><b>${esc(p.name)}</b>
           <span class="dim">${esc(p.drink?.emoji || "🍺")} ${esc(p.drink?.label || "啤酒")}${cocktail && p.name === me.name ? ` · ${esc(cocktail.name)}` : ""}</span>
           ${p.isHost ? `<span class="tag">房主</span>` : ""}
+          ${hasReady ? `<span class="ready-badge ${p.ready ? "on" : ""}">${p.ready ? "已准备" : "还没准备"}</span>` : ""}
           ${me.isHost && !p.isHost ? `<button class="btn ghost small kickBtn" data-t="${esc(p.token)}">请离</button>` : ""}
         </div>`).join("")}
       </div>
@@ -1016,17 +1275,42 @@ function renderLobby(s) {
           `<option value="${n}" ${n === s.settings.rounds ? "selected" : ""}>${n} 题</option>`).join("")}
         </select>
       </div>
-      <div class="settings-row">
-        <label class="dim" for="deckSel">今晚的酒劲</label>
-        <select id="deckSel" ${decks ? "" : "disabled"}>${decks
-          ? Object.entries(decks).map(([k, d]) =>
-              `<option value="${k}" ${k === s.settings.deck ? "selected" : ""}>${esc(deckLabel(d.name))}</option>`).join("")
-          : `<option>酒单还在我手里…</option>`}
-        </select>
+      ${/* 灶台三档火（圣经 §五）：原来的 <select> 换成三个火位按钮。
+           data-deck 的值与原 <option value> 完全一致（qingtang/fanqie/mala），
+           选中态 class="sel"，set_settings 的负载一字不变——只换了控件形态。
+           样式复用已换肤的 .emoji-grid + .drink-choice-grid + .seek-choice-grid
+           （3 轨 minmax(0,1fr) + .sel 铜牌高亮），本轮不写新 CSS。 */""}
+      <div class="stove-block">
+        <label class="dim">今晚的酒劲</label>
+        ${decks ? `
+        <div class="emoji-grid drink-choice-grid seek-choice-grid stove-fire" id="deckFire">
+          ${Object.entries(decks).map(([k, d], i) => {
+            const full = deckLabel(d.name);
+            return `<button type="button" data-deck="${k}" class="${k === s.settings.deck ? "sel" : ""}" title="${esc(full)}">${STOVE_FIRE[i] || STOVE_FIRE[STOVE_FIRE.length - 1]}<small>${esc(full.split(" · ")[0])}</small></button>`;
+          }).join("")}
+        </div>
+        <div class="dim center">${esc(deckLabel(decks[s.settings.deck]?.name || s.settings.deckName))}</div>`
+        : `<div class="dim center">酒单还在我手里…</div>`}
       </div>
-      <button class="btn" id="startBtn" ${canStart ? "" : "disabled"}>${soloTable ? "开始，就我们俩" : "开局"}</button>
-      ${!canStart && decks && !ui.solo ? `<div class="dim center">凑够 2 个人，酒才有味道。</div>` : ""}
-    </div>` : `<div class="glass center dim">等房主开局。今晚的酒劲：${esc(deckLabel(s.settings.deckName))}</div>`}`;
+      ${/* R10：有人离桌，房主可在 lobby 改人数（set_seats），同房重开不用换码 */
+        hasReady && !soloTable ? `
+      <div class="settings-row">
+        <label class="dim" for="seatsSel">这桌几个位子</label>
+        <select id="seatsSel">${SEATS_RANGE.map((n) =>
+          `<option value="${n}" ${n === seats ? "selected" : ""}>${n} 人</option>`).join("")}
+        </select>
+      </div>` : ""}
+    </div>` : `<div class="glass center dim">今晚的酒劲：${esc(deckLabel(s.settings.deckName))}${hasReady ? "" : " · 等房主开局"}</div>`}
+    <div class="table-cta lobby-cta">
+      ${me.isHost
+        ? `<button class="btn" id="tableBtn" ${hostCanStart ? "" : "disabled"}>${soloTable ? "开始，就我们俩" : "开局"}</button>
+           ${!canStart && decks && !ui.solo ? `<div class="dim center">凑够 2 个人，酒才有味道。</div>`
+             : hasReady && !allReady ? `<div class="dim center">等所有人准备好</div>` : ""}`
+        : hasReady
+          ? `<button class="btn ${myReady ? "ghost" : ""}" id="tableBtn">${myReady ? "取消准备" : "准备"}</button>
+             <div class="dim center">${myReady ? "已准备，等房主开局。" : "坐下之后点「准备」，房主看得见。"}</div>`
+          : `<div class="dim center">等房主开局。</div>`}
+    </div>`;
   const qrCanvas = document.getElementById("qrCv");
   loadQr().then(({ drawQR }) => {
     if (qrCanvas?.isConnected) {
@@ -1055,16 +1339,37 @@ function renderLobby(s) {
   }
   if (me.isHost && decks) {
     const roundsSel = document.getElementById("roundsSel");
-    const deckSel = document.getElementById("deckSel");
-    const pushSettings = () => send({
-      type: "set_settings",
-      rounds: Number(roundsSel.value),
-      deck: deckSel.value,
-      deckName: decks[deckSel.value].name,
+    // 当前档：以服务端 state.settings.deck 为准，脏值兜底第一档（与旧 select 的 selected 同义）
+    const currentDeck = () =>
+      (decks[s.settings.deck] ? s.settings.deck : Object.keys(decks)[0]);
+    const pushSettings = (deckKey) => {
+      const k = decks[deckKey] ? deckKey : currentDeck();
+      send({
+        type: "set_settings",
+        rounds: Number(roundsSel.value),
+        deck: k,
+        deckName: decks[k].name,
+      });
+    };
+    roundsSel.addEventListener("change", () => pushSettings(currentDeck()));
+    // 灶台三档火：点火位 = 原来的 <select> change，负载一模一样
+    document.getElementById("deckFire")?.addEventListener("click", (ev) => {
+      const b = ev.target.closest("button[data-deck]");
+      if (!b || b.dataset.deck === currentDeck()) return;
+      sound.unlock();
+      // 乐观点亮：原来的 <select> 是原生控件，点了立刻有反馈；按钮得自己补这一下，
+      // 服务端 state 广播回来会以 s.settings.deck 覆盖（真值仍以服务端为准）。
+      ev.currentTarget.querySelectorAll("button[data-deck]").forEach((x) =>
+        x.classList.toggle("sel", x === b));
+      pushSettings(b.dataset.deck);
     });
-    roundsSel.addEventListener("change", pushSettings);
-    deckSel.addEventListener("change", pushSettings);
-    document.getElementById("startBtn").addEventListener("click", () => {
+    // R10：房主改一桌人数 → {type:"set_seats",seats}（BACK 契约，仅房主）
+    document.getElementById("seatsSel")?.addEventListener("change", (ev) => {
+      const n = clampSeats(ev.target.value);
+      ui.seats = n;
+      sendOrWarn({ type: "set_seats", seats: n });
+    });
+    document.getElementById("tableBtn")?.addEventListener("click", () => {
       sound.unlock();
       const selectedDeck = decks[s.settings.deck] || decks.qingtang || Object.values(decks)[0];
       const startMsg = { type: "start", questions: selectedDeck.questions };
@@ -1084,13 +1389,24 @@ function renderLobby(s) {
       send(startMsg);
     });
   }
+  // 客人态的同一个按钮：点=ready，再点=取消（BACK 契约 {type:"ready",ready:bool}）
+  if (!me.isHost && hasReady) {
+    document.getElementById("tableBtn")?.addEventListener("click", () => {
+      sound.unlock();
+      const next = !myReady;
+      if (sendOrWarn({ type: "ready", ready: next })) {
+        ui.readySent = next; // 乐观显示，服务端 state 一到就以 player.ready 为准
+        render();
+      }
+    });
+  }
   $app.querySelectorAll(".kickBtn").forEach((b) =>
     b.addEventListener("click", () => send({ type: "kick", token: b.dataset.t })));
   bindSound();
 }
 
 /* --- 抽酒签 --- */
-// 摇签过程播报：进度条配文案，老K在旁边看着
+// 摇签过程播报：进度条配文案，九八在旁边看着
 function stickChargeText(pct) {
   if (pct <= 0) return "";
   if (pct < 40) return `签筒醒了 · ${pct}%`;
@@ -1249,10 +1565,12 @@ function animateCup(intensity) {
    回送后两者严格一致（BACK 线契约注释里的「FRONT 会把 set_gender 与 seeking 对齐」）。
    旧 worker 不下发 renderGender 时，退回本桌卡组方向兜底，老房间照样有方向。 */
 function renderSetup(s) {
-  const cur = s.current;
-  const p = cur.protagonist;
+  // 独立 direction phase 时 current 可能只有半截，兜底成空对象，绝不让底屏抛错卡住弹层
+  const cur = s.current || {};
+  const p = cur.protagonist || { name: "", emoji: "" };
   const W = roundWords(s);
-  if (cur.youAreProtagonist) {
+  // R10：等主角自选方向时不自动代发 set_gender（方向由 confirm_direction 说了算）
+  if (cur.youAreProtagonist && !directionPending(s)) {
     const key = `${s.code}:${p?.name || ""}:${cur.roundIndex}`;
     if (ui.genderSentFor !== key) {
       ui.genderSentFor = key;
@@ -1270,7 +1588,7 @@ function renderSetup(s) {
   bindSound();
 }
 
-/* --- 老K锐评 NPC（R2）：/api/laok 非阻塞取词，到了再淡入，失败静默 --- */
+/* --- 九八锐评 NPC（R2）：/api/laok 非阻塞取词，到了再淡入，失败静默 --- */
 
 const laokMemo = new Map(); // key -> 文案（"" = 请求中或失败，失败即静默）
 
@@ -1302,7 +1620,7 @@ function laokBoxHtml(key) {
   const text = laokMemo.get(key);
   return `<div class="laok-box ${text ? "show" : ""}" data-laok-key="${esc(key)}">
     <span class="laok-avatar" aria-hidden="true"></span>
-    <div class="laok-line"><b>老K</b><p class="laok-text">${esc(text)}</p></div>
+    <div class="laok-line"><b>九八</b><p class="laok-text">${esc(text)}</p></div>
   </div>`;
 }
 
@@ -1345,7 +1663,7 @@ function renderAnswering(s) {
   const waiting = cur.submitted.guessers;
   // R9：题面正文由服务端按 renderGender 拼好；这里只挑「XX 的满分男/满分女/理想型」这类称谓
   const W = roundWords(s);
-  // solo 开局：老K先开口（solo_open），一局一次；先同步取兜底，再异步取 LLM 版
+  // solo 开局：九八先开口（solo_open），一局一次；先同步取兜底，再异步取 LLM 版
   if (solo) {
     const openKey = `open:${s.code}`;
     if (!laokMemo.has(openKey)) laokMemo.set(openKey, pickPool("solo_open"));
@@ -1547,7 +1865,7 @@ function renderReveal(s) {
 
   // R5：答题 reveal 页不再有任何爆灯/灭灯 UI（爆灯灭灯只在 aha 立绘亮相那一刻）。
 
-  // 老K锐评：先同步取一条兜底文案（立即可见），再非阻塞异步取 LLM 版到了后替换
+  // 九八锐评：先同步取一条兜底文案（立即可见），再非阻塞异步取 LLM 版到了后替换
   const laokKey = `rv:${s.code}:${revealKey}`;
   const avgDiff = n ? rv.results.reduce((a, x) => a + (Number(x.diff) || 0), 0) / n : 0;
   const laokScene = solo
@@ -1627,9 +1945,16 @@ function renderDrinking(s) {
   const ceremony = cur.drinking || { drinkers: [], completed: 0, total: 0 };
   const finished = ceremony.allDone || ceremony.skipped;
   const W = roundWords(s); // R9：本轮称谓随 current.renderGender
+  /* 杯里酒液的真进度（SKIN 钩子：.chug-stage 上的 --chug-progress，见 style.css chugFill）。
+     口径：服务端下发的 ceremony.completed/ceremony.total（已喝完的人 / 该喝的人），
+     和上面「已完成 x/y」那行是同一组数，两处永远对得上。
+     total 为 0（没人要喝）或跳过/全完成时直接给 100%，避免除零和空杯收尾。 */
+  const chugPct = finished || !ceremony.total
+    ? 100
+    : Math.max(0, Math.min(100, Math.round((ceremony.completed / ceremony.total) * 100)));
   $app.innerHTML = `
     ${header(s, `罚酒仪式 · 第 ${cur.roundIndex}/${cur.totalRounds} 题`)}
-    <section class="chug-stage">
+    <section class="chug-stage" style="--chug-progress:${chugPct}%">
       <div class="chug-title">CHUG<br>CHUG<br>CHUG</div>
       <div class="chug-beat">举杯。干了。</div>
       <div class="drinkers-grid">
@@ -2006,6 +2331,9 @@ function renderAha(s, aha, isFinal) {
     try {
       const { renderPoster } = await loadPoster();
       ui.posterUrl = await renderPoster({ ...aha, profile }, `${location.origin}/?room=${s.code}`);
+      // 埋点 poster_shared：一期不新增 UI，海报没有独立「分享」按钮（出图后是长按保存 + 扫码进桌），
+      // 所以把「海报洗出来了」这一刻当作一次分享意图，只在生成成功后记一次。
+      track("poster_shared", { roomCode: s.code });
     } catch (e) {
       toast("海报没洗出来，再试一次。（" + e.message + "）");
     }
@@ -2272,6 +2600,111 @@ function updateOverlays() {
     if (ui.chatOpen) renderChat();
     updateBadge();
   }
+  syncDirectionOverlay();
+}
+
+/* ---------- R10 §4.3 方向确认弹层 ----------
+   契约（BACK 两种实现都兼容，检测到字段才渲染）：
+   ① protagonist_setup 阶段带 current.awaitDirection:true（或顶层 state.awaitDirection）
+   ② 独立 phase："direction" / "confirm_direction"
+   当轮主角看到三选（满分男/满分女/其他，默认带出档案 seeking）+ 可选性别（已注册带出），
+   点确认 → {type:"confirm_direction",seeking,gender?} → 关层进答题；
+   不是主角的人看到等待文案。两个字段都没有 → 一个像素都不渲染，R9 链路原样。 */
+function directionPending(s) {
+  if (!s) return false;
+  if (s.phase === "direction" || s.phase === "confirm_direction") return true;
+  if (s.phase !== "protagonist_setup") return false;
+  return !!(s.current?.awaitDirection || s.awaitDirection || s.current?.directionPending);
+}
+
+const DIRECTION_OPTIONS = [
+  { id: "m", label: "满分男", emoji: "🕺" },
+  { id: "f", label: "满分女", emoji: "💃" },
+  { id: "x", label: "其他", emoji: "✨" },
+];
+const DIRECTION_GENDERS = [
+  { id: "m", label: "我是男生" },
+  { id: "f", label: "我是女生" },
+];
+
+function syncDirectionOverlay() {
+  const s = ui.state;
+  const on = ui.screen === "game" && directionPending(s);
+  if (!on) {
+    document.getElementById("dirOverlay")?.remove();
+    return;
+  }
+  const mine = !!s.current?.youAreProtagonist;
+  const p = s.current?.protagonist;
+  const key = `${s.code}:${p?.name || ""}:${s.current?.roundIndex ?? ""}`;
+  const existing = document.getElementById("dirOverlay");
+  if (existing && existing.dataset.key === key && existing.dataset.mine === String(mine)) {
+    // 已在屏且是同一轮：只刷新选中态，不重建 DOM（避免每次 state 广播都闪一下）
+    if (mine) paintDirectionSelection(existing);
+    return;
+  }
+  existing?.remove();
+  if (ui.dirSeeking == null) ui.dirSeeking = ["m", "f", "x"].includes(ui.seeking) ? ui.seeking : "x";
+  if (ui.dirGender == null) ui.dirGender = ["m", "f"].includes(ui.gender) ? ui.gender : null;
+  const wrap = document.createElement("div");
+  wrap.id = "dirOverlay";
+  wrap.className = "dir-overlay";
+  wrap.dataset.key = key;
+  wrap.dataset.mine = String(mine);
+  wrap.innerHTML = mine
+    ? `<div class="dir-modal glass" role="dialog" aria-modal="true" aria-label="选今晚的方向">
+        <b class="dir-title">今晚拷问哪一边</b>
+        <div class="dir-sub dim">这一轮的题按你选的方向出。</div>
+        <div class="dir-grid" id="dirSeekGrid">
+          ${DIRECTION_OPTIONS.map((o) => `
+          <button type="button" data-dir="${o.id}" class="${o.id === ui.dirSeeking ? "sel" : ""}">
+            <span class="dir-emoji">${o.emoji}</span><b>${o.label}</b>
+          </button>`).join("")}
+        </div>
+        <div class="dir-sub dim">你自己是（可不选，只用来配题）</div>
+        <div class="dir-grid dir-gender" id="dirGenderGrid">
+          ${DIRECTION_GENDERS.map((g) => `
+          <button type="button" data-g="${g.id}" class="${g.id === ui.dirGender ? "sel" : ""}">${g.label}</button>`).join("")}
+        </div>
+        <button class="btn" id="dirConfirmBtn">就这个方向</button>
+      </div>`
+    : `<div class="dir-modal glass dir-waiting" role="status">
+        <b class="dir-title">${esc(p?.name || "TA")} 在选今晚的方向…</b>
+        <div class="dir-sub dim">杯子端好，马上上题。</div>
+      </div>`;
+  document.body.appendChild(wrap);
+  if (!mine) return;
+  wrap.querySelector("#dirSeekGrid").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-dir]");
+    if (!b) return;
+    ui.dirSeeking = b.dataset.dir;
+    paintDirectionSelection(wrap);
+  });
+  wrap.querySelector("#dirGenderGrid").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-g]");
+    if (!b) return;
+    ui.dirGender = ui.dirGender === b.dataset.g ? null : b.dataset.g; // 再点一次=取消
+    paintDirectionSelection(wrap);
+  });
+  wrap.querySelector("#dirConfirmBtn").addEventListener("click", () => {
+    sound.unlock();
+    const msg = { type: "confirm_direction", seeking: ui.dirSeeking };
+    if (ui.dirGender) msg.gender = ui.dirGender;
+    if (!sendOrWarn(msg)) return;
+    ui.dirSent = key;
+    // 本桌临时改的方向也记下来，下一轮默认值跟着走
+    ui.seeking = ui.dirSeeking;
+    ui.seekingTouched = true;
+    try { localStorage.setItem("mfn_seeking", ui.seeking); } catch {}
+    wrap.remove(); // 关层进答题；服务端下一次广播会把 awaitDirection 撤掉
+  });
+}
+
+function paintDirectionSelection(wrap) {
+  wrap.querySelectorAll("#dirSeekGrid button[data-dir]").forEach((b) =>
+    b.classList.toggle("sel", b.dataset.dir === ui.dirSeeking));
+  wrap.querySelectorAll("#dirGenderGrid button[data-g]").forEach((b) =>
+    b.classList.toggle("sel", b.dataset.g === ui.dirGender));
 }
 
 /* ---------- 本地预览（mock 状态，仅本机） ---------- */
@@ -2377,6 +2810,21 @@ function buildPreviewState(screen) {
   switch (screen) {
     case "lobby":
       return { ...base, phase: "lobby" };
+    /* R10 预览：带 seats/ready/allReady 的大厅与方向确认弹层（BACK 契约字段自己造齐） */
+    case "lobbyReady": // 房主视角：还没全员准备 →「开局」按钮禁用 +「等所有人准备好」
+      return { ...base, phase: "lobby", seats: 5, allReady: false,
+        players: players.map((p, i) => ({ ...p, ready: i < 2 })) };
+    case "lobbyGuest": // 客人视角：统一按钮=准备
+      return { ...base, phase: "lobby", seats: 5, allReady: false,
+        you: { name: "阿豪", isHost: false },
+        players: players.map((p, i) => ({ ...p, ready: i < 1 })) };
+    case "direction": // 当轮主角自选方向
+      return { ...base, phase: "protagonist_setup",
+        you: { name: "赛百诺女士", isHost: false },
+        current: { youAreProtagonist: true, protagonist, roundIndex: 2, totalRounds: 5, awaitDirection: true } };
+    case "directionWait": // 别人在选，我等着
+      return { ...base, phase: "protagonist_setup",
+        current: { youAreProtagonist: false, protagonist, roundIndex: 2, totalRounds: 5, awaitDirection: true } };
     case "sticks":
       return { ...base, phase: "picking", current: { youAreShaker: true, drawn: false, shaker: "coco" } };
     case "answer":
@@ -2459,6 +2907,18 @@ function buildPreviewState(screen) {
 }
 
 function bootPreview(screen) {
+  // R10 新增无 state 的预览键：新首页 / 桌局房主态 / 桌局客人态 / 反馈弹窗
+  if (screen === "home") { ui.screen = "home"; render(); return true; }
+  if (screen === "table" || screen === "tableHost") {
+    ui.screen = "table"; ui.tableTab = "host"; render(); return true;
+  }
+  if (screen === "tableSolo") { // 人数选 1 = 一个人玩：按钮/文案切 solo 语义
+    ui.screen = "table"; ui.tableTab = "host"; ui.seats = SEATS_MIN; ui.solo = true; render(); return true;
+  }
+  if (screen === "tableGuest") {
+    ui.screen = "table"; ui.tableTab = "guest"; ui.code = ui.code || "8848"; render(); return true;
+  }
+  if (screen === "feedback") { ui.screen = "home"; render(); openFeedbackModal(); return true; }
   const st = buildPreviewState(screen);
   if (!st) return false;
   ui.screen = "game";
@@ -2499,6 +2959,14 @@ function bootPreview(screen) {
   if (/^\d{4}$/.test(code) && localStorage.getItem("mfn_token_" + code) && localStorage.getItem("mfn_name")) {
     ui.name = localStorage.getItem("mfn_name");
     connect(code, { silentFail: true });
+  } else if (/^\d{4}$/.test(code)) {
+    // R10：room 深链落地不再停在首页——直接进桌局组件客人态，房码已预填
+    ui.screen = "table";
+    ui.tableTab = "guest";
+  } else if (ui.solo) {
+    // solo 入口保留且独立：?solo=1 直达桌局组件的吧台位（房主态，不走 seats 选择）
+    ui.screen = "table";
+    ui.tableTab = "host";
   }
   render();
 })();

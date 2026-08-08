@@ -2,10 +2,78 @@
 // Worker 路由 + RoomDO（房间状态机 + WebSocket 广播）
 
 import { buildIdealProfile } from "../public/ideal-profile.js";
+import {
+  StatsDO,
+  isTrackEvent,
+  trackEvent,
+  readStats,
+  clampDays,
+  submitFeedback,
+  FEEDBACK_TEXT_MAX,
+  FEEDBACK_CONTACT_MAX,
+} from "./stats.js";
+
+// 埋点存储（PRD-R9-PHASE1 §五）：单例 StatsDO，wrangler.new.jsonc 里绑定为 STATS。
+export { StatsDO };
+
+// ─── 埋点记录点与去重策略（唯一权威表，改埋点先改这里）─────────────────────────
+// event          | 记录点                                        | 端  | 去重
+// ---------------|-----------------------------------------------|-----|------------------------------
+// room_created   | RoomDO `/create` 成功那一刻                     | 服务端 | 建房唯一入口（/api/room 与桌子
+//                |                                               |     | tableJoin 都经此），天然不重复
+// player_joined  | RoomDO onJoin 新玩家真正入座（断线重连不算）      | 服务端 | 只在 push 新 player 时记一次
+// game_started   | RoomDO save() 时 phase 首次离开 lobby           | 服务端 | room.stats.started 标记随房落盘
+// game_finished  | RoomDO save() 时 phase 首次进入 aha / finished   | 服务端 | ①room.stats.finished 标记随房落盘
+//                | （aha=玩到亮相，就算 H1 的「完局」）              |     | ②StatsDO rooms.finished 房级兜底
+// poster_shared  | app.js 海报生成成功后 sendBeacon                 | 客户端 | 无（一次生成算一次分享意图）
+// register_done  | worker /api/register 返回 201 那一刻             | 服务端 | HTTP 201 唯一
+//
+// 双端不重复：客户端只补服务端看不见的 poster_shared，其余五个全部服务端直记。
+// /api/track 仍受理全部白名单事件（便于冒烟/回放），game_finished 的房级去重兜住任何重复上报。
+// ────────────────────────────────────────────────────────────────────────────
+
+// 仪表盘口令：生产由 PM 执行 `wrangler secret put STATS_KEY` 设置；
+// 未设置时回退到开发常量，保证本地 wrangler dev / 冒烟测试开箱即用。
+const DEV_STATS_KEY = "dev-stats";
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const url = new URL(req.url);
+
+    // 埋点上报：POST /api/track  body {event, roomCode?, players?, solo?}
+    // 语义 fire-and-forget —— 白名单外 400，其余一律 204（内部写库失败也 204），绝不影响游戏。
+    if (url.pathname === "/api/track" && req.method === "POST") {
+      let body = {};
+      try { body = await readJson(req, 2 * 1024); } catch {}
+      if (!isTrackEvent(body && body.event)) {
+        return jsonRes({ error: "bad_event" }, 400);
+      }
+      // 这里 await 的是同 colo 的 DO 调用（~1ms）且被 trackEvent 全吞异常，
+      // 对调用方仍是「发了就不管」：既不会失败也不会改变返回码，但读数立即可见。
+      await trackEvent(env, body.event, {
+        roomCode: body.roomCode, // 只存 SHA-256 截断哈希，明文不落库
+        players: body.players,
+        solo: body.solo === true,
+      });
+      return new Response(null, { status: 204 });
+    }
+
+    // 仪表盘数据：GET /api/stats?days=N&key=xxx（默认 14 天，上限 90）
+    if (url.pathname === "/api/stats" && req.method === "GET") {
+      const expected = env.STATS_KEY || DEV_STATS_KEY;
+      if (url.searchParams.get("key") !== expected) {
+        return jsonRes({ error: "forbidden", msg: "口令不对" }, 403);
+      }
+      const data = await readStats(env, clampDays(url.searchParams.get("days")));
+      if (!data) return jsonRes({ error: "stats_unavailable", msg: "STATS 未绑定或读取失败" }, 503);
+      return jsonRes(data);
+    }
+
+    // 用户反馈（R10 §4.1 首页底部小字入口）：POST /api/feedback {text, contact?}
+    // 落 StatsDO 的 feedbacks 表，Kim 在 /api/stats?key=… 的 recent_feedbacks 里读。
+    if (url.pathname === "/api/feedback" && req.method === "POST") {
+      return handleFeedback(req, env);
+    }
 
     // 用户档案（KV: USERS）
     if (url.pathname === "/api/user" && req.method === "POST") {
@@ -47,7 +115,11 @@ export default {
 
     // 用户注册（R2 契约）：昵称全局查重 + 4-6 位数字口令 + 性别/取向
     if (url.pathname === "/api/register" && req.method === "POST") {
-      return handleRegister(req, env);
+      const res = await handleRegister(req, env);
+      // 埋点 register_done：注册成功（201）服务端直记。注册 UI 在 cocktail.js，
+      // 服务端记就不用动前端，也不会出现「前端漏发/重发」两种偏差。
+      if (res.status === 201) fireAndForget(ctx, trackEvent(env, "register_done"));
+      return res;
     }
     // 身份找回：昵称 + 口令 → userId/token
     if (url.pathname === "/api/recover" && req.method === "POST") {
@@ -58,23 +130,25 @@ export default {
       return handleLaok(url);
     }
 
-    // 建房：POST /api/room  -> { code, deck }
+    // 建房：POST /api/room  -> { code, deck, seats }
     // body（可选）：{ visibility: "public"|"private"（默认 private）, solo: true（1 人可开局）,
-    //               deck: 任意旧值（man/woman/boss/bestie/lover）——R9 一律规整为 "lover" }
+    //               deck: 任意旧值（man/woman/boss/bestie/lover）——R9 一律规整为 "lover",
+    //               seats: 1-10 整数（R10 一桌人数，缺省 6；seats=1 即单人局） }
     if (url.pathname === "/api/room" && req.method === "POST") {
       let body = {};
       try { body = await readJson(req); } catch {}
       const visibility = body.visibility === "public" ? "public" : "private";
       const solo = body.solo === true;
       const deck = normalizeRoomDeck(body.deck);
+      const seats = clampSeats(body.seats);
       for (let i = 0; i < 15; i++) {
         const code = String(Math.floor(1000 + Math.random() * 9000));
         const stub = env.ROOM.get(env.ROOM.idFromName(code));
         const res = await stub.fetch(
-          `https://do/create?code=${code}&visibility=${visibility}&deck=${deck}${solo ? "&solo=1" : ""}`
+          `https://do/create?code=${code}&visibility=${visibility}&deck=${deck}&seats=${seats}${solo ? "&solo=1" : ""}`
         );
         if (res.ok) {
-          return jsonRes({ code, deck });
+          return jsonRes({ code, deck, seats });
         }
       }
       return jsonRes({ error: "房间码分配失败，请重试" }, 503);
@@ -137,6 +211,14 @@ export default {
   },
 };
 
+// 埋点专用：把 promise 交给 waitUntil（有就用），并兜住所有异常。
+// 目的只有一个——埋点永远不能让游戏请求变慢或失败。
+function fireAndForget(ctx, promise) {
+  const p = Promise.resolve(promise).catch(() => {});
+  try { ctx?.waitUntil?.(p); } catch {}
+  return p;
+}
+
 function jsonRes(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
     status,
@@ -148,6 +230,38 @@ async function readJson(req, maxBytes = 32 * 1024) {
   const text = await req.text();
   if (text.length > maxBytes) throw new Error("payload too large");
   return JSON.parse(text || "{}");
+}
+
+/* ============ 用户反馈（R10 §4.1）============
+ * POST /api/feedback  body { text ≤500 字, contact? ≤100 字, room? 房间码 }
+ *   201 {ok:true}          收下了
+ *   400 {error:"empty_text"} 空内容
+ *   429 {error:"rate_limited"} 同 IP / 同房 1 分钟 1 条（限频在 StatsDO 里做：
+ *        单例 DO 串行，比 Worker isolate 里的内存 Map 可靠，重启也不丢）
+ *   503 {error:"stats_unavailable"} STATS 未绑定（老 wrangler.jsonc）
+ * 限频 key：有 room 就按房，否则按 IP；只落 SHA-256 截断哈希，明文 IP 不进库。
+ */
+async function handleFeedback(req, env) {
+  let body = {};
+  try { body = await readJson(req, 8 * 1024); } catch {}
+  const text = cleanUserText(body.text, FEEDBACK_TEXT_MAX);
+  if (!text) return jsonRes({ error: "empty_text", msg: "说点什么再提交吧" }, 400);
+  const contact = cleanUserText(body.contact, FEEDBACK_CONTACT_MAX);
+  const ip =
+    req.headers.get("cf-connecting-ip") ||
+    (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() ||
+    "local";
+  const room = cleanUserText(body.room, 8);
+  const senderHash = (await sha256Hex("feedback:" + (room ? "room:" + room : "ip:" + ip))).slice(0, 16);
+  const out = await submitFeedback(env, { text, contact, senderHash });
+  if (out.limited) {
+    return jsonRes(
+      { error: "rate_limited", msg: "一分钟只能提一条，缓一缓再说", retryAfterMs: out.retryAfterMs || 60000 },
+      429
+    );
+  }
+  if (!out.ok) return jsonRes({ error: "stats_unavailable", msg: "反馈暂时存不下，稍后再试" }, 503);
+  return jsonRes({ ok: true }, 201);
 }
 
 /* ============ 用户档案（KV: USERS） ============ */
@@ -750,12 +864,76 @@ async function handleLaok(url) {
   }
 }
 
+/* ---- 打分档位称号（99% 酒吧口吻，九八在说话）----
+ * 结构不动：仍是 min 阈值降序表，仍由 TITLES.find(t => avg >= t.min) 命中档位。
+ * 变的只有内容：每档从 1 条扩到 6 条，同一局按 seed 确定性抽一条
+ *（同 records + 同 seed → 同称号），解决「每次玩都撞同一个称号」。
+ * 档位语义保持：分越高越宽容，分越低越挑剔。 */
 const TITLES = [
-  { min: 7.5, title: "海纳百川·活菩萨", sub: "什么缺陷到你这都是可爱" },
-  { min: 5.5, title: "薛定谔的心动", sub: "你的分数没人猜得透" },
-  { min: 3.5, title: "铁面判官", sub: "满分男在你面前瑟瑟发抖" },
-  { min: 0, title: "六亲不认·火化大队长", sub: "今晚火化名额已满" },
+  {
+    min: 7.5,
+    pool: [
+      { title: "海纳百川·活菩萨", sub: "什么缺陷到你这都是可爱" },
+      { title: "来者不拒的常客", sub: "端上来的你都干了，一杯没退" },
+      { title: "高分批发商", sub: "分给得比酒还大方" },
+      { title: "这杯我请了", sub: "缺点到你嘴里都成了下酒菜" },
+      { title: "全场最好说话的那位", sub: "你倒酒不看杯，给分也不看人" },
+      { title: "来了就是自己人", sub: "今晚没人被你空手打发走" },
+    ],
+  },
+  {
+    min: 5.5,
+    pool: [
+      { title: "薛定谔的心动", sub: "你的分数没人猜得透" },
+      { title: "半杯派", sub: "你从不倒满，也从不泼掉" },
+      { title: "看情况的那位", sub: "同一个毛病，你今晚给了两种分" },
+      { title: "留一手的老客", sub: "嘴上说都行，手上分给得很有讲究" },
+      { title: "心里有杆秤", sub: "秤在你手里，刻度只有你看得见" },
+      { title: "温水派", sub: "不烫嘴，也不解渴，刚好" },
+    ],
+  },
+  {
+    min: 3.5,
+    pool: [
+      { title: "铁面判官", sub: "满分男在你面前瑟瑟发抖" },
+      { title: "验货很严的熟客", sub: "一口就尝出兑了多少水" },
+      { title: "退货率有点高", sub: "今晚过关的没几位" },
+      { title: "挑刺专业户", sub: "别人喝酒，你查配料表" },
+      { title: "低分常备军", sub: "你给分手不抖，倒是我心疼" },
+      { title: "这杯不合口味", sub: "调了一晚上，你抿一口就放下了" },
+    ],
+  },
+  {
+    min: 0,
+    pool: [
+      { title: "一个都没看上", sub: "今晚这店算是白开了" },
+      { title: "全场清零", sub: "你把满分男喝成了白开水" },
+      { title: "门槛比吧台还高", sub: "这门槛，我都跨不进去" },
+      { title: "分数抠得一分不漏", sub: "收得干干净净，一分没漏出来" },
+      { title: "这家店满足不了你", sub: "酒和灯只能到99%，你要的更多" },
+      { title: "眼光高过招牌", sub: "招牌都被你比下去了" },
+    ],
+  },
 ];
+
+// 称号池确定性抽取：同 seed → 同称号（沿用 ideal-profile.js 的 FNV-1a + 高位取模手法）。
+// 注意必须取高位：FNV-1a 最低位极度偏斜，直接 `h % 6` 会让池里一半条目抽不到。
+function titleHash(s) {
+  let h = 0x811c9dc5;
+  const str = String(s);
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = (h * 0x01000193) >>> 0;
+  }
+  return h;
+}
+// 命中档位（min 阈值不变）后从该档池里 seed 抽一条，返回 {title, sub}，
+// 下游 title.title / title.sub 的用法完全不变。
+function pickTitle(avg, seed) {
+  const tier = TITLES.find((t) => avg >= t.min) || TITLES[TITLES.length - 1];
+  const idx = Math.floor((titleHash(String(seed) + "title") / 4294967296) * tier.pool.length);
+  return tier.pool[idx];
+}
 
 /* ============ 全场互动约束 ============ */
 
@@ -789,6 +967,23 @@ const MAX_QUESTIONS = 300;
 const MAX_QUESTION_TEXT = 200;
 const MAX_KING_QUESTIONS = 120;
 const MAX_KING_TEXT = 100;
+
+/* ---- R10 §4.2 一桌人数（seats）---- */
+// 产品常量（Kim 终审）：合法域 1-10，缺省 6；lobby 阶段房主可 set_seats 改。
+// 它同时是入座上限：坐满就不让再进（原来的硬编码 12 人上限由它取代）。
+// seats=1 = 单人局：开局门直接走 solo 语义（1 人可开、allReady 天然成立），见 soloMode()。
+const DEFAULT_SEATS = 6;
+const MIN_SEATS = 1;
+const MAX_SEATS = 10;
+// 边界口径（Kim 定）：0 / 负数 / 非法 / 缺失 → 回落 fallback（建房时即缺省 6）；
+//                    1-10 原样；>10 → 夹到 10。
+function clampSeats(raw, fallback = DEFAULT_SEATS) {
+  // null / undefined / "" / 布尔 都算「没给」——否则 Number(null)=0 会被当成 0 人桌
+  if (raw === null || raw === undefined || raw === "" || typeof raw === "boolean") return fallback;
+  const n = Math.round(Number(raw));
+  if (!Number.isFinite(n) || n < MIN_SEATS) return fallback; // 0/负数/非法 → 缺省
+  return Math.min(MAX_SEATS, n); // 高位越界 → 夹到 10
+}
 
 // 取向池（PRD V2 §3.4 / qa/QUESTION-SPEC.md）
 const VALID_POOLS = Object.freeze(["all", "straight-f", "straight-m", "gay", "lesbian", "neutral"]);
@@ -873,6 +1068,8 @@ export class RoomDO {
       if (this.room) {
         if (this.room.visibility !== "public") this.room.visibility = "private";
         if (typeof this.room.solo !== "boolean") this.room.solo = false;
+        // R10：旧存档没有 seats → 补默认 8（老房间行为不变，照样能坐满）
+        this.room.seats = clampSeats(this.room.seats);
         // R9：旧存档里的 man/woman/boss/bestie 房，重启后一律规整为 lover 恋爱局
         this.room.deck = normalizeRoomDeck(this.room.deck);
         if (!Array.isArray(this.room.chat)) this.room.chat = [];
@@ -909,6 +1106,8 @@ export class RoomDO {
           if (typeof player.left !== "boolean") player.left = false;
           if (typeof player.joinedAt !== "number") player.joinedAt = 0;
           if (typeof player.lastSeenAt !== "number") player.lastSeenAt = Date.now();
+          // R10 §4.2 准备状态（房主天然视为已准备，见 readyOf）
+          if (typeof player.ready !== "boolean") player.ready = false;
         }
         if (!Array.isArray(this.room.kingQuestions)) this.room.kingQuestions = [];
         if (this.room.king === undefined) this.room.king = null;
@@ -933,9 +1132,13 @@ export class RoomDO {
         solo: url.searchParams.get("solo") === "1",
         deck: url.searchParams.get("deck"),
         table: Number(url.searchParams.get("table")) || null,
+        seats: url.searchParams.get("seats"),
       });
       await this.save();
       await this.scheduleReap();
+      // 埋点 room_created：全站唯一的建房入口（/api/room 和桌子 tableJoin 都落到这条 /create），
+      // 所以在这里记天然不会重复；失败重试的那 14 次会走上面的 409，不会到这。
+      this.track("room_created", { players: 0, solo: this.room.solo });
       return new Response("ok");
     }
 
@@ -948,6 +1151,8 @@ export class RoomDO {
         players: this.room.players.filter((p) => !p.left).length,
         visibility: this.room.visibility || "private",
         deck: normalizeRoomDeck(this.room.deck),
+        seats: clampSeats(this.room.seats),
+        allReady: this.allReady(),
       });
     }
 
@@ -976,9 +1181,11 @@ export class RoomDO {
     }
   }
 
-  // 桌上房间仍可作为「这张桌的房」：存在、没打完、没坐满
+  // 桌上房间仍可作为「这张桌的房」：存在、没打完、没坐满（R10：上限改读房间自己的 seats）
   tableRoomActive(info) {
-    return !!info && info.exists && info.phase !== "finished" && info.players < 12;
+    return (
+      !!info && info.exists && info.phase !== "finished" && info.players < clampSeats(info.seats)
+    );
   }
 
   async tableJoin(url) {
@@ -1036,6 +1243,7 @@ export class RoomDO {
       visibility: opts.visibility === "public" ? "public" : "private",
       solo: opts.solo === true, // solo 房允许 1 人开局
       deck: normalizeRoomDeck(opts.deck), // R9 卡组恒为 lover（恋爱局），旧值全部规整
+      seats: clampSeats(opts.seats), // R10 一桌人数上限 1-10（缺省 6；1=单人局）
       table: opts.table || null, // 由几号桌开出（非桌房为 null）
       settings: {
         rounds: 5,
@@ -1062,7 +1270,37 @@ export class RoomDO {
     };
   }
 
+  /* ---- 埋点（PRD-R9-PHASE1 §五；记录点总表见文件头）---- */
+
+  // 房级埋点：房间码只送哈希，绝不外发明文；失败静默，永不影响房间逻辑。
+  track(event, extra = {}) {
+    return fireAndForget(this.ctx, trackEvent(this.env, event, {
+      roomCode: this.room?.code,
+      ...extra,
+    }));
+  }
+
+  // 在每次落盘前跑一次：phase 首次离开 lobby → game_started；首次进 aha/finished → game_finished。
+  // 标记写在 room.stats 上，跟 phase 一起 put 进 storage，所以 DO 休眠/重启后不会重复记。
+  // aha 也算完局：PRD 里「完局 = 玩到亮相」，走到亮相这桌就成立了，之后收不收局不影响 H1。
+  statsSync() {
+    const r = this.room;
+    if (!r) return;
+    if (!r.stats || typeof r.stats !== "object") r.stats = { started: false, finished: false };
+    const players = r.players ? r.players.filter((p) => !p.left).length : 0;
+    if (!r.stats.started && r.phase !== "lobby") {
+      r.stats.started = true;
+      this.track("game_started", { players, solo: r.solo });
+    }
+    if (!r.stats.finished && (r.phase === "aha" || r.phase === "finished")) {
+      r.stats.finished = true;
+      // StatsDO 侧还有一层 rooms.finished 房级去重兜底，双保险。
+      this.track("game_finished", { players, solo: r.solo });
+    }
+  }
+
   async save() {
+    this.statsSync();
     await this.ctx.storage.put("room", this.room);
   }
 
@@ -1097,6 +1335,8 @@ export class RoomDO {
       const awayAt = (p.lastSeenAt || 0) + AWAY_MS;
       if (now >= awayAt) {
         p.away = true;
+        // R10：断连超时 = 离桌，准备位一并清掉（回来重连要重新点准备）
+        p.ready = false;
         changed = true;
         this.emitPresence("player_away", p);
       } else {
@@ -1175,6 +1415,31 @@ export class RoomDO {
   // 是否参与本局收集（打分/喝酒/灯等）：离场与 away 均不算
   isActive(p) {
     return !!p && !p.left && !p.away;
+  }
+
+  /* ---- R10 §4.2 准备与开局门 ---- */
+
+  // 单人局：老的 solo:true 通道，或 R10 的 seats=1（Kim：seats=1 视同单人局）。
+  // 两者都只需 1 人即可开局，房主一个人就是全桌 → allReady 天然成立。
+  soloMode() {
+    const r = this.room;
+    return !!r && (r.solo === true || clampSeats(r.seats) === 1);
+  }
+
+  // 房主没有「准备」按钮——他那颗按钮就是开局键（PRD §4.2），所以房主天然算已准备。
+  readyOf(p) {
+    return !!p && (!!p.isHost || !!p.ready);
+  }
+
+  // 全员准备 = 还在桌上、且没掉线超时（away）的玩家全部 ready。
+  // away/left 的人不阻塞开局（与 maybeReveal 的收集口径一致）；
+  // solo 房只有房主一人 → 天然成立（契约 §8）。
+  allReady() {
+    const r = this.room;
+    if (!r || !Array.isArray(r.players)) return false;
+    const seated = r.players.filter((p) => !p.left);
+    if (!seated.length) return false;
+    return seated.filter((p) => this.isActive(p)).every((p) => this.readyOf(p));
   }
 
   // presence 变化（离场/away/回归）后，检查所有等待收集的阶段是否已可推进
@@ -1298,6 +1563,13 @@ export class RoomDO {
         shaker: shakerP ? shakerP.name : null,
         youAreShaker: cur.shaker === token,
         youAreProtagonist: cur.protagonist === token,
+        // R10 §4.3：抽签后、答题前，被拷问者要先确认方向（满分男/满分女/其他 + 自己性别）。
+        // 与 FRONT 的契约取「侵入更小」的那种：不新增 phase，只在既有 protagonist_setup
+        // 阶段挂 awaitDirection:true；收到 confirm_direction 后置 false 并直接进 answering。
+        awaitDirection: r.phase === "protagonist_setup" && !cur.directionConfirmed,
+        // 弹层默认值：被拷问者入座时带的 seeking/gender（没档案就是 null，前端给「其他」）
+        heroSeeking: heroP?.seeking || null,
+        heroGender: heroP?.gender || null,
         gender: cur.gender,
         // 与 FRONT 线的契约（R9）：当轮主角 seeking 映射 m→"m" f→"f" 其它/缺失→"n"，
         // 全桌拿它渲染题面变体（满分男他… / 满分女她… / 理想型 TA…）。
@@ -1337,8 +1609,12 @@ export class RoomDO {
       code: r.code,
       phase: r.phase,
       settings: r.settings,
-      solo: !!r.solo,
+      // R10：seats=1 也是单人局，前端单人 UI 照它走（老的 solo:true 房行为不变）
+      solo: this.soloMode(),
       deck: normalizeRoomDeck(r.deck),
+      // R10 §4.2：本桌人数上限 + 全员准备闸（房主的开局键按 allReady 亮/灰）
+      seats: clampSeats(r.seats),
+      allReady: this.allReady(),
       // 房主视角可见当前公开/私密状态（set_visibility 可改）
       ...(me?.isHost ? { visibility: r.visibility || "private" } : {}),
       you: me ? { ...this.pub(me), token: me.token, isHost: me.isHost, seeking: me.seeking || null, seatNo: myKingChance ? (myKingChance.seat[me.id] || null) : null } : null,
@@ -1402,7 +1678,7 @@ export class RoomDO {
         total: aha.lightTotal || 0,
         mine: vote,
         yours: vote, // 兼容早期前端字段
-        canVote: !!token && (this.room.solo || token !== protagonistToken),
+        canVote: !!token && (this.soloMode() || token !== protagonistToken),
         burstNames: burstNames.length ? burstNames : _legacyLightNames?.burst || [],
         offNames: offNames.length ? offNames : _legacyLightNames?.off || [],
       },
@@ -1419,6 +1695,7 @@ export class RoomDO {
       connected: p.connected,
       away: !!p.away,
       left: !!p.left,
+      ready: this.readyOf(p), // R10：房主恒 true（他的按钮就是开局键）
       drinks: p.drinks,
       know: p.know,
       done: p.done,
@@ -1506,6 +1783,39 @@ export class RoomDO {
         if (VALID_POOLS.includes(msg.pool)) r.settings.pool = msg.pool;
         break;
       }
+      /* ---- R10 §4.2：准备 / 改人数 ---- */
+      case "ready": {
+        // 客人点「开喝」= 准备；再点一次 = 取消。只在 lobby 有意义。
+        if (r.phase !== "lobby") return;
+        me.ready = msg.ready !== false;
+        break;
+      }
+      case "set_seats": {
+        // 仅房主、仅 lobby；1-10（0/负数/非法 → 保持原值不动）。
+        // 有人离桌后房主改人数同房重开，走的就是这条。
+        if (!me.isHost || r.phase !== "lobby") return;
+        if (msg.seats == null || msg.seats === "" || !Number.isFinite(Number(msg.seats))) return;
+        r.seats = clampSeats(msg.seats, r.seats);
+        break;
+      }
+      /* ---- R10 §4.3：被拷问者自选方向 ---- */
+      case "confirm_direction": {
+        // 只有当轮被拷问者、只在抽签后答题前（protagonist_setup）能确认。
+        if (r.phase !== "protagonist_setup" || r.current?.protagonist !== token) return;
+        if (!GENDER_VALUES.includes(msg.seeking))
+          return this.send(ws, { type: "error", code: "bad_seeking", msg: "先选一个方向" });
+        // 更新「本局」的取向/性别：drawQuestion 读的就是主角身上这两个字段，
+        // 于是本轮抽题自动走 allowedPoolsFor(gender, seeking)（R9 逻辑一行没改）。
+        me.seeking = msg.seeking;
+        if (VIEWER_GENDERS.includes(msg.gender)) me.gender = msg.gender;
+        r.current.directionConfirmed = true;
+        // 题面方向变体跟着确认的 seeking 走（m→满分男 / f→满分女 / x→理想型），
+        // 然后直接进答题——它就是 set_gender 的 R10 版本（老前端仍可发 set_gender）。
+        r.current.gender = renderGenderOf(me.seeking);
+        this.drawQuestion();
+        r.phase = "answering";
+        break;
+      }
       case "set_drink": {
         if (!DRINKS[msg.drink]) return;
         me.drink = msg.drink;
@@ -1541,8 +1851,12 @@ export class RoomDO {
         if (!me.isHost || r.phase !== "lobby") return;
         const seated = r.players.filter((p) => !p.left);
         // solo 房 1 人可开局（体验全流程）；正常房保持 2 人下限
-        if (seated.length < (r.solo ? 1 : 2))
+        // 单人局（solo:true 或 seats=1）1 人可开；其余仍是 2 人下限
+        if (seated.length < (this.soloMode() ? 1 : 2))
           return this.send(ws, { type: "error", msg: "至少 2 人才能开局" });
+        // R10 §4.2 开局门：入座人数 ≥1 且全员已准备（房主自己算准备，away/离桌不阻塞）
+        if (!this.allReady())
+          return this.send(ws, { type: "error", code: "not_all_ready", msg: "还有人没点准备" });
         // V2 协议：{module, pool, deck, rounds, noun, questions, kingQuestions}
         // 向后兼容：旧前端只发 {questions:[...]}，缺省 module=lover / pool=all
         if (typeof msg.module === "string" && msg.module) {
@@ -1747,6 +2061,8 @@ export class RoomDO {
           me.away = false;
         }
         me.connected = false;
+        // R10 §4.2：离桌即清准备位，回来要重新点（房主随后可 set_seats 改人数、同房重开）
+        me.ready = false;
         this.emitPresence("player_left", me);
         for (const s of this.liveSockets(token)) {
           this.send(s, { type: "left" });
@@ -1933,7 +2249,7 @@ export class RoomDO {
         // 每人一票、可在 aha 阶段改票，以最后一票为准。
         if (r.phase !== "aha" || !r.aha) return;
         // 多人局：主角不能给自己投；solo 局只有主角本人 → 放开自投（lightTotal 基数 1）。
-        if (!r.solo && r.current && r.current.protagonist === token) return;
+        if (!this.soloMode() && r.current && r.current.protagonist === token) return;
         const now = Date.now();
         if (!this.allowRate(ws, me, "lastLightAt", SOCIAL.lightCooldownMs, now)) return;
         me.lastLightAt = now;
@@ -2055,8 +2371,14 @@ export class RoomDO {
         msg: "这桌已经开喝了，下局再来",
       });
     }
-    if (r.players.length >= 12) {
-      return this.send(ws, { type: "error", msg: "这桌坐满了（12 人上限）" });
+    // R10：入座上限 = 房主选的 seats（1-8，缺省 8），取代原来写死的 12
+    const cap = clampSeats(r.seats);
+    if (r.players.filter((p) => !p.left).length >= cap) {
+      return this.send(ws, {
+        type: "error",
+        code: "table_full",
+        msg: `这桌坐满了（${cap} 人上限）`,
+      });
     }
 
     const token = crypto.randomUUID();
@@ -2069,6 +2391,7 @@ export class RoomDO {
       connected: true,
       away: false,
       left: false,
+      ready: false, // R10：客人要自己点准备；房主的按钮是开局键（readyOf 里恒 true）
       joinedAt: Date.now(),
       lastSeenAt: Date.now(),
       drinks: 0,
@@ -2084,6 +2407,9 @@ export class RoomDO {
     ws.serializeAttachment({ token });
     this.send(ws, { type: "welcome", token, reconnected: false });
     await this.save();
+    // 埋点 player_joined：只在「新玩家真入座」这一支记。上面的凭 token 重连分支已经 return，
+    // 所以断线重连、来回刷新都不会重复计人。
+    this.track("player_joined", { players: r.players.filter((p) => !p.left).length, solo: r.solo });
     this.broadcast();
   }
 
@@ -2103,6 +2429,7 @@ export class RoomDO {
       shaker,
       drawn: false,
       gender: null,
+      directionConfirmed: false, // R10 §4.3：被拷问者是否已确认方向（未确认 → awaitDirection）
       roundIndex: 1,
       records: [],
       question: null,
@@ -2172,7 +2499,8 @@ export class RoomDO {
       (p) => p.token !== cur.protagonist && p.connected && this.isActive(p)
     );
     // solo 房：没有猜分人，主角自评即开牌（results 为空，走完整流程）
-    if (guessers.length === 0 && !r.solo) return;
+    // 单人局（solo:true 或 seats=1）：没有猜分人，主角自评即开牌
+    if (guessers.length === 0 && !this.soloMode()) return;
     if (!guessers.every((p) => cur.guesses[p.token] != null)) return;
 
     // 开牌判罚
@@ -2300,7 +2628,7 @@ export class RoomDO {
     hero.done = true;
     r.lastProtagonist = hero.token;
     // 多人局：票源=其他活跃玩家数；solo 局：主角本人自投，基数 1（R3）
-    const lightTotal = r.solo
+    const lightTotal = this.soloMode()
       ? 1
       : Math.max(0, r.players.filter((p) => this.isActive(p)).length - 1);
 
@@ -2314,15 +2642,16 @@ export class RoomDO {
     // 乙游理想型档案：答案只进入确定性画像模块，不把玩家昵称或自由文本送去生图。
     // seeking：主角注册档案里的「想看的取向」（join 时透传）；多传字段不破坏纯函数契约，
     // ideal-profile.js 消费该字段由 E 线程实现。
+    const ahaSeed = `${r.code}:${r.ahaHistory.length}:${recs.map((rec) => `${rec.question.id}:${rec.score}`).join("|")}`;
     const profile = buildIdealProfile({
       records: recs,
       genderPreference: cur.gender,
       seeking: hero.seeking || null,
-      seed: `${r.code}:${r.ahaHistory.length}:${recs.map((rec) => `${rec.question.id}:${rec.score}`).join("|")}`,
+      seed: ahaSeed,
     });
 
-    // 称号 + 海报数据
-    const title = TITLES.find((t) => avg >= t.min);
+    // 称号 + 海报数据（档位由 avg 命中，档内一条由 ahaSeed 确定性抽取）
+    const title = pickTitle(avg, ahaSeed);
     const knowMap = {};
     for (const rec of recs) {
       for (const res of rec.results) {

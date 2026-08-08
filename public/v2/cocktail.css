@@ -1,7 +1,9 @@
 /* ==========================================================================
-   调酒仪式 cocktail.css （pixel-bar 风 · 竖屏优先）
-   流程：老K开场 → 4 道快问（可回退）→ 摇一摇（devicemotion / 连点降级）
+   调酒仪式 cocktail.css （R10「99%」深夜酒馆皮 · 竖屏优先）
+   流程：九八开场 → 4 道快问（可回退）→ 摇一摇（devicemotion / 连点降级）
          → 分层倒酒 + 落冰动画 → 杯子发光定格 → 结果卡
+   材质与 theme-v2.css 同源：暖黑酒红底 + 琥珀灯 + 黄铜木质，
+   马天尼粉只留给 logo 与结果卡（心动时刻）。
    ========================================================================== */
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -13,6 +15,7 @@ html, body {
   color: var(--ink-hi);
 }
 
+/* 舞台 = 推门进来正对着的后吧台（画出来的整幅场景，不是渐变底） */
 .stage {
   position: relative;
   min-height: 100vh;
@@ -22,9 +25,12 @@ html, body {
   flex-direction: column;
   align-items: center;
   padding: 18px 16px 40px;
-  background:
-    radial-gradient(ellipse 100% 50% at 50% 0%, var(--bar-bg-wall) 0%, transparent 65%),
-    linear-gradient(180deg, var(--bar-bg-deep) 0%, var(--bar-bg) 45%, var(--bar-floor) 100%);
+  background-color: var(--bar-bg);
+  background-image: var(--scene-backbar);
+  background-repeat: no-repeat;
+  background-position: 50% 0;
+  background-size: cover;
+  background-attachment: fixed;
 }
 
 /* ---------- 头部：内联霓虹招牌（LOADING…99% 居中） ---------- */
@@ -46,7 +52,7 @@ html, body {
   opacity: 0.92;
 }
 
-/* ---------- 老K 登场 ---------- */
+/* ---------- 九八 登场 ---------- */
 .host {
   display: flex;
   align-items: center;
@@ -55,14 +61,15 @@ html, body {
   margin-top: 16px;
   z-index: 2;
 }
+/* 九八的画框：黄铜相框，挂在吧台后 */
 .host-sprite {
   flex: 0 0 76px;
   width: 76px;
   height: 76px;
   background: var(--panel-solid);
-  border: var(--stroke-thin) solid var(--line-neon);
+  border: var(--stroke) solid var(--brass-dim);
   border-radius: var(--radius-card);
-  box-shadow: var(--shadow-panel);
+  box-shadow: var(--edge-brass), 0 10px 24px rgba(0, 0, 0, 0.6);
   overflow: hidden;
 }
 .host-bubble {
@@ -477,7 +484,7 @@ html, body {
 .result-go:hover { transform: scale(1.04); }
 .result-go:active { transform: scale(0.97); }
 
-/* ---------- 注册段：告诉老K你是谁 ---------- */
+/* ---------- 注册段：告诉九八你是谁 ---------- */
 .register {
   width: min(420px, 92vw);
   margin-top: 10px;

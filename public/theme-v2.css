@@ -1,139 +1,221 @@
 /* ==========================================================================
-   理想型·加载中 V2 · 视觉真源 theme-v2.css （pixel-bar / neon 风）
+   理想型·加载中 R10 · 视觉真源 theme-v2.css
+   —— 「99%」深夜酒馆 · 暖黑酒红底 + 琥珀灯光 + 黄铜木质（故事圣经 §四/§五）
    --------------------------------------------------------------------------
-   气质：像素赛博酒吧 —— 暗底（深紫黑）、霓虹紫红青点缀、像素标题字、
-   扫描线/噪点质感、温暖吧台灯光；保留体育 bar 的热闹基因
-   （欢呼弹幕 / 爆灯闪光 / 像素 disco ball）。
+   气质推导（不抄参考图，从故事推）：
+     红弦的暗是「雨夜的暗」（悲伤）→ 冷紫；
+     我们的暗是「包厢的暗」（暧昧）→ 暖黑深酒红 + 大比例琥珀灯。
+   三条铁律（R9 §一诊断仍然有效，R10 加严）：
+     1. 禁满屏重复格纹 —— 深度来自「画出来的东西」（木纹/黄铜/灯池/酒瓶剪影），
+        不来自 repeating pattern，也不来自裸 linear-gradient 当装饰。
+     2. 亮有理由 —— 发光=灯、酒液、黄铜反光；不是"我很努力"。
+     3. 马天尼粉 #ff2d78 只给心动时刻（爆灯/揭晓/亮相/logo）。滥用即贬值。
 
-   规则（沿用 V1 约定）：
-   1. 业务 CSS 不允许出现字面色值，一律 var(--...) 引用本文件。
-   2. Canvas/JS 侧用 getComputedStyle 读取同名变量。
-   3. 变量名是「角色」不是「颜色名」。
+   规则（沿用 V1/V2 约定，不变）：
+     1. 业务 CSS 不允许出现字面色值，一律 var(--...) 引用本文件。
+     2. Canvas/JS 侧用 getComputedStyle 读取同名变量（poster.js 依赖变量名）。
+     3. 变量名是「角色」不是「颜色名」—— 所以 --neon-purple 现在是「黄铜」，
+        --neon-cyan 现在只做「霓虹小招牌」，名字保持不动以免打断下游。
 
    分组目录：
-     1) 暗底舞台色
-     2) 霓虹三原色（紫红 / 青 / 琥珀吧台灯）
+     1) 暗底舞台色（暖黑酒红）
+     2) 光与心动色（琥珀主光 / 马天尼粉 / 汽水青 / 黄铜）
      3) 文字与描边
-     4) 面板与玻璃
-     5) 字体栈（像素标题字 + 正文）
-     6) 圆角 / 描边 / 阴影
-     7) 霓虹 glow 混入类（.neon-*）
-     8) 质感层（扫描线 / 噪点 / CRT 暗角）
-     9) 像素 disco ball
-    10) 摇酒壶签筒（shaker）组件类 —— 修签穿模 bug 的标准结构
+     4) 面板与材质（木 / 黄铜 / 绒布 / 玻璃）
+     5) 字体栈
+     6) 圆角 / 描边 / 阴影 / 材质混入
+     7) 光晕混入类（.neon-*）—— 现在是「灯」不是「霓虹管」
+     8) 质感层（灯池 / 细噪 / 暗角）
+     9) 吊灯（原 .disco-ball 位，改为黄铜吊灯灯罩）
+    10) 摇酒壶签筒（shaker）组件类
+    11) 画出来的场景层（后吧台酒瓶剪影 / 吧台木沿 / 黄铜包边）
    ========================================================================== */
 
 /* 像素中文字体：缝合像素 12px（SIL OFL 开源，简中全覆盖）
-   注：@fontsource 按 unicode-range 切片，只加载用到的字形分片，体积可控 */
+   R10：像素字已退役到「logo + 大标题」两处（故事圣经 §五），其余一律手写体/无衬线。 */
 @import url("https://cdn.jsdelivr.net/npm/@fontsource/fusion-pixel-12px-proportional-sc@5.3.0/index.min.css");
 @import url("https://cdn.jsdelivr.net/npm/@fontsource/fusion-pixel-12px-proportional-sc@5.3.0/chinese-simplified.min.css");
 
 :root {
-  /* ---------- 1) 暗底舞台色（深紫黑系） ---------- */
-  --bar-bg: #1a1026;            /* 全局底：深紫黑 */
-  --bar-bg-deep: #120a1c;       /* 更深一层：天花板 / 页面边缘 */
-  --bar-bg-raise: #241536;      /* 抬升面：卡片 / 吧台立面 */
-  --bar-bg-wall: #2c1a42;       /* 酒瓶架背墙 */
-  --bar-floor: #150d21;         /* 地板 */
-  --bar-counter: #3a2117;       /* 吧台木色（暖） */
-  --bar-counter-top: #5c3423;   /* 吧台台面高光木色 */
+  /* ---------- 1) 暗底舞台色（暖黑·深酒红，禁冷紫） ---------- */
+  --bar-bg: #1a1014;            /* 全局底：关了大灯的店 */
+  --bar-bg-deep: #110a0d;       /* 更深一层：天花板 / 页面边缘 */
+  --bar-bg-raise: #251519;      /* 抬升面：卡片 / 吧台立面 */
+  --bar-bg-wall: #331e20;       /* 酒瓶架背墙（酒红木墙） */
+  --bar-floor: #150c10;         /* 地板 */
+  --bar-counter: #4b2b19;       /* 吧台木色（暖） */
+  --bar-counter-top: #6d4126;   /* 吧台台面受光木色 */
 
-  /* ---------- 2) 霓虹三原色 ---------- */
-  --neon-pink: #ff2d78;         /* 主霓虹：招牌 / 主按钮 / 爆灯 */
-  --neon-pink-hot: #ff6ea8;     /* 主霓虹亮芯 */
-  --neon-cyan: #2de2ff;         /* 副霓虹：交互反馈 / 边框 */
-  --neon-cyan-soft: #9ff3ff;    /* 副霓虹亮芯 */
-  --neon-purple: #a86bff;       /* 第三霓虹：装饰 / 次强调 */
-  --neon-amber: #ffb648;        /* 吧台暖灯：温暖光晕 / 酒液高光 */
-  --neon-amber-deep: #e08a1e;   /* 暖灯深：木质反光 */
-  --neon-green: #58ff9b;        /* 成功 / 在线 / 全对 */
-  --neon-red: #ff4141;          /* 罚酒 / 危险 / 麻辣 */
+  /* ---------- 2) 光与心动色 ---------- */
+  /* 主光：琥珀暖光——大比例存在，灯罩光池 / 酒液金 / 木质反光 */
+  --neon-amber: #e8a75c;        /* 主光本体（圣经 §四） */
+  --neon-amber-deep: #b4712c;   /* 暖灯深：木质反光 / 酒液底 */
+  --amber-hi: #ffdca6;          /* 灯芯高光 */
 
-  /* 半透明光晕衍生（box-shadow / 渐变用） */
+  /* 心动色：马天尼粉（logo 已过关，色值不动）——只给爆灯/揭晓/亮相/logo */
+  --neon-pink: #ff2d78;
+  --neon-pink-hot: #ff6ea8;
+
+  /* 点缀：汽水青——极少量，霓虹小招牌级别 */
+  --neon-cyan: #2de2ff;
+  --neon-cyan-soft: #9ff3ff;
+
+  /* 黄铜（原 --neon-purple 位，名字保持；它现在是店里所有金属件的颜色） */
+  --neon-purple: #c99a4e;
+
+  /* 橄榄绿（九八天线顶那颗，与 logo 同源）——原 --neon-green 位 */
+  --neon-green: #9aab52;
+  /* 罚酒 / 麻辣 / 危险：暖酒红，不是刺眼正红 */
+  --neon-red: #d8543f;
+
+  /* 半透明光晕衍生（box-shadow / 渐变用；名字保持，色相已随角色改暖） */
   --glow-pink-70: rgba(255, 45, 120, 0.7);
   --glow-pink-40: rgba(255, 45, 120, 0.4);
   --glow-pink-18: rgba(255, 45, 120, 0.18);
   --glow-cyan-70: rgba(45, 226, 255, 0.7);
   --glow-cyan-40: rgba(45, 226, 255, 0.4);
   --glow-cyan-16: rgba(45, 226, 255, 0.16);
-  --glow-purple-45: rgba(168, 107, 255, 0.45);
-  --glow-purple-20: rgba(168, 107, 255, 0.2);
-  --glow-amber-55: rgba(255, 182, 72, 0.55);
-  --glow-amber-25: rgba(255, 182, 72, 0.25);
-  --glow-amber-12: rgba(255, 182, 72, 0.12);
+  --glow-purple-45: rgba(201, 154, 78, 0.45);   /* = 黄铜光 */
+  --glow-purple-20: rgba(201, 154, 78, 0.2);
+  --glow-amber-55: rgba(232, 167, 92, 0.55);
+  --glow-amber-25: rgba(232, 167, 92, 0.25);
+  --glow-amber-12: rgba(232, 167, 92, 0.12);
 
   /* ---------- 3) 文字与描边 ---------- */
-  --ink-hi: #f4ecff;            /* 主文字：微紫的暖白 */
-  --ink-mid: #b9a8d4;           /* 次级文字 */
-  --ink-dim: #7d6a9c;           /* 弱化文字 / 占位 */
-  --ink-ghost: #4d3d68;         /* 更弱：禁用态 */
-  --line-neon: #55307f;         /* 常规描边（暗紫） */
-  --line-soft: rgba(168, 107, 255, 0.25);   /* 弱描边 */
-  --line-counter: #241007;      /* 吧台木描边 */
+  --ink-hi: #f6e8d6;            /* 主文字：被灯烘着的暖白 */
+  --ink-mid: #c9ac90;           /* 次级文字 */
+  --ink-dim: #98795f;           /* 弱化文字 / 占位 */
+  --ink-ghost: #63483a;         /* 更弱：禁用态 */
+  --ink-lo: rgba(246, 232, 214, 0.6); /* 兜底弱字（业务里已有引用） */
+  --line-neon: #5c3a24;         /* 常规描边（暗黄铜） */
+  --line-soft: rgba(232, 167, 92, 0.16);    /* 弱描边 */
+  --line-counter: #24120a;      /* 吧台木描边 */
 
-  /* ---------- 4) 面板与玻璃 ---------- */
-  --panel: rgba(36, 21, 54, 0.92);          /* 玻璃卡片底 */
-  --panel-solid: #241536;                   /* 实心卡片底 */
-  --panel-deep: rgba(18, 10, 28, 0.88);     /* 更深玻璃（弹幕条 / HUD） */
-  --panel-glow-edge: rgba(255, 110, 168, 0.12); /* 卡片内侧霓虹描光 */
+  /* ---------- 4) 面板与材质 ---------- */
+  --panel: rgba(38, 22, 26, 0.92);          /* 卡片底（酒红绒面） */
+  --panel-solid: #26161a;                   /* 实心卡片底 */
+  --panel-deep: rgba(17, 10, 13, 0.9);      /* 更深（弹幕条 / HUD） */
+  --panel-glow-edge: rgba(255, 214, 160, 0.13); /* 卡片内侧灯口描光 */
+
+  /* 材质本体色：组件的「物质感」来源（圣经 §四） */
+  --brass: #c99a4e;             /* 黄铜 */
+  --brass-hi: #f2d79b;          /* 黄铜受光棱 */
+  --brass-dim: #7c5729;         /* 黄铜暗棱 */
+  --brass-shade: #43301a;       /* 黄铜投影 */
+  --wood: #4b2b19;              /* 深木 */
+  --wood-hi: #7d4c29;           /* 木受光 */
+  --wood-dim: #2b160c;          /* 木暗部 */
+  --velvet: #3b1a22;            /* 酒红绒布 */
+  --velvet-hi: #55232f;         /* 绒布受光 */
+  --glass-tint: rgba(255, 236, 206, 0.1);   /* 玻璃透光 */
+  --glass-edge: rgba(255, 236, 206, 0.3);   /* 玻璃棱 */
+  --liquor: #d98b33;            /* 酒液 */
+  --liquor-deep: #8a4d13;       /* 酒液底 */
+  --foam: #f6e3c2;              /* 酒沫 */
+
+  /* 画出来的木纹（不是 repeating pattern：一组不等距的手绘纹路） */
+  --tex-wood:
+    linear-gradient(179.4deg, rgba(0, 0, 0, 0.26) 0 2px, transparent 2px 9px, rgba(255, 205, 150, 0.05) 9px 10px,
+      transparent 10px 27px, rgba(0, 0, 0, 0.2) 27px 28px, transparent 28px 46px,
+      rgba(255, 205, 150, 0.04) 46px 47px, transparent 47px 71px, rgba(0, 0, 0, 0.16) 71px 72px, transparent 72px 100%);
+  /* 绒布：柔和的斜向光泽，一层，不重复 */
+  --tex-velvet:
+    radial-gradient(ellipse 140% 90% at 22% 0%, rgba(255, 190, 150, 0.09), transparent 62%),
+    radial-gradient(ellipse 120% 80% at 88% 100%, rgba(0, 0, 0, 0.34), transparent 60%);
 
   /* ---------- 5) 字体栈 ---------- */
-  /* 像素标题字：缝合像素（简中） → DotGothic16 思路的日字兜底 → 系统栈 */
+  /* 像素标题字：只给 logo 与大标题（h1/h2/大比分/房间码），其余全部退役 */
   --font-pixel: "Fusion Pixel 12px Proportional SC", "Zpix", "DotGothic16",
                 "PingFang SC", "Microsoft YaHei", monospace;
+  /* 店招/铜牌/菜单板小字：暖衬线，手写菜单板的气质 */
+  --font-display: "Songti SC", "STSong", "Source Han Serif SC", "Noto Serif SC",
+                  "SimSun", ui-serif, Georgia, "PingFang SC", "Microsoft YaHei", serif;
   --font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont,
                "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
 
   /* ---------- 6) 圆角 / 描边 / 阴影 ---------- */
-  --radius-card: 10px;
-  --radius-btn: 8px;
-  --radius-sm: 6px;
+  /* 实物件的圆角比网页部件大一档：杯垫、铜牌、门牌都不是直角 */
+  --radius-card: 14px;
+  --radius-btn: 11px;
+  --radius-sm: 9px;
   --radius-pill: 999px;
   --stroke-thin: 1px;
-  --stroke: 2px;                /* 像素风描边偏硬 */
+  --stroke: 2px;
   --stroke-bold: 3px;
 
-  --shadow-panel: 0 12px 40px rgba(0, 0, 0, 0.55),
-                  0 0 0 1px var(--line-soft),
-                  inset 0 1px 0 var(--panel-glow-edge);
-  --shadow-counter: 0 -6px 24px var(--glow-amber-25); /* 吧台暖光上浮 */
-  --focus-ring: 0 0 0 3px var(--glow-cyan-40);
+  /* 黄铜包边：一根亮棱 + 一根暗棱 + 一条黄铜细线（贴在任何面上都像金属件） */
+  --edge-brass:
+    inset 0 0 0 1px var(--brass-dim),
+    inset 0 1px 0 rgba(255, 214, 160, 0.3),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.55);
+  /* 木质包边 */
+  --edge-wood:
+    inset 0 0 0 1px var(--wood-dim),
+    inset 0 1px 0 rgba(255, 190, 130, 0.14),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.45);
+  /* 压凹（刻在木头/铜上的字与槽） */
+  --edge-carve:
+    inset 0 2px 4px rgba(0, 0, 0, 0.6),
+    inset 0 -1px 0 rgba(255, 205, 150, 0.12);
 
-  /* ---------- 6b) 霓虹 glow 预组阴影（text-shadow 多层） ---------- */
+  --shadow-panel:
+    0 18px 44px rgba(0, 0, 0, 0.55),
+    0 2px 0 rgba(0, 0, 0, 0.45),
+    var(--edge-brass),
+    inset 0 22px 40px -26px var(--glow-amber-25);
+  --shadow-lift: 0 12px 26px rgba(0, 0, 0, 0.5), 0 3px 0 var(--brass-shade);
+  --shadow-counter: 0 -6px 24px var(--glow-amber-25); /* 吧台暖光上浮 */
+  --focus-ring: 0 0 0 3px var(--glow-amber-55);
+
+  /* ---------- 6b) 灯光文字（原霓虹 glow 预组；现在是被灯烘着的字） ---------- */
+  /* 心动粉：只在爆灯/揭晓/亮相/logo 用 */
   --neon-text-pink:
-    0 0 2px #fff,
-    0 0 6px var(--neon-pink-hot),
-    0 0 14px var(--neon-pink),
-    0 0 32px var(--glow-pink-70),
-    0 0 56px var(--glow-pink-40);
+    0 0 1px rgba(255, 255, 255, 0.9),
+    0 0 8px var(--neon-pink-hot),
+    0 0 22px var(--glow-pink-40),
+    0 2px 0 rgba(0, 0, 0, 0.5);
+  /* 汽水青：小招牌 */
   --neon-text-cyan:
-    0 0 2px #fff,
-    0 0 6px var(--neon-cyan-soft),
-    0 0 14px var(--neon-cyan),
-    0 0 32px var(--glow-cyan-70),
-    0 0 56px var(--glow-cyan-40);
+    0 0 1px rgba(255, 255, 255, 0.85),
+    0 0 8px var(--neon-cyan),
+    0 0 20px var(--glow-cyan-40);
+  /* 黄铜（原 purple 位）：金属反光而非发光 */
   --neon-text-purple:
-    0 0 2px #fff,
-    0 0 6px #cfaaff,
-    0 0 14px var(--neon-purple),
-    0 0 30px var(--glow-purple-45);
+    0 1px 0 var(--brass-hi),
+    0 -1px 0 var(--brass-shade),
+    0 0 16px var(--glow-purple-20),
+    0 3px 6px rgba(0, 0, 0, 0.6);
+  /* 琥珀：灯下的字，主力 */
   --neon-text-amber:
-    0 0 2px #fff8ec,
-    0 0 6px #ffd28a,
-    0 0 14px var(--neon-amber),
-    0 0 30px var(--glow-amber-55);
+    0 0 1px rgba(255, 240, 214, 0.9),
+    0 0 10px var(--glow-amber-55),
+    0 0 28px var(--glow-amber-25),
+    0 2px 0 rgba(0, 0, 0, 0.45);
+
+  /* 框：从「霓虹灯管」改成「黄铜包边 + 一点灯」 */
   --neon-box-pink:
-    0 0 6px var(--glow-pink-70),
-    0 0 18px var(--glow-pink-40),
-    inset 0 0 8px var(--glow-pink-18);
+    var(--edge-brass),
+    0 0 14px var(--glow-pink-40),
+    0 8px 22px rgba(0, 0, 0, 0.45);
   --neon-box-cyan:
-    0 0 6px var(--glow-cyan-70),
-    0 0 18px var(--glow-cyan-40),
-    inset 0 0 8px var(--glow-cyan-16);
+    var(--edge-brass),
+    0 0 12px var(--glow-cyan-16),
+    0 8px 22px rgba(0, 0, 0, 0.45);
+  --box-brass:
+    var(--edge-brass),
+    0 0 16px var(--glow-amber-25),
+    0 8px 22px rgba(0, 0, 0, 0.5);
+
+  /* ---------- 6c) 画出来的场景资产（data-uri，不重复、不平铺） ---------- */
+  /* 后吧台：酒瓶剪影 + 两层木层板 + 黄铜层板沿 + 两盏吊灯的光 */
+  --scene-backbar: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20900%201100%27%20preserveAspectRatio%3D%27xMidYMin%20slice%27%3E%3Cdefs%3E%3ClinearGradient%20id%3D%27wl%27%20x1%3D%270%27%20y1%3D%270%27%20x2%3D%270%27%20y2%3D%271%27%3E%3Cstop%20offset%3D%270%27%20stop-color%3D%27%23150c10%27%2F%3E%3Cstop%20offset%3D%27.34%27%20stop-color%3D%27%233a2224%27%2F%3E%3Cstop%20offset%3D%27.72%27%20stop-color%3D%27%23241417%27%2F%3E%3Cstop%20offset%3D%271%27%20stop-color%3D%27%23130b0e%27%2F%3E%3C%2FlinearGradient%3E%3ClinearGradient%20id%3D%27bz%27%20x1%3D%270%27%20y1%3D%270%27%20x2%3D%270%27%20y2%3D%271%27%3E%3Cstop%20offset%3D%270%27%20stop-color%3D%27%23f2d79b%27%2F%3E%3Cstop%20offset%3D%27.5%27%20stop-color%3D%27%23c99a4e%27%2F%3E%3Cstop%20offset%3D%271%27%20stop-color%3D%27%235d411f%27%2F%3E%3C%2FlinearGradient%3E%3ClinearGradient%20id%3D%27pk%27%20x1%3D%270%27%20y1%3D%270%27%20x2%3D%270%27%20y2%3D%271%27%3E%3Cstop%20offset%3D%270%27%20stop-color%3D%27%237d4c29%27%2F%3E%3Cstop%20offset%3D%271%27%20stop-color%3D%27%232b160c%27%2F%3E%3C%2FlinearGradient%3E%3ClinearGradient%20id%3D%27sh%27%20x1%3D%270%27%20y1%3D%270%27%20x2%3D%270%27%20y2%3D%271%27%3E%3Cstop%20offset%3D%270%27%20stop-color%3D%27%238a5f2c%27%2F%3E%3Cstop%20offset%3D%27.55%27%20stop-color%3D%27%23c99a4e%27%2F%3E%3Cstop%20offset%3D%271%27%20stop-color%3D%27%23ffdca6%27%2F%3E%3C%2FlinearGradient%3E%3ClinearGradient%20id%3D%27pl%27%20x1%3D%270%27%20y1%3D%270%27%20x2%3D%270%27%20y2%3D%271%27%3E%3Cstop%20offset%3D%270%27%20stop-color%3D%27%23ffd39a%27%20stop-opacity%3D%27.34%27%2F%3E%3Cstop%20offset%3D%271%27%20stop-color%3D%27%23e8a75c%27%20stop-opacity%3D%270%27%2F%3E%3C%2FlinearGradient%3E%3ClinearGradient%20id%3D%27ct%27%20x1%3D%270%27%20y1%3D%270%27%20x2%3D%270%27%20y2%3D%271%27%3E%3Cstop%20offset%3D%270%27%20stop-color%3D%27%238a5430%27%2F%3E%3Cstop%20offset%3D%27.3%27%20stop-color%3D%27%234b2b19%27%2F%3E%3Cstop%20offset%3D%271%27%20stop-color%3D%27%231c0e07%27%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%27900%27%20height%3D%271100%27%20fill%3D%27url%28%23wl%29%27%2F%3E%3Crect%20x%3D%27246%27%20y%3D%270%27%20width%3D%274%27%20height%3D%2796%27%20fill%3D%27%237c5729%27%2F%3E%3Cpath%20d%3D%27M176%20158c0-44%2030-68%2072-68s72%2023%2072%2068z%27%20fill%3D%27url%28%23sh%29%27%2F%3E%3Cellipse%20cx%3D%27248%27%20cy%3D%27158%27%20rx%3D%2772%27%20ry%3D%2712%27%20fill%3D%27%23ffdca6%27%2F%3E%3Cpath%20d%3D%27M212%20162%20L284%20162%20L421%20588%20L75%20588Z%27%20fill%3D%27url%28%23pl%29%27%2F%3E%3Crect%20x%3D%27650%27%20y%3D%270%27%20width%3D%274%27%20height%3D%2774%27%20fill%3D%27%237c5729%27%2F%3E%3Cpath%20d%3D%27M592%20136c0-37%2025-57%2060-57s60%2019%2060%2057z%27%20fill%3D%27url%28%23sh%29%27%2F%3E%3Cellipse%20cx%3D%27652%27%20cy%3D%27136%27%20rx%3D%2760%27%20ry%3D%2710%27%20fill%3D%27%23ffdca6%27%2F%3E%3Cpath%20d%3D%27M622%20140%20L682%20140%20L796%20566%20L508%20566Z%27%20fill%3D%27url%28%23pl%29%27%2F%3E%3Cpath%20d%3D%27M43%20300L61%20300L61%20357Q79%20363%2079%20381L79%20468L25%20468L25%20381Q25%20363%2043%20357Z%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%2741%27%20y%3D%27291%27%20width%3D%2722%27%20height%3D%2710%27%20rx%3D%273%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%2730%27%20y%3D%27389%27%20width%3D%273%27%20height%3D%2754%27%20rx%3D%271.5%27%20fill%3D%27%23ffdca6%27%20opacity%3D%270.16%27%2F%3E%3Cpath%20d%3D%27M114%20340L130%20340L130%20384Q144%20390%20144%20401L144%20468L100%20468L100%20401Q100%20390%20114%20384Z%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%27112%27%20y%3D%27331%27%20width%3D%2719%27%20height%3D%2710%27%20rx%3D%273%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%27105%27%20y%3D%27409%27%20width%3D%273%27%20height%3D%2741%27%20rx%3D%271.5%27%20fill%3D%27%23ffdca6%27%20opacity%3D%270.16%27%2F%3E%3Cpath%20d%3D%27M178%20272L194%20272L194%20339Q210%20345%20210%20366L210%20468L162%20468L162%20366Q162%20345%20178%20339Z%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%27176%27%20y%3D%27263%27%20width%3D%2720%27%20height%3D%2710%27%20rx%3D%273%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%27167%27%20y%3D%27374%27%20width%3D%273%27%20height%3D%2763%27%20rx%3D%271.5%27%20fill%3D%27%23ffdca6%27%20opacity%3D%270.16%27%2F%3E%3Cpath%20d%3D%27M240%20320L260%20320L260%20370Q280%20376%20280%20391L280%20468L220%20468L220%20391Q220%20376%20240%20370Z%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%27238%27%20y%3D%27311%27%20width%3D%2724%27%20height%3D%2710%27%20rx%3D%273%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%27225%27%20y%3D%27399%27%20width%3D%273%27%20height%3D%2748%27%20rx%3D%271.5%27%20fill%3D%27%23ffdca6%27%20opacity%3D%270.16%27%2F%3E%3Cpath%20d%3D%27M322%20296L338%20296L338%20354Q353%20360%20353%20379L353%20468L307%20468L307%20379Q307%20360%20322%20354Z%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%27320%27%20y%3D%27287%27%20width%3D%2719%27%20height%3D%2710%27%20rx%3D%273%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%27312%27%20y%3D%27387%27%20width%3D%273%27%20height%3D%2755%27%20rx%3D%271.5%27%20fill%3D%27%23ffdca6%27%20opacity%3D%270.16%27%2F%3E%3Cpath%20d%3D%27M387%20346L405%20346L405%20387Q422%20393%20422%20405L422%20468L370%20468L370%20405Q370%20393%20387%20387Z%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%27385%27%20y%3D%27337%27%20width%3D%2722%27%20height%3D%2710%27%20rx%3D%273%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%27375%27%20y%3D%27413%27%20width%3D%273%27%20height%3D%2739%27%20rx%3D%271.5%27%20fill%3D%27%23ffdca6%27%20opacity%3D%270.16%27%2F%3E%3Cpath%20d%3D%27M454%20282L470%20282L470%20345Q487%20351%20487%20371L487%20468L437%20468L437%20371Q437%20351%20454%20345Z%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%27452%27%20y%3D%27273%27%20width%3D%2720%27%20height%3D%2710%27%20rx%3D%273%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%27442%27%20y%3D%27379%27%20width%3D%273%27%20height%3D%2760%27%20rx%3D%271.5%27%20fill%3D%27%23ffdca6%27%20opacity%3D%270.16%27%2F%3E%3Cpath%20d%3D%27M520%20326L536%20326L536%20374Q550%20380%20550%20394L550%20468L506%20468L506%20394Q506%20380%20520%20374Z%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%27518%27%20y%3D%27317%27%20width%3D%2719%27%20height%3D%2710%27%20rx%3D%273%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%27511%27%20y%3D%27402%27%20width%3D%273%27%20height%3D%2746%27%20rx%3D%271.5%27%20fill%3D%27%23ffdca6%27%20opacity%3D%270.16%27%2F%3E%3Cpath%20d%3D%27M584%20268L604%20268L604%20336Q622%20342%20622%20364L622%20468L566%20468L566%20364Q566%20342%20584%20336Z%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%27582%27%20y%3D%27259%27%20width%3D%2723%27%20height%3D%2710%27%20rx%3D%273%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%27571%27%20y%3D%27372%27%20width%3D%273%27%20height%3D%2764%27%20rx%3D%271.5%27%20fill%3D%27%23ffdca6%27%20opacity%3D%270.16%27%2F%3E%3Cpath%20d%3D%27M660%20310L676%20310L676%20364Q692%20370%20692%20386L692%20468L644%20468L644%20386Q644%20370%20660%20364Z%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%27658%27%20y%3D%27301%27%20width%3D%2720%27%20height%3D%2710%27%20rx%3D%273%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%27649%27%20y%3D%27394%27%20width%3D%273%27%20height%3D%2751%27%20rx%3D%271.5%27%20fill%3D%27%23ffdca6%27%20opacity%3D%270.16%27%2F%3E%3Cpath%20d%3D%27M729%20338L747%20338L747%20382Q765%20388%20765%20400L765%20468L711%20468L711%20400Q711%20388%20729%20382Z%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%27727%27%20y%3D%27329%27%20width%3D%2722%27%20height%3D%2710%27%20rx%3D%273%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%27716%27%20y%3D%27408%27%20width%3D%273%27%20height%3D%2742%27%20rx%3D%271.5%27%20fill%3D%27%23ffdca6%27%20opacity%3D%270.16%27%2F%3E%3Cpath%20d%3D%27M804%20290L820%20290L820%20351Q835%20357%20835%20375L835%20468L789%20468L789%20375Q789%20357%20804%20351Z%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%27802%27%20y%3D%27281%27%20width%3D%2719%27%20height%3D%2710%27%20rx%3D%273%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%27794%27%20y%3D%27383%27%20width%3D%273%27%20height%3D%2757%27%20rx%3D%271.5%27%20fill%3D%27%23ffdca6%27%20opacity%3D%270.16%27%2F%3E%3Cpath%20d%3D%27M859%20324L873%20324L873%20373Q886%20379%20886%20393L886%20468L846%20468L846%20393Q846%20379%20859%20373Z%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%27857%27%20y%3D%27315%27%20width%3D%2718%27%20height%3D%2710%27%20rx%3D%273%27%20fill%3D%27%230b0608%27%20opacity%3D%270.92%27%2F%3E%3Crect%20x%3D%27851%27%20y%3D%27401%27%20width%3D%273%27%20height%3D%2746%27%20rx%3D%271.5%27%20fill%3D%27%23ffdca6%27%20opacity%3D%270.16%27%2F%3E%3Crect%20x%3D%270%27%20y%3D%27468%27%20width%3D%27900%27%20height%3D%2718%27%20fill%3D%27url%28%23pk%29%27%2F%3E%3Crect%20x%3D%270%27%20y%3D%27468%27%20width%3D%27900%27%20height%3D%273%27%20fill%3D%27url%28%23bz%29%27%2F%3E%3Crect%20x%3D%270%27%20y%3D%27486%27%20width%3D%27900%27%20height%3D%278%27%20fill%3D%27%23000%27%20opacity%3D%27.42%27%2F%3E%3Cpath%20d%3D%27M52%20600L68%20600L68%20643Q84%20649%2084%20660L84%20726L36%20726L36%20660Q36%20649%2052%20643Z%27%20fill%3D%27%230b0608%27%20opacity%3D%270.8%27%2F%3E%3Crect%20x%3D%2750%27%20y%3D%27591%27%20width%3D%2720%27%20height%3D%2710%27%20rx%3D%273%27%20fill%3D%27%230b0608%27%20opacity%3D%270.8%27%2F%3E%3Crect%20x%3D%2741%27%20y%3D%27668%27%20width%3D%273%27%20height%3D%2741%27%20rx%3D%271.5%27%20fill%3D%27%23ffdca6%27%20opacity%3D%270.16%27%2F%3E%3Cpath%20d%3D%27M125%20574L139%20574L139%20626Q153%20632%20153%20647L153%20726L111%20726L111%20647Q111%20632%20125%20626Z%27%20fill%3D%27%230b0608%27%20opacity%3D%270.8%27%2F%3E%3Crect%20x%3D%27123%27%20y%3D%27565%27%20width%3D%2718%27%20height%3D%2710%27%20rx%3D%273%27%20fill%3D%27%230b0608%27%20opacity%3D%270.8%27%2F%3E%3Crect%20x%3D%27116%27%20y%3D%27655%27%20width%3D%273%27%20height%3D%2749%27%20rx%3D%271.5%27%20fill%3D%27%23ffdca6%27%20opacity%3D%270.16%27%2F%3E%3Cpath%20d%3D%27M198%20614L214%20614L214%20652Q232%20658%20232%20668L232%20726L180%20726L180%20668Q180%20658%20198%20652Z%27%20fill%3D%27%230b0608%27%20opacity%3D%270.8%27%2F%3E%3Crect%20x%3D%27196%27%20y%3D%27605%27%20width%3D%2721%27%20height%3D%2710%27%20rx%3D%273%27%20fill%3D%27%230b0608%27%20opacity%3D%270.8%27%2F%3E%3Crect%20x%3D%27185%27%20y%3D%27676%27%20width%3D%273%27%20height%3D%2736%27%20rx%3D%271.5%27%20fill%3D%27%23ffdca6%27%20opacity%3D%270.16%27%2F%3E%3Cpath%20d%3D%27M264%20588L280%20588L280%20635Q294%20641%20294%20654L294%20726L250%20726L250%20654Q250%20641%20264%20635Z%27%20fill%3D%27%230b0608%27%20opacity%3D%270.8%27%2F%3E%3Crect%20x%3D%27262%27%20y%3D%27579%27%20width%3D%2719%27%20height%3D%2710%27%20rx%3D%273%27%20fill%3D%27%230b0608%27%20opacity%3D%270.8%27%2F%3E%3Crect%20x%3D%27255%27%20y%3D%27662%27%20width%3D%273%27%20height%3D%2744%27%20rx%3D%271.5%27%20fill%3D%27%23ffdca6%27%20opacity%3D%270.16%27%2F%3E%3Cpath%20d%3D%27M632%20594L648%20594L648%20639Q663%20645%20663%20657L663%20726L617%20726L617%20657Q617%20645%20632%20639Z%27%20fill%3D%27%230b0608%27%20opacity%3D%270.8%27%2F%3E%3Crect%20x%3D%27630%27%20y%3D%27585%27%20width%3D%2719%27%20height%3D%2710%27%20rx%3D%273%27%20fill%3D%27%230b0608%27%20opacity%3D%270.8%27%2F%3E%3Crect%20x%3D%27622%27%20y%3D%27665%27%20width%3D%273%27%20height%3D%2743%27%20rx%3D%271.5%27%20fill%3D%27%23ffdca6%27%20opacity%3D%270.16%27%2F%3E%3Cpath%20d%3D%27M704%20610L720%20610L720%20649Q738%20655%20738%20666L738%20726L686%20726L686%20666Q686%20655%20704%20649Z%27%20fill%3D%27%230b0608%27%20opacity%3D%270.8%27%2F%3E%3Crect%20x%3D%27702%27%20y%3D%27601%27%20width%3D%2721%27%20height%3D%2710%27%20rx%3D%273%27%20fill%3D%27%230b0608%27%20opacity%3D%270.8%27%2F%3E%3Crect%20x%3D%27691%27%20y%3D%27674%27%20width%3D%273%27%20height%3D%2737%27%20rx%3D%271.5%27%20fill%3D%27%23ffdca6%27%20opacity%3D%270.16%27%2F%3E%3Cpath%20d%3D%27M774%20570L790%20570L790%20623Q804%20629%20804%20645L804%20726L760%20726L760%20645Q760%20629%20774%20623Z%27%20fill%3D%27%230b0608%27%20opacity%3D%270.8%27%2F%3E%3Crect%20x%3D%27772%27%20y%3D%27561%27%20width%3D%2719%27%20height%3D%2710%27%20rx%3D%273%27%20fill%3D%27%230b0608%27%20opacity%3D%270.8%27%2F%3E%3Crect%20x%3D%27765%27%20y%3D%27653%27%20width%3D%273%27%20height%3D%2750%27%20rx%3D%271.5%27%20fill%3D%27%23ffdca6%27%20opacity%3D%270.16%27%2F%3E%3Cpath%20d%3D%27M844%20602L860%20602L860%20644Q876%20650%20876%20662L876%20726L828%20726L828%20662Q828%20650%20844%20644Z%27%20fill%3D%27%230b0608%27%20opacity%3D%270.8%27%2F%3E%3Crect%20x%3D%27842%27%20y%3D%27593%27%20width%3D%2720%27%20height%3D%2710%27%20rx%3D%273%27%20fill%3D%27%230b0608%27%20opacity%3D%270.8%27%2F%3E%3Crect%20x%3D%27833%27%20y%3D%27670%27%20width%3D%273%27%20height%3D%2740%27%20rx%3D%271.5%27%20fill%3D%27%23ffdca6%27%20opacity%3D%270.16%27%2F%3E%3Crect%20x%3D%270%27%20y%3D%27726%27%20width%3D%27900%27%20height%3D%2715%27%20fill%3D%27url%28%23pk%29%27%2F%3E%3Crect%20x%3D%270%27%20y%3D%27726%27%20width%3D%27900%27%20height%3D%273%27%20fill%3D%27url%28%23bz%29%27%2F%3E%3Crect%20x%3D%270%27%20y%3D%27741%27%20width%3D%27900%27%20height%3D%278%27%20fill%3D%27%23000%27%20opacity%3D%27.42%27%2F%3E%3Crect%20x%3D%270%27%20y%3D%27940%27%20width%3D%27900%27%20height%3D%27160%27%20fill%3D%27url%28%23ct%29%27%2F%3E%3Crect%20x%3D%270%27%20y%3D%27940%27%20width%3D%27900%27%20height%3D%279%27%20fill%3D%27url%28%23bz%29%27%2F%3E%3Crect%20x%3D%270%27%20y%3D%27954%27%20width%3D%27900%27%20height%3D%272%27%20fill%3D%27%23000%27%20opacity%3D%27.4%27%2F%3E%3C%2Fsvg%3E");
+
+  /* 吧台木沿：一条画出来的木条 + 黄铜压边（贴在页面顶端/组件顶端做「台面」） */
+  --scene-counter: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 22' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='w' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%238a5430'/%3E%3Cstop offset='.35' stop-color='%234b2b19'/%3E%3Cstop offset='1' stop-color='%23241209'/%3E%3C/linearGradient%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23ffe4b4'/%3E%3Cstop offset='.5' stop-color='%23c99a4e'/%3E%3Cstop offset='1' stop-color='%236b4a22'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect y='4' width='400' height='18' fill='url(%23w)'/%3E%3Crect y='0' width='400' height='4.5' rx='2' fill='url(%23b)'/%3E%3Crect y='9' width='400' height='1' fill='%23000' opacity='.35'/%3E%3Crect y='15' width='400' height='1' fill='%23ffcf94' opacity='.1'/%3E%3C/svg%3E");
 }
 
 /* ==========================================================================
-   7) 霓虹 glow 混入类
+   7) 光照混入类（原霓虹 glow 类；名字保持，气质改成「灯」）
    用法：<h1 class="px-title neon-pink">…</h1>
    ========================================================================== */
 .px-title {
@@ -144,32 +226,32 @@
   text-rendering: optimizeSpeed;
 }
 .neon-pink   { color: var(--neon-pink-hot);  text-shadow: var(--neon-text-pink); }
-.neon-cyan   { color: var(--neon-cyan-soft); text-shadow: var(--neon-text-cyan); }
-.neon-purple { color: #d9beff;               text-shadow: var(--neon-text-purple); }
-.neon-amber  { color: #ffe2b0;               text-shadow: var(--neon-text-amber); }
+.neon-cyan   { color: var(--ink-hi);         text-shadow: var(--neon-text-amber); }
+.neon-purple { color: var(--brass-hi);       text-shadow: var(--neon-text-purple); }
+.neon-amber  { color: var(--amber-hi);       text-shadow: var(--neon-text-amber); }
 
-/* 霓虹管边框（按钮 / 桌号牌） */
+/* 黄铜牌框（原霓虹管框）：金属件不发光，靠棱和投影立体 */
 .neon-frame-pink {
-  border: var(--stroke) solid var(--neon-pink);
+  border: var(--stroke) solid var(--brass);
   box-shadow: var(--neon-box-pink);
 }
 .neon-frame-cyan {
-  border: var(--stroke) solid var(--neon-cyan);
-  box-shadow: var(--neon-box-cyan);
+  border: var(--stroke) solid var(--brass-dim);
+  box-shadow: var(--box-brass);
 }
 
-/* 霓虹闪烁（招牌通电的偶发抽搐，别太频繁） */
+/* 老灯管通电的偶发抽搐（只留给真正的招牌，别到处挂） */
 @keyframes neon-flicker {
   0%, 91%, 94%, 100% { opacity: 1; }
-  92%, 95.5% { opacity: 0.45; }
-  93% { opacity: 0.85; }
+  92%, 95.5% { opacity: 0.62; }
+  93% { opacity: 0.9; }
 }
 .neon-flicker { animation: neon-flicker 6s linear infinite; }
 
 /* ==========================================================================
-   8) 质感层：扫描线 / 噪点 / CRT 暗角
-   用法：场景根元素加 .fx-scanlines / .fx-vignette（它们是覆盖伪元素，
-   要求宿主 position:relative 且内容 z-index 正常即可，pointer-events 已关）
+   8) 质感层：灯池 / 暗角 / 细噪
+   R10：删除 CRT 扫描线（重复纹理=廉价感来源 §一.1）。
+   .fx-scanlines 类名保留（cocktail/lobby 页在用），改为「灯罩下的光池」。
    ========================================================================== */
 .fx-scanlines { position: relative; }
 .fx-scanlines::after {
@@ -179,15 +261,9 @@
   z-index: 60;
   pointer-events: none;
   background:
-    repeating-linear-gradient(
-      0deg,
-      rgba(0, 0, 0, 0.22) 0px,
-      rgba(0, 0, 0, 0.22) 1px,
-      transparent 1px,
-      transparent 3px
-    );
-  mix-blend-mode: multiply;
-  opacity: 0.55;
+    radial-gradient(ellipse 78% 42% at 26% -6%, var(--glow-amber-25), transparent 64%),
+    radial-gradient(ellipse 62% 34% at 84% 2%, var(--glow-amber-12), transparent 62%);
+  mix-blend-mode: screen;
 }
 .fx-vignette { position: relative; }
 .fx-vignette::before {
@@ -197,12 +273,12 @@
   z-index: 59;
   pointer-events: none;
   background: radial-gradient(
-    ellipse 120% 90% at 50% 42%,
-    transparent 55%,
-    rgba(8, 3, 15, 0.55) 100%
+    ellipse 122% 92% at 50% 38%,
+    transparent 52%,
+    rgba(9, 4, 6, 0.62) 100%
   );
 }
-/* 噪点：SVG feTurbulence data-uri，避免图片依赖 */
+/* 细噪：材质颗粒（胶片/纸/绒面），不是图案 */
 .fx-noise { position: relative; }
 .fx-noise::after {
   content: "";
@@ -210,69 +286,65 @@
   inset: 0;
   z-index: 61;
   pointer-events: none;
-  opacity: 0.05;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 /* ==========================================================================
-   9) 像素 disco ball（体育 bar × 霓虹夜店 的桥）
+   9) 吊灯（原 .disco-ball 位；结构不变，画的东西换成黄铜灯罩 + 光池）
    结构：<div class="disco-ball"><i class="disco-chain"></i></div>
    ========================================================================== */
-@keyframes disco-spin {
-  from { background-position-x: 0; }
-  to   { background-position-x: 48px; }
+@keyframes lamp-sway {
+  0%, 100% { transform: rotate(-1.6deg); }
+  50%      { transform: rotate(1.6deg); }
 }
-@keyframes disco-glint {
-  0%, 100% { box-shadow: 0 0 18px var(--glow-cyan-40), 0 0 40px var(--glow-purple-20); }
-  50%      { box-shadow: 0 0 26px var(--glow-pink-40), 0 0 52px var(--glow-cyan-16); }
+@keyframes lamp-breathe {
+  0%, 100% { filter: drop-shadow(0 10px 26px var(--glow-amber-25)); }
+  50%      { filter: drop-shadow(0 14px 40px var(--glow-amber-55)); }
 }
 .disco-ball {
   position: relative;
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  /* 像素镜面格：两层错位格子 + 高光，background-position 平移 = 旋转错觉 */
+  width: 74px;
+  height: 42px;
+  border-radius: 46% 46% 12% 12% / 92% 92% 16% 16%;
   background:
-    radial-gradient(circle at 30% 25%, rgba(255,255,255,0.85) 0 8%, transparent 26%),
-    repeating-linear-gradient(90deg,
-      #cfe6ff 0 6px, #8fb8e8 6px 12px, #e8f4ff 12px 18px, #a4c8f0 18px 24px),
-    repeating-linear-gradient(0deg,
-      rgba(20, 30, 60, 0.35) 0 6px, transparent 6px 12px);
-  background-blend-mode: normal, normal, multiply;
-  image-rendering: pixelated;
-  animation: disco-spin 3.2s steps(8) infinite, disco-glint 4s ease-in-out infinite;
+    linear-gradient(180deg, var(--brass-dim) 0 22%, var(--brass) 22% 66%, var(--brass-hi) 66% 100%);
+  box-shadow:
+    inset 0 -3px 0 var(--amber-hi),
+    inset 0 2px 6px rgba(0, 0, 0, 0.45);
+  transform-origin: 50% -34px;
+  animation: lamp-sway 5.6s ease-in-out infinite, lamp-breathe 4.4s ease-in-out infinite;
+}
+/* 灯下的光池（画出来的锥形光，不是发光滤镜） */
+.disco-ball::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  width: 260px;
+  height: 220px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  background: radial-gradient(ellipse 50% 100% at 50% 0%, var(--glow-amber-55), var(--glow-amber-12) 46%, transparent 74%);
+  clip-path: polygon(38% 0, 62% 0, 100% 100%, 0 100%);
 }
 .disco-ball .disco-chain {
   position: absolute;
   left: 50%;
   bottom: 100%;
-  width: 2px;
-  height: 34px;
+  width: 3px;
+  height: 40px;
   transform: translateX(-50%);
-  background: repeating-linear-gradient(0deg,
-    var(--ink-dim) 0 3px, transparent 3px 6px);
+  background: linear-gradient(90deg, var(--brass-shade), var(--brass) 45%, var(--brass-hi) 55%, var(--brass-shade));
 }
 
 /* ==========================================================================
-   10) 摇酒壶签筒（shaker）组件类 —— 修「签穿模」的标准结构
+   10) 摇酒壶签筒（shaker）组件类 —— 修「签穿模」的标准结构（结构不变）
    --------------------------------------------------------------------------
    V1 bug 根因：签是筒的兄弟节点、无 overflow 裁剪，摇晃位移一大签就飞出筒壁。
-   V2 结构（给整合线程抄，z-index / overflow 关系如下）：
-
-   <div class="shaker-stage">                 ← 只负责摇晃动画（transform 在这层）
-     <div class="shaker-slot">                ← 裁剪窗：overflow:hidden，只露筒口以上
-       <div class="shaker-sticks">            ← 签的容器，绝对定位在筒口内
-         <i class="shaker-stick"></i> ×N      ← 每根签只做小幅 translateY，永不超出 slot
-       </div>
-     </div>
-     <img class="shaker-body" src="/assets-v2/stick-tube.svg" />  ← 壶身在签之上
-   </div>
-
-   关键点：
-   1. 摇晃 transform 只加在 .shaker-stage —— 签和壶一起动，相对位置恒定，不会穿。
-   2. .shaker-slot 的 overflow:hidden 是第二道保险：签的任何动画都被裁在筒口区域。
-   3. z-index：.shaker-slot(1) < .shaker-body(2) —— 壶壁永远盖住签的下半段，
-      视觉上签「插在壶里」。签只从壶口露头，露头量 = slot 高度 - 壶口顶部偏移。
+   V2 结构（z-index / overflow 关系）：
+     .shaker-stage（摇晃 transform）> .shaker-slot（overflow 裁剪窗）
+       > .shaker-sticks > .shaker-stick ×N；.shaker-body 壶身盖在签之上。
    ========================================================================== */
 .shaker-stage {
   position: relative;
@@ -306,13 +378,14 @@
   gap: 7px;
   align-items: flex-end;
 }
+/* 签 = 木质签 + 琥珀签头（画出来的木头，不是色块） */
 .shaker-stick {
   width: 9px;
   height: 72px;
   border-radius: 3px 3px 0 0;
-  background: linear-gradient(180deg,
-    var(--neon-amber) 0 14px,        /* 签头：霓虹琥珀 */
-    #d8c9a6 14px 100%);
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.4) 0 1.5px, transparent 1.5px 6.5px, rgba(255, 220, 166, 0.25) 6.5px 100%),
+    linear-gradient(180deg, var(--neon-amber) 0 13px, #c9b489 13px 34%, #a8946e 34% 100%);
   border: 1px solid var(--line-counter);
   box-shadow: 0 0 6px var(--glow-amber-25);
 }
@@ -326,10 +399,62 @@
 .shaker-body {
   position: absolute;
   left: 50%;
-  top: 56px;               /* 壶口盖住签根：slot 底部 32px 被壶身遮挡 */
+  top: 56px;               /* 壶口盖住签根 */
   transform: translateX(-50%);
   width: 150px;
-  z-index: 2;              /* ← 壶身在签之上 */
+  z-index: 2;
   pointer-events: none;
   filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.5));
+}
+
+/* ==========================================================================
+   11) 画出来的场景层 —— 可挂到任何容器上，制造「长在店里」的深度
+   .mat-wood     木面（吧台立面 / 菜单板背板）
+   .mat-brass    黄铜面（铜牌 / 门牌）
+   .mat-velvet   绒布面（包厢卡座 / 档案卡）
+   .mat-glass    玻璃面（杯子 / 灯罩）
+   .rail-brass   顶部黄铜压条（贴在组件上沿）
+   .lamp-pool    顶部灯池（组件被灯烘着）
+   ========================================================================== */
+.mat-wood {
+  background-color: var(--wood);
+  background-image: var(--tex-wood);
+  box-shadow: var(--edge-wood);
+}
+.mat-brass {
+  background-image: linear-gradient(
+    172deg,
+    var(--brass-hi) 0%, var(--brass) 16%, var(--brass-dim) 42%,
+    var(--brass) 62%, var(--brass-hi) 78%, var(--brass-dim) 100%);
+  color: var(--wood-dim);
+  box-shadow: var(--edge-brass), 0 6px 16px rgba(0, 0, 0, 0.5);
+}
+.mat-velvet {
+  background-color: var(--velvet);
+  background-image: var(--tex-velvet);
+}
+.mat-glass {
+  background-image:
+    linear-gradient(100deg, transparent 0 12%, var(--glass-edge) 12% 15%, transparent 15% 100%),
+    linear-gradient(180deg, var(--glass-tint), rgba(0, 0, 0, 0.22));
+  box-shadow: inset -8px -10px 18px rgba(0, 0, 0, 0.4), inset 6px 4px 12px var(--glass-tint);
+}
+.rail-brass { position: relative; }
+.rail-brass::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 7px;
+  background-image: var(--scene-counter);
+  background-size: 100% 100%;
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+  pointer-events: none;
+}
+.lamp-pool { position: relative; }
+.lamp-pool::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse 70% 46% at 50% -8%, var(--glow-amber-25), transparent 66%);
 }

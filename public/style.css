@@ -1,8 +1,16 @@
 /* ==========================================================================
-   理想型·加载中 · 游戏主界面 style.css（V2 换肤版）
-   视觉真源 = /theme-v2.css（像素赛博酒吧 / 霓虹暗紫）
+   理想型·加载中 R10 · 游戏主界面 style.css（「99%」深夜酒馆皮）
+   视觉真源 = /theme-v2.css（暖黑酒红底 + 琥珀灯 + 黄铜木质）
    规则：本文件不出现字面色相，一律 var(--...)；仅允许纯黑/纯白的
    阴影与高光辅助（与 theme-v2 自身写法一致）。
+
+   R10 三条硬约束（Kim 两版被否的教训，写在最上面）：
+   1. 禁满屏重复格纹 —— 一处 repeating 装饰纹都不留。
+   2. 禁裸 linear-gradient 当装饰 —— 渐变只允许出现在「某个被画出来的东西」
+      身上（木纹、黄铜棱、酒液、灯池、玻璃反光），不允许当背景板刷。
+   3. 高级感 = 工艺密度 + 沉浸感。每个组件都必须是店里的一件实物：
+      题卡=吧台菜单板 / 按钮=杯垫·黄铜牌 / 房间码=包厢门牌 /
+      准备状态=酒杯满上 / 进度=酒液刻度 / 罚酒=一整杯灌下去。
    ========================================================================== */
 
 * {
@@ -23,6 +31,9 @@ html {
   overflow-x: clip; /* 防止 position:fixed 元素的绘制区扩大 html.scrollWidth（scoreSlam 动画时期） */
 }
 
+/* 全局舞台 = 站在吧台前往里看：
+   顶上两盏吊灯的光池 → 后吧台酒瓶剪影与层板（画出来的 SVG 场景）→ 脚下暗地板。
+   一张不重复的整幅场景图，不是纹理。 */
 body {
   position: relative;
   min-height: 100dvh;
@@ -30,40 +41,33 @@ body {
   color: var(--ink-hi);
   font-family: var(--font-sans);
   background-color: var(--bar-bg);
-  background-image:
-    radial-gradient(ellipse 120% 60% at 50% -12%, var(--glow-purple-20), transparent 62%),
-    radial-gradient(ellipse 70% 40% at 85% 108%, var(--glow-amber-12), transparent 70%),
-    linear-gradient(90deg, var(--line-soft) 1px, transparent 1px),
-    linear-gradient(var(--line-soft) 1px, transparent 1px),
-    linear-gradient(180deg, var(--bar-bg-deep) 0, var(--bar-bg) 22%, var(--bar-bg) 78%, var(--bar-floor) 100%);
-  background-size: 100% 100%, 100% 100%, 44px 44px, 44px 44px, 100% 100%;
-  background-attachment: fixed;
 }
 
-/* CRT 暗角 + 扫描线：固定覆盖层，pointer-events 关 */
+/* 场景层：后吧台（固定，不随滚动重复） */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background: radial-gradient(ellipse 130% 96% at 50% 40%, transparent 58%, rgba(0, 0, 0, 0.5) 100%);
+  background-image: var(--scene-backbar);
+  background-repeat: no-repeat;
+  background-position: 50% 0;
+  background-size: cover;
+  opacity: 0.92;
 }
 
+/* 空气层：灯下的暖雾 + 包厢暗角（让内容浮在场景之上，且四角敢暗） */
 body::after {
   content: "";
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background: repeating-linear-gradient(
-    0deg,
-    rgba(0, 0, 0, 0.16) 0px,
-    rgba(0, 0, 0, 0.16) 1px,
-    transparent 1px,
-    transparent 3px
-  );
-  opacity: 0.5;
+  background:
+    radial-gradient(ellipse 62% 34% at 26% 4%, var(--glow-amber-25), transparent 62%),
+    radial-gradient(ellipse 52% 28% at 82% 8%, var(--glow-amber-12), transparent 60%),
+    radial-gradient(ellipse 128% 92% at 50% 44%, transparent 48%, rgba(8, 4, 5, 0.7) 100%);
 }
 
 button,
@@ -92,17 +96,21 @@ select:focus-visible,
   gap: 14px;
 }
 
-/* 顶部霓虹灯管小条 */
+/* 顶端：吧台黄铜挂杆（画出来的铜条，挂着这一屏的所有东西） */
 .app::before {
   content: "";
-  height: 4px;
-  width: 96px;
-  margin-bottom: 2px;
-  background: linear-gradient(90deg, var(--neon-pink) 0 68%, var(--neon-cyan) 68% 100%);
+  height: 8px;
+  width: min(140px, 38%);
+  margin: 0 auto 6px;
   border-radius: var(--radius-pill);
-  box-shadow: 0 0 14px var(--glow-pink-40), 0 0 22px var(--glow-cyan-16);
+  background-image: linear-gradient(
+    180deg,
+    var(--brass-hi) 0 20%, var(--brass) 20% 52%,
+    var(--brass-dim) 52% 82%, var(--brass-shade) 82% 100%);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.6), 0 0 18px var(--glow-amber-25);
 }
 
+/* 大标题保留像素字（Kim 过关资产：logo + 大标题），正文一律不用 */
 h1,
 h2 {
   color: var(--ink-hi);
@@ -110,6 +118,7 @@ h2 {
   font-family: var(--font-pixel);
   -webkit-font-smoothing: none;
   text-rendering: optimizeSpeed;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.55), 0 0 26px var(--glow-amber-25);
 }
 
 h1 {
@@ -140,26 +149,26 @@ h2 {
   gap: 10px;
 }
 
-/* 老K招牌小灯箱：CSS 绘制，不再用旧蓝白 favicon */
+/* 店招小灯箱：黄铜边框 + 灯箱里那点暖光（不是发光的塑料方块） */
 .brand-mark {
+  position: relative;
   display: grid;
   place-items: center;
   width: 42px;
   height: 42px;
   flex: 0 0 42px;
-  border-radius: var(--radius-card);
-  border: var(--stroke) solid var(--neon-cyan);
-  background:
-    repeating-linear-gradient(45deg, rgba(45, 226, 255, 0.08) 0 2px, transparent 2px 8px),
-    var(--bar-bg-deep);
-  box-shadow: 0 0 14px var(--glow-cyan-25, rgba(45, 226, 255, 0.25)), inset 0 0 10px rgba(45, 226, 255, 0.12);
+  border-radius: var(--radius-sm);
+  border: var(--stroke) solid var(--brass-dim);
+  background-color: var(--bar-bg-deep);
+  background-image: radial-gradient(ellipse 80% 70% at 50% 12%, var(--glow-amber-25), transparent 72%);
+  box-shadow: var(--edge-brass), 0 5px 12px rgba(0, 0, 0, 0.55);
   user-select: none;
   overflow: hidden;
 }
 .brand-mark svg {
   width: 30px;
   height: 30px;
-  filter: drop-shadow(0 0 4px rgba(45, 226, 255, 0.6));
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.7));
 }
 
 .drink-choice-grid button {
@@ -218,29 +227,48 @@ h2 {
   font-weight: 600;
 }
 
-/* 玻璃卡片：暗紫面板 + 霓虹描光 */
+/* 面板 = 吧台菜单板：深木背板 + 顶端黄铜压条 + 灯从上面烘下来
+   （原「玻璃卡片」名字保留，全站在用；material 换成木+铜） */
 .glass {
   position: relative;
-  background: var(--panel);
-  border: var(--stroke-thin) solid var(--line-soft);
+  border: 0;
   border-radius: var(--radius-card);
-  padding: 20px;
+  padding: 22px 20px 20px;
+  color: var(--ink-hi);
+  background-color: var(--panel-solid);
+  background-image:
+    /* 顶端灯池：这块板被吊灯烘着 */
+    radial-gradient(ellipse 72% 44% at 50% -6%, var(--glow-amber-25), transparent 66%),
+    /* 绒面光泽（画出来的一层，不是刷渐变） */
+    var(--tex-velvet);
   box-shadow: var(--shadow-panel);
-  backdrop-filter: blur(8px);
   overflow: hidden; /* 裁切动画溢出（scoreSlam scale/blur 会临时撑宽 scrollWidth） */
 }
 
-/* 卡片右上角霓虹小灯管 */
+/* 菜单板顶端的黄铜压条（画出来的金属件，撑住整块板的「实物感」） */
+.glass::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 6px;
+  pointer-events: none;
+  background-image: var(--scene-counter);
+  background-size: 100% 100%;
+  opacity: 0.95;
+}
+
+/* 板子右上角那颗黄铜螺丝（挂在墙上的板都得拧俩钉） */
 .app > .glass::after {
   content: "";
   position: absolute;
-  inset: 6px 6px auto auto;
-  width: 30px;
-  height: 3px;
-  border-radius: var(--radius-pill);
-  background: var(--neon-pink);
-  border-left: 8px solid var(--neon-cyan);
-  box-shadow: 0 0 8px var(--glow-pink-40);
+  inset: 13px 12px auto auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background-image:
+    linear-gradient(122deg, transparent 0 40%, var(--brass-shade) 40% 60%, transparent 60% 100%),
+    radial-gradient(circle at 34% 30%, var(--brass-hi), var(--brass) 46%, var(--brass-dim) 100%);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.8), inset 0 -1px 1px rgba(0, 0, 0, 0.5);
 }
 
 .phase-in > * {
@@ -257,59 +285,76 @@ h2 {
   to { opacity: 1; transform: none; }
 }
 
-/* ---------- 按钮：霓虹灯管风 ---------- */
+/* ---------- 按钮 = 黄铜牌（主）/ 木杯垫（次） ----------
+   主按钮：一块打过蜡的黄铜牌，字是刻上去的（压凹 + 上棱受光）。
+   注意：主按钮不是粉色 —— 粉是心动色，不是「可点击」色。 */
 .btn {
+  position: relative;
   display: block;
   width: 100%;
-  min-height: 50px;
-  padding: 13px 16px;
-  border: var(--stroke) solid var(--neon-pink);
+  min-height: 52px;
+  padding: 14px 16px;
+  border: 0;
   border-radius: var(--radius-btn);
-  background: linear-gradient(180deg, var(--neon-pink-hot), var(--neon-pink));
-  color: #fff;
-  box-shadow: var(--neon-box-pink), 0 4px 0 rgba(0, 0, 0, 0.45);
-  font-family: var(--font-pixel);
-  font-size: 18px;
+  color: var(--wood-dim);
+  background-image: linear-gradient(
+    172deg,
+    var(--brass-hi) 0%, var(--brass) 14%, var(--brass-dim) 46%,
+    var(--brass) 68%, var(--brass-hi) 84%, var(--brass-dim) 100%);
+  box-shadow:
+    var(--edge-brass),
+    0 4px 0 var(--brass-shade),
+    0 12px 24px rgba(0, 0, 0, 0.5),
+    0 0 22px var(--glow-amber-25);
+  font-family: var(--font-display);
+  font-size: 19px;
   line-height: 1.2;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-shadow: 0 1px 0 rgba(255, 226, 178, 0.55), 0 -1px 0 rgba(0, 0, 0, 0.28);
   cursor: pointer;
   transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
 }
 
 .btn:hover:not(:disabled) {
-  filter: brightness(1.08);
-  box-shadow: var(--neon-box-pink), 0 4px 0 rgba(0, 0, 0, 0.45), 0 0 28px var(--glow-pink-40);
+  filter: brightness(1.07);
+  box-shadow:
+    var(--edge-brass),
+    0 4px 0 var(--brass-shade),
+    0 14px 28px rgba(0, 0, 0, 0.5),
+    0 0 34px var(--glow-amber-55);
 }
 
+/* 按下去 = 铜牌被按进木头里 */
 .btn:active:not(:disabled) {
-  transform: translateY(3px);
-  box-shadow: 0 0 6px var(--glow-pink-40), 0 1px 0 rgba(0, 0, 0, 0.45);
+  transform: translateY(4px);
+  box-shadow: var(--edge-brass), 0 0 0 var(--brass-shade), 0 4px 10px rgba(0, 0, 0, 0.55);
 }
 
+/* 失效 = 没擦的旧铜牌，蒙了一层灰 */
 .btn:disabled {
   color: var(--ink-ghost);
-  background: var(--bar-bg-raise);
-  border-color: var(--line-neon);
-  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.4);
+  background-image: none;
+  background-color: var(--bar-bg-raise);
+  box-shadow: var(--edge-wood), 0 3px 0 rgba(0, 0, 0, 0.45);
   text-shadow: none;
   cursor: not-allowed;
 }
 
+/* 次按钮 = 木杯垫：压印的木片，不抢主铜牌 */
 .btn.ghost {
-  color: var(--neon-cyan-soft);
-  background: var(--panel-deep);
-  border-color: var(--neon-cyan);
-  box-shadow: var(--neon-box-cyan), 0 3px 0 rgba(0, 0, 0, 0.4);
-  text-shadow: none;
+  color: var(--ink-hi);
+  background-color: var(--wood);
+  background-image: var(--tex-wood);
+  box-shadow: var(--edge-wood), 0 3px 0 var(--wood-dim), 0 8px 18px rgba(0, 0, 0, 0.45);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.7);
+  letter-spacing: 0.05em;
 }
 
 .btn.ghost:hover:not(:disabled) {
-  color: #fff;
-  background: var(--bar-bg-raise);
+  color: var(--amber-hi);
   filter: none;
-  box-shadow: var(--neon-box-cyan), 0 3px 0 rgba(0, 0, 0, 0.4), 0 0 24px var(--glow-cyan-40);
+  box-shadow: var(--edge-wood), 0 3px 0 var(--wood-dim), 0 8px 18px rgba(0, 0, 0, 0.45), 0 0 20px var(--glow-amber-25);
 }
 
 .btn.small {
@@ -339,19 +384,21 @@ h2 {
   cursor: pointer;
 }
 
-.link-btn:hover { color: var(--neon-cyan-soft); }
+.link-btn:hover { color: var(--amber-hi); }
 
+/* 输入框 / 下拉 = 刻进木头里的凹槽（写在点单本上的那一行） */
 input[type="text"],
 select {
   width: 100%;
   min-height: 50px;
   padding: 12px 13px;
-  border: var(--stroke-thin) solid var(--line-neon);
+  border: var(--stroke-thin) solid var(--brass-dim);
   border-radius: var(--radius-sm);
   outline: none;
   color: var(--ink-hi);
-  background: var(--bar-bg-deep);
-  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.5);
+  background-color: var(--bar-bg-deep);
+  box-shadow: var(--edge-carve);
+  font-family: var(--font-sans);
   font-size: 17px;
   font-weight: 650;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
@@ -359,8 +406,8 @@ select {
 
 input[type="text"]:focus,
 select:focus {
-  border-color: var(--neon-cyan);
-  box-shadow: var(--focus-ring), inset 0 2px 8px rgba(0, 0, 0, 0.5);
+  border-color: var(--brass);
+  box-shadow: var(--focus-ring), var(--edge-carve);
 }
 
 input::placeholder {
@@ -400,48 +447,55 @@ select option {
   gap: 8px;
 }
 
+/* 选项格 = 一摞木杯垫，选中的那张被挑出来放到灯下 */
 .emoji-grid button {
   min-width: 48px;
-  min-height: 50px;
+  min-height: 52px;
   padding: 7px;
-  border: var(--stroke) solid var(--line-neon);
+  border: 0;
   border-radius: var(--radius-sm);
-  background: var(--bar-bg-raise);
-  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.4);
+  color: var(--ink-hi);
+  background-color: var(--wood);
+  background-image: var(--tex-wood);
+  box-shadow: var(--edge-wood), 0 3px 0 var(--wood-dim), 0 6px 14px rgba(0, 0, 0, 0.4);
   font-size: 25px;
   cursor: pointer;
-  transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+  transition: transform 0.12s ease, background-color 0.12s ease, box-shadow 0.12s ease;
 }
 
-.emoji-grid button:active { transform: translateY(2px); }
+.emoji-grid button:active { transform: translateY(3px); box-shadow: var(--edge-wood), 0 0 0 var(--wood-dim); }
 
 .emoji-grid button.sel {
-  border-color: var(--neon-pink);
-  background: var(--bar-bg-wall);
-  box-shadow: var(--neon-box-pink);
+  background-color: var(--wood-hi);
+  box-shadow:
+    var(--edge-brass),
+    0 3px 0 var(--brass-shade),
+    0 8px 18px rgba(0, 0, 0, 0.45),
+    0 0 22px var(--glow-amber-55);
 }
 
-/* 今晚特调徽章（调酒身份带进游戏） */
+/* 今晚特调徽章 = 挂在杯脚上的酒单小吊牌 */
 .cocktail-chip {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 12px 14px;
-  border: var(--stroke-thin) solid var(--line-neon);
-  border-left: 4px solid var(--neon-amber);
+  border: 0;
+  border-left: 4px solid var(--brass);
   border-radius: var(--radius-sm);
-  background: var(--panel-deep);
-  box-shadow: inset 0 1px 0 var(--panel-glow-edge), 0 0 14px var(--glow-amber-12);
+  background-color: var(--velvet);
+  background-image: var(--tex-velvet);
+  box-shadow: var(--edge-brass), 0 6px 16px rgba(0, 0, 0, 0.45);
   text-align: left;
 }
 
-.cocktail-chip .ck-glass { font-size: 26px; flex: none; }
+.cocktail-chip .ck-glass { font-size: 26px; flex: none; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6)); }
 
 .cocktail-chip b {
   display: block;
-  color: var(--neon-amber);
+  color: var(--amber-hi);
   text-shadow: var(--neon-text-amber);
-  font-family: var(--font-pixel);
+  font-family: var(--font-display);
   font-size: 16px;
   letter-spacing: 0.04em;
 }
@@ -459,6 +513,7 @@ select option {
   gap: 8px;
 }
 
+/* 座位行 = 吧台上的一格位置：木条 + 一枚黄铜座位牌 */
 .player {
   display: flex;
   min-height: 52px;
@@ -466,18 +521,19 @@ select option {
   gap: 10px;
   padding: 10px 12px;
   overflow: hidden;
-  border: var(--stroke-thin) solid var(--line-soft);
-  border-left: 4px solid var(--neon-cyan);
+  border: 0;
+  border-left: 4px solid var(--brass);
   border-radius: var(--radius-sm);
   color: var(--ink-hi);
-  background: var(--panel-solid);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  background-color: var(--bar-bg-raise);
+  background-image: var(--tex-wood);
+  box-shadow: var(--edge-wood), 0 5px 14px rgba(0, 0, 0, 0.4);
   font-size: 16px;
   font-weight: 700;
 }
 
-.player:nth-child(even) { border-left-color: var(--neon-pink); }
-.player > span:first-child { font-size: 23px; }
+.player:nth-child(even) { border-left-color: var(--brass-dim); }
+.player > span:first-child { font-size: 23px; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6)); }
 
 .player b {
   max-width: 12em;
@@ -489,13 +545,13 @@ select option {
 .player .tag {
   flex: none;
   padding: 3px 9px;
-  border: var(--stroke-thin) solid var(--neon-purple);
+  border: 0;
   border-radius: var(--radius-pill);
-  color: var(--ink-hi);
-  background: var(--bar-bg-wall);
-  box-shadow: 0 0 8px var(--glow-purple-20);
+  color: var(--wood-dim);
+  background-image: linear-gradient(172deg, var(--brass-hi) 0%, var(--brass) 40%, var(--brass-dim) 100%);
+  box-shadow: var(--edge-brass), 0 2px 5px rgba(0, 0, 0, 0.55);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 800;
 }
 
 .player .kickBtn,
@@ -510,33 +566,62 @@ select option {
   font-weight: 600;
 }
 
-/* 房间码：门口霓虹桌号牌 */
+/* 房间码 = 包厢门牌（圣经 §五）：钉在门上的黄铜牌，号码是刻上去再镀暗的。
+   四角四颗螺丝由 ::before 画出，牌面木底衬在铜牌后 → 一眼看懂是「门牌」。 */
 .roomcode {
-  padding: 16px 8px;
-  border: var(--stroke) solid var(--neon-pink);
+  position: relative;
+  padding: 22px 16px 20px;
+  border: 0;
   border-radius: var(--radius-btn);
-  color: var(--neon-pink-hot);
-  background:
-    linear-gradient(90deg, transparent 49.6%, var(--line-soft) 49.6% 50.4%, transparent 50.4%),
-    var(--bar-bg-deep);
-  box-shadow: var(--neon-box-pink), inset 0 0 34px var(--glow-pink-18);
+  color: var(--brass-hi);
+  background-image: linear-gradient(
+    172deg,
+    var(--brass) 0%, var(--brass-dim) 22%, var(--brass-shade) 50%,
+    var(--brass-dim) 74%, var(--brass) 100%);
+  box-shadow:
+    var(--edge-brass),
+    0 8px 0 var(--brass-shade),
+    0 18px 34px rgba(0, 0, 0, 0.6),
+    0 0 30px var(--glow-amber-25);
   font-family: var(--font-pixel);
-  font-size: clamp(52px, 15vw, 76px);
+  font-size: clamp(50px, 14.5vw, 74px);
   line-height: 1;
   font-weight: 700;
   text-align: center;
+  letter-spacing: 0.1em;
   font-variant-numeric: tabular-nums;
-  text-shadow: var(--neon-text-pink);
+  /* 刻字：上缘暗、下缘亮 = 凹进金属 */
+  text-shadow:
+    0 -1px 0 rgba(0, 0, 0, 0.85),
+    0 1px 0 rgba(255, 232, 190, 0.5),
+    0 4px 10px rgba(0, 0, 0, 0.55);
 }
 
+/* 门牌四角的螺丝 */
+.roomcode::before {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  border-radius: 6px;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4), inset 0 0 0 2px rgba(255, 226, 178, 0.16);
+  background-image:
+    radial-gradient(circle 4px at 6px 6px, var(--brass-hi) 0 42%, var(--brass-shade) 44% 100%),
+    radial-gradient(circle 4px at calc(100% - 6px) 6px, var(--brass-hi) 0 42%, var(--brass-shade) 44% 100%),
+    radial-gradient(circle 4px at 6px calc(100% - 6px), var(--brass-hi) 0 42%, var(--brass-shade) 44% 100%),
+    radial-gradient(circle 4px at calc(100% - 6px) calc(100% - 6px), var(--brass-hi) 0 42%, var(--brass-shade) 44% 100%);
+  background-repeat: no-repeat;
+}
+
+/* 二维码 = 压在门牌下的小卡片 */
 .qr-wrap {
   display: inline-block;
   margin: 4px auto;
   padding: 10px;
-  border: var(--stroke) solid var(--line-neon);
-  border-radius: var(--radius-btn);
+  border: var(--stroke) solid var(--brass-dim);
+  border-radius: var(--radius-sm);
   background: #fff; /* 扫码可靠性：码区保持白底 */
-  box-shadow: 0 0 0 1px var(--line-soft), 0 10px 26px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--edge-brass), 0 10px 26px rgba(0, 0, 0, 0.55);
 }
 
 .qr-wrap canvas {
@@ -554,78 +639,93 @@ select option {
   overflow: hidden;
   align-items: center;
   gap: 20px;
-  background:
-    linear-gradient(90deg, var(--line-soft) 1px, transparent 1px),
-    linear-gradient(var(--line-soft) 1px, transparent 1px),
-    linear-gradient(180deg, var(--bar-bg-deep) 0 26%, var(--bar-bg-wall) 26% 72%, var(--bar-floor) 100%);
-  background-size: 26px 26px, 26px 26px, 100% 100%;
+  /* 抽签舞台 = 站在吧台前：后墙酒瓶剪影（画出来的场景）+ 台面木板 */
+  background-color: var(--bar-bg-deep);
+  background-image:
+    var(--scene-backbar),
+    linear-gradient(180deg, transparent 0 62%, var(--wood-dim) 62% 100%);
+  background-repeat: no-repeat, no-repeat;
+  background-position: 50% -8%, 50% 100%;
+  background-size: 128% auto, 100% 100%;
 }
 
-/* 吧台暖灯横带 */
+/* 吧台台面：一条画出来的木沿压在舞台底部（签筒就摆在这上面） */
 .stick-stage::before {
   content: "";
   position: absolute;
-  inset: 0 0 auto;
-  height: 84px;
-  background:
-    radial-gradient(ellipse 60% 130% at 50% -30%, var(--glow-amber-25), transparent 70%),
-    linear-gradient(105deg, var(--bar-bg-deep) 0 70%, var(--bar-bg-wall) 70% 100%);
-  border-bottom: var(--stroke-thin) solid var(--line-neon);
+  inset: auto 0 0 0;
+  height: 74px;
+  background-color: var(--bar-counter);
+  background-image:
+    var(--scene-counter),
+    var(--tex-wood);
+  background-repeat: no-repeat, repeat-x;
+  background-position: 0 0, 0 0;
+  background-size: 100% 14px, auto;
+  box-shadow: 0 -14px 34px rgba(0, 0, 0, 0.55), inset 0 12px 26px -12px var(--glow-amber-25);
 }
 
+/* 签筒 = 吧台上的黄铜签筒：金属筒身 + 打光棱 + 刻着 100 的铜牌 */
 .stick-cup {
   position: relative;
   width: 138px;
   height: 174px;
-  margin-top: 88px;
-  border: var(--stroke-bold) solid var(--line-counter);
-  border-radius: 8px 8px 38px 38px;
-  background:
-    linear-gradient(90deg, transparent 0 14%, var(--glow-amber-25) 14% 18%, transparent 18% 100%),
-    linear-gradient(150deg, var(--bar-bg-raise) 0%, var(--bar-bg-wall) 34%, var(--bar-counter) 72%, var(--bar-counter-top) 100%);
+  margin-top: 78px;
+  border: 0;
+  border-radius: 10px 10px 34px 34px;
+  background-image: linear-gradient(
+    92deg,
+    var(--brass-shade) 0 6%, var(--brass-dim) 6% 18%, var(--brass) 18% 30%,
+    var(--brass-hi) 30% 37%, var(--brass) 37% 58%, var(--brass-dim) 58% 80%,
+    var(--brass-shade) 80% 100%);
   box-shadow:
-    inset -14px -16px 22px rgba(0, 0, 0, 0.45),
-    8px 10px 0 rgba(0, 0, 0, 0.5),
-    0 0 30px var(--glow-amber-25);
+    inset 0 -22px 30px rgba(0, 0, 0, 0.5),
+    inset 0 8px 14px rgba(255, 232, 190, 0.22),
+    0 16px 30px rgba(0, 0, 0, 0.65),
+    0 0 34px var(--glow-amber-25);
   will-change: transform;
 }
 
+/* 筒口那圈铜箍 */
 .stick-cup::before {
   content: "";
   position: absolute;
-  inset: -13px 12px auto;
-  height: 20px;
-  border: var(--stroke-bold) solid var(--line-counter);
+  inset: -14px -5px auto;
+  height: 22px;
   border-radius: 50%;
-  background: linear-gradient(180deg, var(--bar-bg-raise), var(--bar-bg-deep));
+  background-image: linear-gradient(
+    92deg, var(--brass-shade) 0 8%, var(--brass) 22% 34%, var(--brass-hi) 40% 46%,
+    var(--brass) 56% 74%, var(--brass-shade) 92% 100%);
+  box-shadow: inset 0 -4px 8px rgba(0, 0, 0, 0.55), 0 3px 8px rgba(0, 0, 0, 0.6);
 }
 
+/* 筒身上刻的「100」（凹进金属，不是发光贴纸） */
 .stick-cup::after {
   content: "100";
   position: absolute;
   left: 50%;
-  top: 52%;
+  top: 54%;
   transform: translate(-50%, -50%);
-  padding: 4px 8px;
-  border: var(--stroke) solid var(--neon-pink);
-  color: var(--neon-pink-hot);
-  background: var(--bar-bg-deep);
-  box-shadow: 0 0 10px var(--glow-pink-40);
+  color: var(--brass-shade);
   font-family: var(--font-pixel);
-  font-size: 24px;
+  font-size: 30px;
   line-height: 1;
   font-weight: 700;
+  letter-spacing: 0.06em;
+  text-shadow: 0 1px 0 rgba(255, 232, 190, 0.42);
 }
 
+/* 签 = 木签 + 琥珀签头 */
 .stick-cup .stick {
   position: absolute;
   top: -70px;
-  width: 10px;
+  width: 11px;
   height: 92px;
-  border: var(--stroke-thin) solid var(--line-counter);
   border-radius: 4px 4px 2px 2px;
-  background: linear-gradient(180deg, var(--neon-amber) 0 16px, var(--ink-mid) 16px 100%);
-  box-shadow: 0 0 8px var(--glow-amber-25);
+  background-image:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.45) 0 2px, transparent 2px 7px, rgba(255, 226, 178, 0.3) 7px 100%),
+    linear-gradient(180deg, var(--neon-amber) 0 16px, #cbb68b 16px 40%, #a4906c 40% 100%);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6), 0 0 10px var(--glow-amber-25);
 }
 
 .stick-cup .s1 { left: 24px; transform: rotate(-8deg); }
@@ -640,20 +740,25 @@ select option {
   75% { transform: rotate(9deg) translateX(4px); }
 }
 
+/* 抽出来的那根签：被灯照着的木牌，字是烙上去的 */
 .stick-out {
   max-width: 100%;
   padding: 16px 20px;
   overflow-wrap: anywhere;
-  border: var(--stroke) solid var(--neon-amber);
+  border: 0;
   border-radius: var(--radius-sm);
-  color: var(--bar-bg-deep);
-  background: linear-gradient(180deg, var(--neon-amber), var(--neon-amber-deep));
-  box-shadow: 0 0 18px var(--glow-amber-55), 6px 6px 0 rgba(0, 0, 0, 0.5);
-  font-family: var(--font-pixel);
+  color: var(--wood-dim);
+  background-color: var(--neon-amber);
+  background-image:
+    linear-gradient(179deg, rgba(0, 0, 0, 0.14) 0 1px, transparent 1px 11px, rgba(0, 0, 0, 0.1) 11px 12px, transparent 12px 100%),
+    radial-gradient(ellipse 90% 120% at 30% 0%, rgba(255, 240, 210, 0.65), transparent 68%);
+  box-shadow: var(--edge-brass), 0 0 26px var(--glow-amber-55), 0 12px 26px rgba(0, 0, 0, 0.55);
+  font-family: var(--font-display);
   font-size: 21px;
   line-height: 1.35;
-  font-weight: 700;
+  font-weight: 800;
   text-align: center;
+  text-shadow: 0 1px 0 rgba(255, 244, 220, 0.6);
   animation: stickPop 0.55s cubic-bezier(0.2, 1.6, 0.4, 1);
 }
 
@@ -667,47 +772,59 @@ select option {
   to { opacity: 1; transform: none; }
 }
 
+/* 进度 = 酒液刻度（圣经 §五）：一支横放的量酒杯，酒液从左边灌进去。
+   槽壁是玻璃（内凹高光），酒是琥珀，液面有一道亮边。 */
 .progress-track {
+  position: relative;
   width: 100%;
   max-width: 300px;
-  height: 14px;
+  height: 18px;
   overflow: hidden;
-  border: var(--stroke-thin) solid var(--neon-pink);
+  border: var(--stroke-thin) solid var(--brass-dim);
   border-radius: var(--radius-pill);
-  background: var(--bar-bg-deep);
-  box-shadow: 0 0 14px var(--glow-pink-40), inset 0 2px 6px rgba(0, 0, 0, 0.55);
-  animation: trackBreath 1.8s ease-in-out infinite;
+  background-color: var(--bar-bg-deep);
+  box-shadow: var(--edge-carve), 0 0 0 3px rgba(0, 0, 0, 0.28);
+}
+
+/* 玻璃上的反光条（画在槽壁上，不随酒液动） */
+.progress-track::after {
+  content: "";
+  position: absolute;
+  inset: 2px 8px auto;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background-image: linear-gradient(90deg, transparent, var(--glass-edge) 22%, transparent 62%);
+  pointer-events: none;
 }
 
 .progress-fill {
   width: 0;
   height: 100%;
-  background: linear-gradient(90deg, var(--neon-pink), var(--neon-cyan));
-  box-shadow: 0 0 10px var(--glow-pink-40);
+  background-color: var(--liquor);
+  background-image:
+    linear-gradient(180deg, rgba(255, 236, 200, 0.55) 0 20%, transparent 20% 62%, rgba(0, 0, 0, 0.3) 62% 100%),
+    linear-gradient(90deg, var(--liquor-deep) 0%, var(--liquor) 40%, var(--neon-amber) 100%);
+  box-shadow: 2px 0 0 var(--amber-hi), 0 0 16px var(--glow-amber-55);
   transition: width 0.15s ease;
 }
 
-/* 摇签进度播报：跟调酒页一个气质的发光文案，而不是黑底播报条 */
+/* 摇签进度播报：灯下的字 */
 .stick-stage .progress {
-  color: var(--neon-cyan-soft);
-  text-shadow: var(--neon-text-cyan);
+  color: var(--amber-hi);
+  text-shadow: var(--neon-text-amber);
   font-weight: 700;
 }
 
-@keyframes trackBreath {
-  0%, 100% { box-shadow: 0 0 10px var(--glow-pink-40), inset 0 2px 6px rgba(0, 0, 0, 0.55); }
-  50% { box-shadow: 0 0 20px var(--glow-pink-40), inset 0 2px 6px rgba(0, 0, 0, 0.55); }
-}
-
+/* 大比分：刻在铜牌上的数字（不发霓虹光，靠金属棱立体） */
 .score-val {
-  color: var(--neon-cyan-soft);
+  color: var(--amber-hi);
   font-family: var(--font-pixel);
   font-size: clamp(90px, 24vw, 132px);
   line-height: 0.98;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   text-align: center;
-  text-shadow: var(--neon-text-cyan);
+  text-shadow: var(--neon-text-amber);
   transition: transform 0.1s ease;
 }
 
@@ -725,40 +842,49 @@ input[type="range"] {
   touch-action: pan-x;
 }
 
+/* 打分滑杆 = 量酒杯的刻度槽：越往右酒越满，握把是一枚黄铜旋钮 */
 input[type="range"]::-webkit-slider-runnable-track {
-  height: 18px;
-  border: var(--stroke-thin) solid var(--line-neon);
+  height: 20px;
+  border: var(--stroke-thin) solid var(--brass-dim);
   border-radius: var(--radius-pill);
-  background: linear-gradient(90deg, var(--bar-bg-raise) 0 14%, var(--neon-purple) 48%, var(--neon-pink) 100%);
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5);
+  background-color: var(--bar-bg-deep);
+  background-image:
+    linear-gradient(180deg, rgba(255, 236, 200, 0.4) 0 22%, transparent 22% 64%, rgba(0, 0, 0, 0.34) 64% 100%),
+    linear-gradient(90deg, var(--liquor-deep) 0 12%, var(--liquor) 52%, var(--neon-amber) 100%);
+  box-shadow: var(--edge-carve);
 }
 
 input[type="range"]::-webkit-slider-thumb {
   width: 46px;
   height: 46px;
-  margin-top: -15px;
+  margin-top: -14px;
   appearance: none;
   -webkit-appearance: none;
-  border: var(--stroke-bold) solid var(--neon-cyan);
+  border: 0;
   border-radius: 50%;
-  background: radial-gradient(circle at 34% 30%, #fff 0 16%, var(--neon-cyan) 20% 100%);
-  box-shadow: var(--neon-box-cyan), 0 3px 0 rgba(0, 0, 0, 0.5);
+  background-image:
+    linear-gradient(122deg, transparent 0 42%, rgba(0, 0, 0, 0.28) 42% 58%, transparent 58% 100%),
+    radial-gradient(circle at 34% 28%, var(--brass-hi) 0 18%, var(--brass) 42%, var(--brass-dim) 74%, var(--brass-shade) 100%);
+  box-shadow: var(--edge-brass), 0 4px 0 var(--brass-shade), 0 8px 16px rgba(0, 0, 0, 0.6);
 }
 
 input[type="range"]::-moz-range-track {
-  height: 18px;
-  border: var(--stroke-thin) solid var(--line-neon);
+  height: 20px;
+  border: var(--stroke-thin) solid var(--brass-dim);
   border-radius: var(--radius-pill);
-  background: linear-gradient(90deg, var(--bar-bg-raise) 0 14%, var(--neon-purple) 48%, var(--neon-pink) 100%);
+  background-color: var(--bar-bg-deep);
+  background-image:
+    linear-gradient(180deg, rgba(255, 236, 200, 0.4) 0 22%, transparent 22% 64%, rgba(0, 0, 0, 0.34) 64% 100%),
+    linear-gradient(90deg, var(--liquor-deep) 0 12%, var(--liquor) 52%, var(--neon-amber) 100%);
 }
 
 input[type="range"]::-moz-range-thumb {
   width: 46px;
   height: 46px;
-  border: var(--stroke-bold) solid var(--neon-cyan);
+  border: 0;
   border-radius: 50%;
-  background: var(--neon-cyan);
-  box-shadow: var(--neon-box-cyan);
+  background-image: radial-gradient(circle at 34% 28%, var(--brass-hi) 0 18%, var(--brass) 42%, var(--brass-dim) 74%, var(--brass-shade) 100%);
+  box-shadow: var(--edge-brass), 0 4px 0 var(--brass-shade);
 }
 
 .slider-ticks {
@@ -772,37 +898,76 @@ input[type="range"]::-moz-range-thumb {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---------- 题卡 = 吧台菜单板（圣经 §五：组件拟物） ----------
+   一块挂在吧台后的深木板，上下两根黄铜挂条，题目像今日特饮一样写在板上。
+   左边缘的黄铜卡槽是「这一条是当前在点的那一道」。 */
 .question-card {
+  position: relative;
   overflow: hidden;
-  border-left: 6px solid var(--neon-pink);
+  padding: 30px 22px 24px 26px;
+  border: 0;
+  border-radius: var(--radius-card);
   color: var(--ink-hi);
-  font-size: clamp(20px, 5vw, 25px);
-  line-height: 1.5;
+  background-color: var(--wood);
+  background-image:
+    radial-gradient(ellipse 84% 52% at 50% -10%, var(--glow-amber-25), transparent 68%),
+    var(--tex-wood);
+  box-shadow:
+    var(--edge-wood),
+    0 20px 44px rgba(0, 0, 0, 0.6),
+    inset 0 0 60px rgba(0, 0, 0, 0.35);
+  font-family: var(--font-display);
+  font-size: clamp(20px, 5vw, 26px);
+  line-height: 1.55;
   font-weight: 700;
+  text-shadow: 0 2px 3px rgba(0, 0, 0, 0.6);
 }
 
+/* 菜单板上下两根黄铜挂条 —— 板子是被吊起来的，不是浮在空中的 div */
 .question-card::before {
-  content: "Q";
-  display: grid;
-  width: 38px;
-  height: 38px;
-  margin-bottom: 12px;
-  place-items: center;
-  border: var(--stroke) solid var(--neon-pink);
-  color: var(--neon-pink-hot);
-  background: var(--bar-bg-deep);
-  box-shadow: var(--neon-box-pink);
-  font-family: var(--font-pixel);
-  font-size: 18px;
-  font-weight: 700;
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 9px;
+  background-image: var(--scene-counter);
+  background-size: 100% 100%;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.6);
 }
 
+/* 底部挂条（提高一档特异性压过 .app > .glass::after 的螺丝：菜单板挂着，不拧钉） */
+.glass.question-card::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  width: auto;
+  height: 6px;
+  border-radius: 0;
+  background-image: linear-gradient(180deg, var(--brass) 0 34%, var(--brass-dim) 34% 72%, var(--brass-shade) 72% 100%);
+  box-shadow: 0 -3px 10px rgba(0, 0, 0, 0.5);
+  opacity: 0.9;
+}
+
+/* 辣度 = 灶台档位牌（圣经 §五：灶台三档火）：一小块烧热的铁牌，
+   🌶️ 由 app.js 按 spice 给 1–3 个，牌子本体在这里画。 */
 .question-card .spice {
-  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 16px;
+  padding: 5px 13px;
+  border-radius: var(--radius-pill);
   color: var(--neon-red);
-  font-size: 14px;
+  background-color: var(--bar-bg-deep);
+  background-image: linear-gradient(180deg, rgba(255, 226, 178, 0.13), rgba(0, 0, 0, 0.45));
+  box-shadow: var(--edge-brass), 0 0 16px rgba(216, 84, 63, 0.32);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.1;
+  letter-spacing: 1px;
+  text-shadow: none;
 }
 
+/* 结算行 = 吧台上的一张酒单小票（木托盘上排开） */
 .reveal-row {
   position: relative;
   display: flex;
@@ -810,11 +975,12 @@ input[type="range"]::-moz-range-thumb {
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  border: var(--stroke-thin) solid var(--line-soft);
+  border: 0;
   border-radius: var(--radius-sm);
   color: var(--ink-hi);
-  background: var(--panel-solid);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  background-color: var(--bar-bg-raise);
+  background-image: var(--tex-wood);
+  box-shadow: var(--edge-wood), 0 5px 14px rgba(0, 0, 0, 0.42);
   font-size: 16px;
   font-weight: 700;
 }
@@ -828,38 +994,39 @@ input[type="range"]::-moz-range-thumb {
 .reveal-row .g {
   flex: none;
   margin-left: auto;
-  color: var(--neon-cyan-soft);
+  color: var(--amber-hi);
   font-family: var(--font-pixel);
   font-size: 25px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  text-shadow: 0 0 10px var(--glow-cyan-40);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.7), 0 0 14px var(--glow-amber-55);
 }
 
 .reveal-row.drink {
-  border-color: var(--neon-red);
-  background: var(--bar-bg-wall);
-  box-shadow: 5px 0 0 var(--neon-red) inset, 0 0 16px rgba(0, 0, 0, 0.4);
+  background-color: var(--velvet);
+  box-shadow: 5px 0 0 var(--neon-red) inset, var(--edge-wood), 0 6px 16px rgba(0, 0, 0, 0.45);
 }
 
 .reveal-row.exact {
-  border-color: var(--neon-amber);
-  background: var(--bar-bg-wall);
-  box-shadow: 5px 0 0 var(--neon-amber) inset, 0 0 14px var(--glow-amber-25);
+  background-color: var(--wood-hi);
+  box-shadow: 5px 0 0 var(--brass) inset, var(--edge-brass), 0 0 20px var(--glow-amber-25);
 }
 
+/* 徽章 = 盖在小票上的印章 */
 .badge {
   flex: none;
-  padding: 3px 8px;
-  border: var(--stroke-thin) solid var(--line-neon);
+  padding: 3px 9px;
+  border: 0;
   border-radius: var(--radius-pill);
+  box-shadow: var(--edge-brass);
   font-size: 12px;
   font-weight: 800;
 }
 
-.badge.drink { color: #fff; background: var(--neon-red); border-color: var(--neon-red); box-shadow: 0 0 10px var(--glow-pink-40); }
-.badge.exact { color: var(--bar-bg-deep); background: var(--neon-amber); border-color: var(--neon-amber); box-shadow: 0 0 10px var(--glow-amber-55); }
+.badge.drink { color: var(--ink-hi); background-color: var(--neon-red); box-shadow: var(--edge-brass), 0 0 12px rgba(216, 84, 63, 0.45); }
+.badge.exact { color: var(--wood-dim); background-image: linear-gradient(172deg, var(--brass-hi), var(--brass) 46%, var(--brass-dim)); box-shadow: var(--edge-brass), 0 0 14px var(--glow-amber-55); }
 
+/* 揭晓大分 = 心动时刻，马天尼粉在这里出场（圣经 §四：只给爆灯/揭晓/亮相/logo） */
 .big-score {
   color: var(--neon-pink-hot);
   font-family: var(--font-pixel);
@@ -994,16 +1161,17 @@ input[type="range"]::-moz-range-thumb {
 
 .flip-card.flipped { transform: rotateY(180deg); }
 
+/* 亮相卡 = 装在黄铜相框里的一张照片，翻面是背后写的字 */
 .flip-face {
   position: absolute;
   inset: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: var(--stroke-thin) solid var(--line-neon);
+  border: 0;
   border-radius: var(--radius-card);
-  background: var(--panel-solid);
-  box-shadow: 0 22px 58px rgba(0, 0, 0, 0.55), 0 0 20px var(--glow-purple-20);
+  background-color: var(--panel-solid);
+  box-shadow: var(--edge-brass), 0 26px 62px rgba(0, 0, 0, 0.62), 0 0 26px var(--glow-purple-20);
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
 }
@@ -1012,24 +1180,22 @@ input[type="range"]::-moz-range-thumb {
   gap: 10px;
   padding: 20px;
   overflow-y: auto;
-  background:
-    linear-gradient(90deg, var(--line-soft) 1px, transparent 1px),
-    linear-gradient(var(--line-soft) 1px, transparent 1px),
-    var(--bar-bg-wall);
-  background-size: 24px 24px, 24px 24px, auto;
+  background-color: var(--velvet);
+  background-image: var(--tex-velvet);
   transform: rotateY(180deg);
 }
 
-/* 生图等待：暗紫 shimmer；文案=Kim 指定画外音 */
+/* 生图等待：灯从画框上扫过（不是紫色 shimmer，是灯在找人） */
 .art-wrap {
   position: relative;
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  border-bottom: var(--stroke-thin) solid var(--line-neon);
-  background: linear-gradient(110deg, var(--bar-bg-raise) 38%, var(--bar-bg-wall) 50%, var(--bar-bg-raise) 62%);
+  border-bottom: var(--stroke) solid var(--brass-dim);
+  background-color: var(--bar-bg-deep);
+  background-image: linear-gradient(110deg, transparent 36%, var(--glow-amber-25) 50%, transparent 64%);
   background-size: 220% 100%;
-  animation: shimmer 1.4s linear infinite;
+  animation: shimmer 1.6s linear infinite;
 }
 
 .art-wrap.loaded {
@@ -1051,8 +1217,8 @@ input[type="range"]::-moz-range-thumb {
   z-index: 3;
   padding: 6px 16px;
   border-radius: 999px;
-  background: rgba(20, 8, 30, 0.62);
-  border: var(--stroke-thin) solid var(--line-neon);
+  background: rgba(26, 10, 14, 0.66);
+  border: var(--stroke-thin) solid var(--brass-dim);
   color: var(--neon-pink-hot);
   text-shadow: var(--neon-text-pink);
   font-family: var(--font-pixel);
@@ -1089,21 +1255,23 @@ input[type="range"]::-moz-range-thumb {
 
 .flip-face .caption {
   padding: 14px;
-  border-top: 4px solid var(--neon-cyan);
+  border-top: 4px solid var(--brass);
   text-align: center;
-  background: var(--panel-solid);
+  background-color: var(--panel-solid);
+  background-image: var(--tex-velvet);
 }
 
 .flip-face .caption b { font-size: 22px; }
 
 .detail-item {
   padding: 12px;
-  border: var(--stroke-thin) solid var(--line-soft);
-  border-left: 4px solid var(--neon-purple);
+  border: 0;
+  border-left: 4px solid var(--brass-dim);
   border-radius: var(--radius-sm);
   color: var(--ink-hi);
-  background: var(--panel-solid);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+  background-color: var(--bar-bg-raise);
+  background-image: var(--tex-velvet);
+  box-shadow: var(--edge-wood), 0 5px 12px rgba(0, 0, 0, 0.4);
   font-size: 15px;
   line-height: 1.55;
   font-weight: 600;
@@ -1124,12 +1292,13 @@ input[type="range"]::-moz-range-thumb {
   max-width: 100%;
   max-height: 78vh;
   margin: 0 auto;
-  border: var(--stroke-thin) solid var(--line-neon);
+  border: var(--stroke) solid var(--brass-dim);
   border-radius: var(--radius-btn);
-  box-shadow: 0 22px 52px rgba(0, 0, 0, 0.6), 0 0 24px var(--glow-pink-18);
+  box-shadow: var(--edge-brass), 0 22px 52px rgba(0, 0, 0, 0.65);
   animation: pop 0.35s ease;
 }
 
+/* toast = 九八递过来的一张便条 */
 .toast {
   position: fixed;
   z-index: 300;
@@ -1137,12 +1306,12 @@ input[type="range"]::-moz-range-thumb {
   bottom: 90px;
   max-width: 84vw;
   padding: 12px 18px;
-  border: var(--stroke-thin) solid var(--neon-cyan);
+  border: 0;
   border-radius: var(--radius-sm);
   color: var(--ink-hi);
-  background: var(--panel-deep);
-  box-shadow: var(--neon-box-cyan), 0 16px 34px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(10px);
+  background-color: var(--wood);
+  background-image: var(--tex-wood);
+  box-shadow: var(--edge-brass), 0 16px 34px rgba(0, 0, 0, 0.6);
   font-size: 15px;
   font-weight: 650;
   text-align: center;
@@ -1158,11 +1327,11 @@ input[type="range"]::-moz-range-thumb {
   left: 50%;
   max-width: 88vw;
   padding: 10px 16px;
-  border: var(--stroke-thin) solid var(--neon-red);
+  border: 0;
   border-radius: var(--radius-sm);
   color: #fff;
   background: var(--neon-red);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--edge-brass), 0 12px 28px rgba(0, 0, 0, 0.6);
   font-size: 14px;
   font-weight: 750;
   font-family: inherit;
@@ -1171,8 +1340,8 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .reconnect-bar.retrying {
-  background: var(--panel-deep);
-  border-color: var(--line-neon);
+  background-color: var(--wood);
+  background-image: var(--tex-wood);
   color: var(--ink-hi);
   cursor: default;
 }
@@ -1184,14 +1353,13 @@ input[type="range"]::-moz-range-thumb {
   text-align: center;
 }
 
-/* ---------- 非诚勿扰灯板 ---------- */
+/* ---------- 非诚勿扰灯板 = 吧台上方那排灯泡（心动时刻，粉在这里合法） ---------- */
 .light-panel {
   overflow: hidden;
-  border-color: var(--line-neon);
-  background:
-    linear-gradient(90deg, var(--line-soft) 1px, transparent 1px),
-    var(--panel);
-  background-size: 24px 24px, auto;
+  background-color: var(--bar-bg-deep);
+  background-image:
+    radial-gradient(ellipse 80% 44% at 50% -4%, var(--glow-pink-18), transparent 66%),
+    var(--tex-velvet);
 }
 
 .lamp-row {
@@ -1201,27 +1369,31 @@ input[type="range"]::-moz-range-thumb {
   gap: 9px;
 }
 
+/* 单颗灯泡：黄铜灯座 + 没通电的玻璃壳 */
 .lamp {
   width: 22px;
   height: 22px;
-  border: var(--stroke-thin) solid var(--line-neon);
+  border: var(--stroke-thin) solid var(--brass-dim);
   border-radius: 50%;
-  background: var(--bar-bg-deep);
-  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.5);
+  background-color: var(--bar-bg-deep);
+  background-image: radial-gradient(circle at 34% 28%, var(--glass-edge) 0 14%, transparent 42%);
+  box-shadow: inset 0 -3px 5px rgba(0, 0, 0, 0.6), 0 2px 4px rgba(0, 0, 0, 0.5);
   transition: background 0.3s ease, box-shadow 0.3s ease;
 }
 
+/* 爆灯：灯泡通电 —— 全站最该出现马天尼粉的地方 */
 .lamp.on {
-  border-color: var(--neon-pink);
-  background: radial-gradient(circle at 34% 30%, #fff 0 16%, var(--neon-pink-hot) 20% 52%, var(--neon-pink) 74%);
-  box-shadow: 0 0 15px var(--glow-pink-70);
+  border-color: var(--brass);
+  background-image: radial-gradient(circle at 34% 30%, #fff 0 15%, var(--neon-pink-hot) 20% 52%, var(--neon-pink) 76%);
+  box-shadow: 0 0 18px var(--glow-pink-70), 0 0 34px var(--glow-pink-40);
   animation: lampPulse 1.6s ease-in-out infinite;
 }
 
 .lamp.dead {
-  background: var(--bar-bg-deep);
-  border-color: var(--ink-ghost);
-  opacity: 0.9;
+  background-color: var(--bar-bg-deep);
+  background-image: none;
+  border-color: var(--brass-shade);
+  opacity: 0.8;
 }
 
 @keyframes lampPulse {
@@ -1238,21 +1410,23 @@ input[type="range"]::-moz-range-thumb {
 .light-count .neon { font-size: 26px; }
 .light-btns { width: 100%; }
 
+/* 爆灯 = 心动时刻：整个按钮变成一盏亮起来的粉灯（全站少数几处马天尼粉之一） */
 .btn.light-burst {
-  color: var(--bar-bg-deep);
-  background: linear-gradient(180deg, var(--neon-amber), var(--neon-amber-deep));
-  border-color: var(--neon-amber);
-  box-shadow: 0 0 16px var(--glow-amber-55), 0 4px 0 rgba(0, 0, 0, 0.45);
-  text-shadow: none;
+  color: #fff;
+  background-color: var(--neon-pink);
+  background-image: radial-gradient(ellipse 80% 120% at 30% 0%, var(--neon-pink-hot), transparent 70%);
+  box-shadow: var(--edge-brass), 0 4px 0 var(--brass-shade), 0 0 30px var(--glow-pink-70);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
-.btn.light-burst:hover:not(:disabled) { filter: brightness(1.06); }
+.btn.light-burst:hover:not(:disabled) { filter: brightness(1.06); box-shadow: var(--edge-brass), 0 4px 0 var(--brass-shade), 0 0 44px var(--glow-pink-70); }
 
+/* 灭灯 = 把灯关掉：暗下去的木牌 */
 .btn.light-off {
-  color: var(--ink-hi);
-  background: var(--bar-bg-deep);
-  border-color: var(--line-neon);
-  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.5);
+  color: var(--ink-mid);
+  background-color: var(--bar-bg-deep);
+  background-image: var(--tex-wood);
+  box-shadow: var(--edge-wood), 0 4px 0 var(--wood-dim);
   text-shadow: none;
 }
 
@@ -1306,11 +1480,11 @@ input[type="range"]::-moz-range-thumb {
   position: absolute;
   left: 100vw;
   padding: 7px 14px;
-  border: var(--stroke-thin) solid var(--line-neon);
+  border: var(--stroke-thin) solid var(--brass-dim);
   border-radius: var(--radius-pill);
   color: var(--ink-hi);
   background: var(--panel-deep);
-  box-shadow: 0 0 12px var(--glow-purple-20), 0 6px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--edge-brass), 0 6px 16px rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(6px);
   font-size: 15px;
   font-weight: 700;
@@ -1448,12 +1622,13 @@ body.has-dmbar .app {
   z-index: 270;
   right: 14px;
   bottom: calc(84px + env(safe-area-inset-bottom));
+  /* 呼叫铃：吧台上那颗按一下叫人的黄铜铃 */
   width: 56px;
   height: 56px;
-  border: var(--stroke) solid var(--neon-cyan);
+  border: 0;
   border-radius: 50%;
-  background: var(--panel-solid);
-  box-shadow: var(--neon-box-cyan), 0 14px 26px rgba(0, 0, 0, 0.5);
+  background-image: radial-gradient(circle at 34% 26%, var(--brass-hi) 0 16%, var(--brass) 44%, var(--brass-dim) 76%, var(--brass-shade) 100%);
+  box-shadow: var(--edge-brass), 0 4px 0 var(--brass-shade), 0 14px 26px rgba(0, 0, 0, 0.6);
   font-size: 25px;
   cursor: pointer;
   transition: transform 0.12s ease;
@@ -1505,9 +1680,10 @@ body:not(.has-dmbar) .chat-fab {
   display: flex;
   width: min(380px, 92vw);
   flex-direction: column;
-  border-left: var(--stroke-thin) solid var(--line-neon);
-  background: var(--bar-bg);
-  box-shadow: -4px 0 0 var(--glow-purple-20), -22px 0 60px rgba(0, 0, 0, 0.6);
+  border-left: var(--stroke-bold) solid var(--brass-dim);
+  background-color: var(--bar-bg);
+  background-image: var(--tex-velvet);
+  box-shadow: -4px 0 0 var(--brass-shade), -22px 0 60px rgba(0, 0, 0, 0.7);
   transform: translateX(110%);
   transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.3, 1);
 }
@@ -1519,10 +1695,11 @@ body:not(.has-dmbar) .chat-fab {
   align-items: center;
   justify-content: space-between;
   padding: max(18px, env(safe-area-inset-top)) 16px 14px;
-  border-bottom: var(--stroke-thin) solid var(--neon-pink);
-  color: var(--neon-pink-hot);
-  background: var(--bar-bg-deep);
-  text-shadow: var(--neon-text-pink);
+  border-bottom: var(--stroke) solid var(--brass-dim);
+  color: var(--amber-hi);
+  background-color: var(--bar-bg-deep);
+  background-image: var(--tex-wood);
+  text-shadow: var(--neon-text-amber);
   font-family: var(--font-pixel);
   font-size: 18px;
 }
@@ -1532,11 +1709,12 @@ body:not(.has-dmbar) .chat-fab {
   width: 44px;
   height: 44px;
   place-items: center;
-  border: var(--stroke-thin) solid var(--line-neon);
+  border: 0;
   border-radius: var(--radius-sm);
   color: var(--ink-hi);
-  background: var(--bar-bg-raise);
-  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.45);
+  background-color: var(--wood);
+  background-image: var(--tex-wood);
+  box-shadow: var(--edge-wood), 0 3px 0 var(--wood-dim);
   font-size: 16px;
   font-weight: 800;
   text-shadow: none;
@@ -1554,19 +1732,19 @@ body:not(.has-dmbar) .chat-fab {
 
 .chat-msg {
   max-width: 94%;
-  padding: 9px 11px;
-  border: var(--stroke-thin) solid var(--line-soft);
+  padding: 10px 12px;
+  border: var(--stroke-thin) solid var(--brass-shade);
   border-radius: var(--radius-sm);
   background: var(--panel-solid);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
   cursor: pointer;
 }
 
 .chat-msg.mine {
   align-self: flex-end;
-  border-color: var(--neon-cyan);
-  background: var(--bar-bg-wall);
-  box-shadow: 0 0 10px var(--glow-cyan-16), 0 4px 10px rgba(0, 0, 0, 0.35);
+  border-color: var(--brass-dim);
+  background-color: var(--velvet);
+  box-shadow: var(--edge-brass), 0 4px 10px rgba(0, 0, 0, 0.4);
 }
 
 .cm-head {
@@ -1606,9 +1784,9 @@ body:not(.has-dmbar) .chat-fab {
 }
 
 .react-chip.mine {
-  border-color: var(--neon-cyan);
-  color: var(--neon-cyan-soft);
-  background: var(--bar-bg-wall);
+  border-color: var(--brass);
+  color: var(--amber-hi);
+  background-color: var(--velvet);
 }
 
 .emoji-picker {
@@ -1653,15 +1831,17 @@ body:not(.has-dmbar) .chat-fab {
 }
 
 /* ---------- Aha 报告：立绘 → 相亲档案 → 相处细节 ---------- */
+/* 三段导航 = 吧台上的三个木卡位，当前那张被推到灯下 */
 .aha-stage-nav {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
   padding: 6px;
-  border: var(--stroke-thin) solid var(--line-neon);
+  border: 0;
   border-radius: var(--radius-btn);
-  background: var(--panel-deep);
-  box-shadow: inset 0 1px 0 var(--panel-glow-edge);
+  background-color: var(--bar-bg-deep);
+  background-image: var(--tex-wood);
+  box-shadow: var(--edge-carve);
 }
 
 .aha-stage-nav button {
@@ -1685,29 +1865,32 @@ body:not(.has-dmbar) .chat-fab {
 }
 
 .aha-stage-nav button span {
-  color: var(--neon-cyan);
-  font-family: var(--font-pixel);
+  color: var(--brass);
+  font-family: var(--font-display);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: 0.1em;
 }
 
 .aha-stage-nav button.active {
-  border-color: var(--neon-pink);
-  color: #fff;
-  background: var(--bar-bg-wall);
-  box-shadow: var(--neon-box-pink);
+  border-color: transparent;
+  color: var(--ink-hi);
+  background-color: var(--wood-hi);
+  background-image: var(--tex-wood);
+  box-shadow: var(--edge-brass), 0 3px 0 var(--brass-shade), 0 0 20px var(--glow-amber-25);
 }
 
-.aha-stage-nav button.active span { color: var(--neon-pink-hot); }
+.aha-stage-nav button.active span { color: var(--amber-hi); }
 
+/* 亮相舞台 = 黄铜画框 */
 .aha-stage {
   position: relative;
   width: 100%;
   overflow: hidden;
-  border: var(--stroke-thin) solid var(--line-neon);
+  border: var(--stroke-bold) solid var(--brass-dim);
   border-radius: var(--radius-card);
-  background: var(--panel-solid);
-  box-shadow: 0 24px 58px rgba(0, 0, 0, 0.55), 0 0 22px var(--glow-purple-20);
+  background-color: var(--panel-solid);
+  box-shadow: var(--edge-brass), 0 28px 64px rgba(0, 0, 0, 0.65), 0 0 30px var(--glow-purple-20);
 }
 
 .portrait-stage {
@@ -1739,23 +1922,27 @@ body:not(.has-dmbar) .chat-fab {
   justify-content: center;
   gap: 10px;
   color: var(--ink-hi);
-  background:
-    linear-gradient(90deg, var(--line-soft) 1px, transparent 1px),
-    linear-gradient(var(--line-soft) 1px, transparent 1px),
-    linear-gradient(140deg, var(--bar-bg-raise) 0 42%, var(--bar-bg-wall) 42% 74%, var(--bar-bg-deep) 74% 100%);
-  background-size: 28px 28px, 28px 28px, 100% 100%;
+  /* 立绘还没来：先给一面被灯烘着的酒馆背墙，不是灰底占位 */
+  background-color: var(--bar-bg-wall);
+  background-image:
+    var(--scene-backbar);
+  background-repeat: no-repeat;
+  background-position: 50% 30%;
+  background-size: cover;
 }
 
 .art-fallback::before {
   content: "100% MATCH";
-  padding: 7px 10px;
-  border: var(--stroke-thin) solid var(--neon-pink);
-  color: var(--neon-pink-hot);
-  background: var(--bar-bg-deep);
-  box-shadow: var(--neon-box-pink);
-  font-family: var(--font-pixel);
+  padding: 7px 12px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  color: #fff;
+  background-color: var(--neon-pink);
+  box-shadow: var(--edge-brass), 0 0 22px var(--glow-pink-70);
+  font-family: var(--font-display);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: 0.12em;
 }
 
 .art-fallback b {
@@ -1779,6 +1966,8 @@ body:not(.has-dmbar) .chat-fab {
 .art-wrap.failed::before { content: none; }
 .art-wrap.failed .archetype-chip { z-index: 2; }
 
+.art-fallback b { text-shadow: 0 3px 0 rgba(0, 0, 0, 0.7), 0 0 30px var(--glow-amber-25); }
+
 .archetype-chip {
   position: absolute;
   z-index: 3;
@@ -1787,21 +1976,23 @@ body:not(.has-dmbar) .chat-fab {
   right: 14px;
   max-width: calc(100% - 28px);
   padding: 7px 11px;
-  border: var(--stroke-thin) solid var(--line-neon);
+  border: var(--stroke-thin) solid var(--brass-dim);
   border-radius: var(--radius-pill);
   color: var(--ink-hi);
   background: var(--panel-deep);
-  box-shadow: 0 0 10px var(--glow-purple-20);
+  box-shadow: var(--edge-brass);
   backdrop-filter: blur(6px);
   font-size: 13px;
   font-weight: 800;
 }
 
+/* 亮相铭牌 = 画框下沿钉的那块说明牌（绒面 + 黄铜压条） */
 .portrait-stage > .caption {
   position: relative;
-  padding: 16px 18px 18px;
-  border-top: 5px solid var(--profile-accent, var(--neon-cyan));
-  background: var(--panel-solid);
+  padding: 18px 18px 20px;
+  border-top: 5px solid var(--profile-accent, var(--brass));
+  background-color: var(--panel-solid);
+  background-image: var(--tex-velvet);
 }
 
 .portrait-stage > .caption::after {
@@ -1830,14 +2021,16 @@ body:not(.has-dmbar) .chat-fab {
   margin: 9px 0;
 }
 
+/* 关键词 = 挂在酒瓶颈上的小标签 */
 .ideal-meta span,
 .keyword-row span,
 .chemistry-tag {
-  padding: 5px 9px;
-  border: var(--stroke-thin) solid var(--line-neon);
+  padding: 5px 10px;
+  border: var(--stroke-thin) solid var(--brass-dim);
   border-radius: var(--radius-pill);
   color: var(--ink-hi);
-  background: var(--bar-bg-raise);
+  background-color: var(--bar-bg-raise);
+  box-shadow: inset 0 1px 0 rgba(255, 226, 178, 0.14), 0 2px 5px rgba(0, 0, 0, 0.4);
   font-size: 12px;
   line-height: 1.2;
   font-weight: 750;
@@ -1849,41 +2042,45 @@ body:not(.has-dmbar) .chat-fab {
   background: var(--profile-primary, var(--neon-pink));
 }
 
+/* 相亲档案 / 相处细节 = 包厢卡座里的绒面档案本 */
 .profile-stage,
 .relationship-stage {
   min-height: 520px;
-  padding: 24px;
-  background:
-    linear-gradient(90deg, var(--line-soft) 1px, transparent 1px),
-    linear-gradient(var(--line-soft) 1px, transparent 1px),
-    var(--panel-solid);
-  background-size: 26px 26px, 26px 26px, auto;
+  padding: 26px 24px 24px;
+  background-color: var(--panel-solid);
+  background-image:
+    radial-gradient(ellipse 78% 40% at 50% -8%, var(--glow-amber-25), transparent 66%),
+    var(--tex-velvet);
 }
 
+/* 档案本上沿的黄铜索引条 */
 .profile-stage::before,
 .relationship-stage::before {
   content: "";
   position: absolute;
   top: 0;
   right: 0;
-  width: 34%;
-  height: 7px;
-  background: var(--profile-accent, var(--neon-cyan));
+  width: 38%;
+  height: 8px;
+  background-image: linear-gradient(180deg, var(--brass-hi) 0 26%, var(--brass) 26% 62%, var(--brass-shade) 62% 100%);
   border-left: 46px solid var(--profile-primary, var(--neon-pink));
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.55);
 }
 
+/* 档案页眉的烫金小标 */
 .profile-kicker {
   display: inline-flex;
   margin-bottom: 18px;
-  padding: 6px 9px;
-  border: var(--stroke-thin) solid var(--line-neon);
-  color: var(--neon-cyan-soft);
+  padding: 6px 11px;
+  border: var(--stroke-thin) solid var(--brass-dim);
+  border-radius: var(--radius-pill);
+  color: var(--brass-hi);
   background: var(--bar-bg-deep);
-  box-shadow: 0 0 10px var(--glow-cyan-16);
-  font-family: var(--font-pixel);
+  box-shadow: var(--edge-carve);
+  font-family: var(--font-display);
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-weight: 800;
+  letter-spacing: 0.16em;
 }
 
 .profile-title-row {
@@ -1893,7 +2090,8 @@ body:not(.has-dmbar) .chat-fab {
   gap: 14px;
   margin-bottom: 20px;
   padding-bottom: 16px;
-  border-bottom: var(--stroke-thin) solid var(--line-neon);
+  border-bottom: var(--stroke-thin) solid var(--brass-dim);
+  box-shadow: 0 1px 0 rgba(255, 226, 178, 0.1);
 }
 
 .profile-title-row > div { min-width: 0; }
@@ -1901,11 +2099,11 @@ body:not(.has-dmbar) .chat-fab {
 .mbti-badge {
   flex: none;
   padding: 9px 11px;
-  border: var(--stroke-thin) solid var(--profile-primary, var(--neon-pink));
+  border: 0;
   border-radius: var(--radius-sm);
   color: #fff;
   background: var(--profile-primary, var(--neon-pink));
-  box-shadow: 0 0 14px var(--glow-pink-40);
+  box-shadow: var(--edge-brass), 0 0 18px var(--glow-pink-40);
   font-family: var(--font-pixel);
   font-size: 16px;
   line-height: 1;
@@ -1920,12 +2118,13 @@ body:not(.has-dmbar) .chat-fab {
 
 .profile-grid > div {
   min-width: 0;
-  padding: 11px 12px;
-  border: var(--stroke-thin) solid var(--line-soft);
+  padding: 12px 13px;
+  border: 0;
   border-left: 4px solid var(--profile-primary, var(--neon-pink));
   border-radius: var(--radius-sm);
-  background: var(--bar-bg-raise);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  background-color: var(--bar-bg-raise);
+  background-image: var(--tex-wood);
+  box-shadow: var(--edge-wood), 0 5px 13px rgba(0, 0, 0, 0.38);
 }
 
 .profile-grid > div.wide { grid-column: 1 / -1; }
@@ -1954,16 +2153,17 @@ body:not(.has-dmbar) .chat-fab {
   margin-top: 14px;
 }
 
-.keyword-row span:nth-child(2n) { background: var(--bar-bg-wall); }
+.keyword-row span:nth-child(2n) { background-color: var(--velvet); }
 
 .profile-bio {
   margin-top: 14px;
   padding: 13px 14px;
-  border: var(--stroke-thin) solid var(--line-soft);
+  border: 0;
+  border-left: 3px solid var(--brass-dim);
   border-radius: var(--radius-sm);
   color: var(--ink-hi);
   background: var(--panel-deep);
-  box-shadow: inset 0 1px 0 var(--panel-glow-edge);
+  box-shadow: var(--edge-carve);
   font-size: 15px;
   line-height: 1.65;
   font-weight: 600;
@@ -1987,10 +2187,10 @@ body:not(.has-dmbar) .chat-fab {
 .chemistry-tag {
   display: inline-flex;
   margin-bottom: 18px;
-  border-color: var(--neon-cyan);
-  color: var(--neon-cyan-soft);
-  background: var(--bar-bg-wall);
-  box-shadow: 0 0 10px var(--glow-cyan-16);
+  border-color: var(--brass);
+  color: var(--amber-hi);
+  background-color: var(--velvet);
+  box-shadow: var(--edge-brass), 0 0 14px var(--glow-amber-25);
 }
 
 .relationship-list {
@@ -2014,10 +2214,11 @@ body:not(.has-dmbar) .chat-fab {
   width: 36px;
   height: 36px;
   place-items: center;
-  border: var(--stroke-thin) solid var(--profile-primary, var(--neon-pink));
+  border: 0;
+  border-radius: var(--radius-sm);
   color: #fff;
   background: var(--profile-primary, var(--neon-pink));
-  box-shadow: 0 0 10px var(--glow-pink-40);
+  box-shadow: var(--edge-brass), 0 0 12px var(--glow-pink-40);
   font-family: var(--font-pixel);
   font-size: 12px;
   font-weight: 700;
@@ -2038,11 +2239,12 @@ body:not(.has-dmbar) .chat-fab {
   justify-content: space-between;
   gap: 12px;
   padding: 11px 11px 11px 16px;
-  border: var(--stroke-thin) solid var(--line-neon);
+  border: 0;
   border-radius: var(--radius-btn);
   color: var(--ink-hi);
-  background: var(--panel);
-  box-shadow: var(--shadow-panel);
+  background-color: var(--wood);
+  background-image: var(--tex-wood);
+  box-shadow: var(--edge-wood), 0 3px 0 var(--wood-dim), 0 8px 18px rgba(0, 0, 0, 0.45);
   font-size: 15px;
   font-weight: 750;
   cursor: pointer;
@@ -2054,153 +2256,258 @@ body:not(.has-dmbar) .chat-fab {
   height: 34px;
   flex: none;
   place-items: center;
-  border: var(--stroke-thin) solid var(--neon-cyan);
-  border-radius: var(--radius-sm);
-  color: var(--neon-cyan-soft);
-  background: var(--bar-bg-deep);
-  box-shadow: var(--neon-box-cyan);
+  border: 0;
+  border-radius: 50%;
+  color: var(--wood-dim);
+  background-image: linear-gradient(172deg, var(--brass-hi), var(--brass) 46%, var(--brass-dim));
+  box-shadow: var(--edge-brass), 0 3px 7px rgba(0, 0, 0, 0.55);
   font-size: 20px;
 }
 
-.stage-next:hover { background: var(--bar-bg-raise); }
+.stage-next:hover { background-color: var(--wood-hi); }
 
 .btn.light-burst.selected,
 .btn.light-off.selected {
-  outline: 3px solid var(--neon-cyan);
-  outline-offset: 2px;
-  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.45), 0 0 0 7px var(--glow-cyan-16);
+  outline: 3px solid var(--brass);
+  outline-offset: 3px;
+  box-shadow: var(--edge-brass), 0 4px 0 var(--brass-shade), 0 0 0 8px var(--glow-amber-25);
 }
 
-/* ---------- CHUG 罚酒仪式 ---------- */
+/* ==========================================================================
+   CHUG 罚酒仪式 · R10 重构（Kim 点名：「霓虹那版 chugchugchug 上下三个分布很难看」）
+   --------------------------------------------------------------------------
+   旧版 = 三段堆叠（三行 CHUG / 节奏条 / 卡片墙），三坨东西上下排队 → 没有构图。
+   新版 = 一张完整构图：版心一只大酒杯（纯 CSS/伪元素画出杯壁、酒液、酒沫、
+   杯底光），CHUG 横排一行压在杯口上方作为「起哄声」，节奏铜牌钉在杯身正中，
+   罚酒名单收成杯脚下的一排小票。整页只有一个视觉主体。
+
+   app.js 的 DOM 一行没动：
+     .chug-stage > .chug-title(含两个 <br>) / .chug-beat / .drinkers-grid /
+     .center.dim / .chug-actions
+   三行 CHUG 靠「.chug-title 变 flex 容器 + br 隐藏」压成一行，不改文案 token。
+   ========================================================================== */
 .chug-stage {
   position: relative;
   display: flex;
-  min-height: 600px;
+  min-height: 660px;
   flex-direction: column;
-  justify-content: center;
-  gap: 24px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0;
   overflow: hidden;
-  padding: clamp(24px, 5vw, 42px);
-  border: var(--stroke-thin) solid var(--line-neon);
+  padding: clamp(20px, 4.5vw, 34px) clamp(16px, 4vw, 30px) clamp(20px, 4vw, 30px);
+  border: 0;
   border-radius: var(--radius-card);
-  background:
-    radial-gradient(ellipse 90% 50% at 50% -10%, var(--glow-pink-18), transparent 70%),
-    linear-gradient(90deg, var(--line-soft) 1px, transparent 1px),
-    linear-gradient(var(--line-soft) 1px, transparent 1px),
-    linear-gradient(150deg, var(--bar-bg-deep) 0 70%, var(--bar-bg-wall) 70% 100%);
-  background-size: 100% 100%, 32px 32px, 32px 32px, 100% 100%;
-  box-shadow: 0 24px 58px rgba(0, 0, 0, 0.55);
+  /* 罚酒是在吧台前当众进行的：后墙 + 台面 */
+  background-color: var(--bar-bg-deep);
+  background-image:
+    radial-gradient(ellipse 60% 40% at 50% 8%, var(--glow-amber-25), transparent 66%),
+    var(--scene-backbar);
+  background-repeat: no-repeat, no-repeat;
+  background-position: 50% 0, 50% 0;
+  background-size: 100% 100%, cover;
+  box-shadow: var(--edge-brass), 0 26px 62px rgba(0, 0, 0, 0.65);
   isolation: isolate;
 }
 
+/* ---- 版心大酒杯：杯身（::before）+ 里面的酒（::after） ---- */
+/* 杯身：玻璃壁 + 左右棱光 + 杯口铜圈感，画出来的，不是渐变色块 */
 .chug-stage::before {
-  content: "DRINKING CEREMONY";
+  content: "";
   position: absolute;
-  z-index: -1;
-  top: 22px;
-  left: 24px;
-  color: var(--neon-cyan);
-  font-family: var(--font-pixel);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-shadow: 0 0 8px var(--glow-cyan-40);
+  z-index: 0;
+  left: 50%;
+  top: clamp(96px, 20vw, 138px);
+  width: min(280px, 62vw);
+  height: min(380px, 84vw);
+  transform: translateX(-50%);
+  border-radius: 12px 12px 44px 44px / 8px 8px 60px 60px;
+  background-image:
+    /* 高光棱（左）+ 反光棱（右）：玻璃的两道光 */
+    linear-gradient(96deg,
+      transparent 0 9%, rgba(255, 240, 214, 0.34) 9% 13%, transparent 13% 20%,
+      rgba(255, 240, 214, 0.1) 20% 22%, transparent 22% 78%,
+      rgba(255, 240, 214, 0.16) 78% 82%, transparent 82% 90%,
+      rgba(255, 240, 214, 0.28) 90% 94%, transparent 94% 100%),
+    linear-gradient(180deg, rgba(255, 236, 206, 0.14), rgba(0, 0, 0, 0.3));
+  box-shadow:
+    inset 0 0 0 3px rgba(255, 236, 206, 0.22),
+    inset -16px -22px 40px rgba(0, 0, 0, 0.45),
+    0 26px 50px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
 }
 
+/* 杯里的酒：从杯底往上灌（chugFill 动画 = 酒液上涨做进度）
+   ——真实进度需要 app.js 在 .chug-stage 上给 --chug-progress，见交付回报的钩子清单。 */
+/* 杯里的酒：元素覆盖整只杯，酒液靠 background-size 从杯底往上灌。
+   高度 = var(--chug-progress)（app.js 挂上来就是真进度；没挂时用默认值 + 上涨动画）。 */
 .chug-stage::after {
   content: "";
   position: absolute;
-  z-index: -1;
-  inset: 0 0 auto;
-  height: 5px;
-  background: linear-gradient(90deg, var(--neon-pink) 0 78%, var(--neon-cyan) 78% 100%);
-  box-shadow: 0 0 16px var(--glow-pink-40);
+  z-index: 0;
+  left: 50%;
+  top: calc(clamp(96px, 20vw, 138px) + 6px);
+  width: calc(min(280px, 62vw) - 14px);
+  height: calc(min(380px, 84vw) - 14px);
+  transform: translateX(-50%);
+  border-radius: 6px 6px 40px 40px / 4px 4px 56px 56px;
+  overflow: hidden;
+  background-image:
+    /* 酒沫：液面那道亮边 */
+    linear-gradient(180deg, var(--foam) 0 6px, rgba(255, 230, 190, 0.55) 6px 11px, transparent 11px 100%),
+    /* 灯从左上打进酒里 */
+    radial-gradient(ellipse 74% 42% at 26% 6%, rgba(255, 228, 174, 0.55), transparent 64%),
+    /* 酒体：上浅下深 */
+    linear-gradient(180deg, var(--neon-amber) 0%, var(--liquor) 44%, var(--liquor-deep) 100%);
+  background-repeat: no-repeat;
+  background-position: 50% 100%;
+  background-size: 100% var(--chug-progress, 46%);
+  filter: drop-shadow(0 0 26px var(--glow-amber-55));
+  animation: chugFill 2.4s cubic-bezier(0.3, 0.8, 0.4, 1) both;
+  pointer-events: none;
 }
 
+@keyframes chugFill {
+  from { background-size: 100% 8%; }
+  to   { background-size: 100% var(--chug-progress, 46%); }
+}
+
+/* ---- 起哄声：CHUG CHUG CHUG 压成一行，横在杯口上方 ----
+   app.js 给的是 CHUG<br>CHUG<br>CHUG；display:flex 把三段文本变成三个
+   匿名 flex item，br 隐掉 → 一行三声，不动一个字。 */
 .chug-title {
-  color: var(--neon-pink-hot);
+  position: relative;
+  z-index: 2;
+  /* app.js 给的是 CHUG<br>CHUG<br>CHUG（三行）。Kim 点名「上下三个分布很难看」，
+     但文案 token 一个字不许改 —— 用多栏排版把三行摊成一行三声：
+     容器高度锁死一行，column-fill:auto 让每个换行自动流进下一栏。
+     （试过 flex：Chrome 把 <br> 连同前后文本归进同一个匿名 flex item，压不平。） */
+  display: block;
+  width: 100%;
+  height: 1em;
+  column-count: 3;
+  column-fill: auto;
+  column-gap: clamp(4px, 2vw, 14px);
+  overflow: hidden;
+  color: var(--amber-hi);
   font-family: var(--font-pixel);
-  font-size: clamp(34px, 9vw, 62px);
+  font-size: clamp(24px, 7.6vw, 50px);
   line-height: 1;
   font-weight: 700;
+  letter-spacing: 0.02em;
   text-align: center;
   text-transform: uppercase;
-  text-shadow: var(--neon-text-pink);
-  animation: neon-flicker 5s linear infinite;
+  text-shadow: var(--neon-text-amber);
 }
 
+/* 三声起哄一声比一声近（第三声最响，像人凑到你耳边喊） */
+.chug-title { animation: chugShout 0.72s ease-in-out infinite; }
+
+@keyframes chugShout {
+  0%, 100% { transform: scale(1); }
+  46%      { transform: scale(1.035); }
+}
+
+/* ---- 节奏铜牌：钉在杯身正中，「举杯。干了。」 ---- */
 .chug-beat {
+  position: relative;
+  z-index: 2;
   align-self: center;
-  padding: 10px 18px;
-  border: var(--stroke) solid var(--neon-amber);
+  margin-top: clamp(150px, 34vw, 216px);
+  padding: 11px 20px;
+  border: 0;
   border-radius: var(--radius-sm);
-  color: var(--bar-bg-deep);
-  background: linear-gradient(180deg, var(--neon-amber), var(--neon-amber-deep));
-  box-shadow: 0 0 0 4px var(--glow-amber-25), 0 10px 26px var(--glow-amber-25);
-  font-family: var(--font-pixel);
-  font-size: clamp(20px, 6vw, 32px);
+  color: var(--wood-dim);
+  background-image: linear-gradient(
+    172deg, var(--brass-hi) 0%, var(--brass) 20%, var(--brass-dim) 52%, var(--brass) 76%, var(--brass-hi) 100%);
+  box-shadow:
+    var(--edge-brass),
+    0 5px 0 var(--brass-shade),
+    0 14px 30px rgba(0, 0, 0, 0.6);
+  font-family: var(--font-display);
+  font-size: clamp(19px, 5.4vw, 28px);
   line-height: 1;
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: 0.06em;
   text-align: center;
+  text-shadow: 0 1px 0 rgba(255, 232, 190, 0.5);
   animation: chugBeat 0.72s ease-in-out infinite;
 }
 
 @keyframes chugBeat {
-  0%, 100% { transform: scale(1); }
-  45% { transform: scale(1.06); }
+  0%, 100% { transform: scale(1) rotate(-0.6deg); }
+  45%      { transform: scale(1.05) rotate(0.6deg); }
 }
 
+/* ---- 名单：收成杯脚下的一排小票，不再是抢戏的卡片墙 ---- */
 .drinkers-grid {
+  position: relative;
+  z-index: 2;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 7px;
+  width: 100%;
+  margin-top: clamp(186px, 40vw, 236px);
 }
 
 .drinker-card {
   display: grid;
   min-width: 0;
-  grid-template-columns: 52px minmax(0, 1fr);
+  grid-template-columns: 42px minmax(0, 1fr);
   align-items: center;
-  gap: 12px;
-  padding: 13px;
-  border: var(--stroke-thin) solid var(--line-soft);
+  gap: 11px;
+  padding: 9px 12px;
+  border: 0;
   border-radius: var(--radius-sm);
   color: var(--ink-hi);
-  background: var(--panel-solid);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  background-color: rgba(26, 14, 16, 0.82);
+  background-image: var(--tex-wood);
+  box-shadow: var(--edge-wood), 0 5px 14px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(3px);
+  font-size: 14px;
 }
 
+.drinker-card .dim { font-size: 12px; }
+
+/* 喝完 = 杯子倒扣，木牌被灯照亮 */
 .drinker-card.done {
-  border-color: var(--neon-green);
-  background: var(--bar-bg-wall);
-  box-shadow: 0 0 12px var(--glow-cyan-16);
+  background-color: rgba(52, 32, 20, 0.86);
+  box-shadow: var(--edge-brass), 0 0 18px var(--glow-amber-25);
 }
 
+/* 每个人手里的那只小杯：空的时候只有杯壁，喝完琥珀见底 */
 .drink-cup {
   display: grid;
-  width: 48px;
-  height: 52px;
+  width: 38px;
+  height: 44px;
   place-items: center;
-  border: var(--stroke-thin) solid var(--neon-amber);
-  border-radius: 5px 5px 14px 14px;
+  border: 0;
+  border-radius: 4px 4px 13px 13px;
   color: var(--ink-hi);
-  background: var(--bar-bg-deep);
-  box-shadow: inset 0 -9px 0 var(--glow-amber-25), 0 0 10px var(--glow-amber-12);
-  font-size: 24px;
+  background-color: var(--bar-bg-deep);
+  background-image:
+    linear-gradient(96deg, transparent 0 14%, var(--glass-edge) 14% 19%, transparent 19% 100%),
+    linear-gradient(180deg, transparent 0 42%, var(--liquor-deep) 42% 100%);
+  box-shadow: inset 0 0 0 2px rgba(255, 236, 206, 0.2), 0 3px 8px rgba(0, 0, 0, 0.55);
+  font-size: 21px;
 }
 
 .drinker-card.done .drink-cup {
-  border-color: var(--neon-green);
-  box-shadow: inset 0 -9px 0 var(--glow-cyan-16);
+  background-image:
+    linear-gradient(96deg, transparent 0 14%, var(--glass-edge) 14% 19%, transparent 19% 100%),
+    linear-gradient(180deg, transparent 0 88%, var(--liquor-deep) 88% 100%);
+  box-shadow: inset 0 0 0 2px var(--brass), 0 0 12px var(--glow-amber-25);
 }
 
+/* 每个人的酒液刻度 */
 .drink-progress {
   grid-column: 2;
   width: 100%;
-  height: 7px;
+  height: 6px;
   overflow: hidden;
   border-radius: var(--radius-pill);
-  background: var(--bar-bg-deep);
+  background-color: var(--bar-bg-deep);
+  box-shadow: var(--edge-carve);
 }
 
 .drink-progress > span,
@@ -2208,16 +2515,29 @@ body:not(.has-dmbar) .chat-fab {
   display: block;
   width: var(--drink-progress, 0%);
   height: 100%;
-  background: linear-gradient(90deg, var(--neon-amber), var(--neon-green));
+  background-image: linear-gradient(90deg, var(--liquor-deep), var(--liquor) 55%, var(--neon-amber));
+  box-shadow: 1px 0 0 var(--amber-hi);
   transition: width 0.24s ease;
 }
 
 .drink-progress::before { content: ""; }
 
+/* 计数行也压在构图里，不另起一坨 */
+.chug-stage > .center.dim {
+  position: relative;
+  z-index: 2;
+  margin-top: 12px;
+  color: var(--ink-mid);
+}
+
 .chug-actions {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: stretch;
   gap: 10px;
+  width: 100%;
+  margin-top: 14px;
 }
 
 .chug-actions > * { flex: 1; }
@@ -2233,9 +2553,11 @@ body:not(.has-dmbar) .chat-fab {
   gap: 18px;
   padding: 26px 20px 24px;
   overflow: hidden;
-  background:
-    radial-gradient(ellipse 80% 46% at 50% -6%, var(--glow-amber-25), transparent 70%),
-    linear-gradient(180deg, var(--bar-bg-deep) 0 30%, var(--bar-bg-wall) 100%);
+  /* 国王时刻在包厢卡座里发生：绒面 + 头顶一盏灯 */
+  background-color: var(--bar-bg-deep);
+  background-image:
+    radial-gradient(ellipse 68% 40% at 50% -4%, var(--glow-amber-55), transparent 68%),
+    var(--tex-velvet);
 }
 
 .king-card {
@@ -2283,12 +2605,11 @@ body:not(.has-dmbar) .chat-fab {
   border-radius: 10px;
   overflow: hidden;
   border: var(--stroke-thin) solid var(--neon-amber-deep);
-  background:
-    /* 玑镂细纹：斜向双层细线，钞票质感 */
-    repeating-linear-gradient(45deg, var(--line-soft) 0 1px, transparent 1px 7px),
-    repeating-linear-gradient(-45deg, var(--line-soft) 0 1px, transparent 1px 7px),
-    radial-gradient(ellipse 90% 60% at 50% 0%, var(--bar-bg-wall), transparent 70%),
-    var(--bar-bg-deep);
+  /* 牌面：酒红绒布 + 灯从上方压下来（旧版玑镂斜纹=重复格纹，R10 删除） */
+  background-color: var(--velvet);
+  background-image:
+    radial-gradient(ellipse 86% 56% at 50% -4%, var(--glow-amber-25), transparent 72%),
+    var(--tex-velvet);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2389,8 +2710,8 @@ body:not(.has-dmbar) .chat-fab {
   inset: 0;
   display: grid;
   place-items: center;
-  color: var(--line-neon);
-  opacity: 0.35;
+  color: var(--brass-shade);
+  opacity: 0.4;
   font-family: var(--font-pixel);
   font-size: 190px;
   font-weight: 700;
@@ -2405,10 +2726,12 @@ body:not(.has-dmbar) .chat-fab {
   border: var(--stroke-thin) solid var(--neon-amber);
   border-radius: var(--radius-sm);
   color: var(--ink-hi);
-  background:
-    repeating-linear-gradient(45deg, var(--glow-amber-12) 0 2px, transparent 2px 9px),
-    var(--panel-deep);
-  box-shadow: 0 0 16px var(--glow-amber-25), inset 0 1px 0 var(--panel-glow-edge);
+  /* 圣旨 = 卷起来的酒单纸：纸纹是画出来的横向纤维，不是斜格 */
+  background-color: var(--panel-deep);
+  background-image:
+    linear-gradient(179deg, rgba(255, 226, 178, 0.05) 0 1px, transparent 1px 13px, rgba(0, 0, 0, 0.16) 13px 14px, transparent 14px 100%),
+    radial-gradient(ellipse 90% 70% at 50% -10%, var(--glow-amber-25), transparent 70%);
+  box-shadow: var(--edge-brass), 0 0 20px var(--glow-amber-25);
   font-size: 17px;
   line-height: 1.6;
   font-weight: 700;
@@ -2423,9 +2746,10 @@ body:not(.has-dmbar) .chat-fab {
   padding: 3px 10px;
   border: var(--stroke-thin) solid var(--neon-amber);
   border-radius: var(--radius-pill);
-  color: var(--neon-amber);
-  font-family: var(--font-pixel);
+  color: var(--amber-hi);
+  font-family: var(--font-display);
   font-size: 12px;
+  font-weight: 800;
   letter-spacing: 0.2em;
 }
 
@@ -2443,13 +2767,12 @@ body:not(.has-dmbar) .chat-fab {
   width: 100%;
   min-height: 56px;
   padding: 13px 14px 13px 46px;
-  border: var(--stroke-thin) solid var(--line-neon);
+  border: 0;
   border-radius: var(--radius-sm);
   color: var(--ink-hi);
-  background:
-    repeating-linear-gradient(45deg, var(--line-soft) 0 1px, transparent 1px 8px),
-    var(--panel-solid);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  background-color: var(--panel-solid);
+  background-image: var(--tex-wood);
+  box-shadow: var(--edge-wood), 0 5px 14px rgba(0, 0, 0, 0.45);
   font-size: 15px;
   line-height: 1.5;
   font-weight: 650;
@@ -2467,18 +2790,19 @@ body:not(.has-dmbar) .chat-fab {
   width: 24px;
   height: 24px;
   place-items: center;
-  border: 1px solid var(--neon-amber-deep);
+  border: 0;
   border-radius: 4px;
-  color: var(--neon-amber);
-  background: var(--bar-bg-deep);
+  color: var(--wood-dim);
+  background-image: linear-gradient(172deg, var(--brass-hi), var(--brass) 48%, var(--brass-dim));
+  box-shadow: var(--edge-brass);
   font-family: var(--font-pixel);
   font-size: 14px;
 }
 
 .king-option:hover,
 .king-option:active {
-  border-color: var(--neon-amber);
-  box-shadow: 0 0 14px var(--glow-amber-25), 0 4px 12px rgba(0, 0, 0, 0.4);
+  background-color: var(--wood-hi);
+  box-shadow: var(--edge-brass), 0 0 20px var(--glow-amber-25), 0 8px 18px rgba(0, 0, 0, 0.45);
   transform: translateY(-2px);
 }
 
@@ -2598,12 +2922,13 @@ body:not(.has-dmbar) .chat-fab {
     height: 32px;
   }
 
+  /* CHUG 构图在窄屏不变形：杯子仍是唯一主体，只压缩四周留白 */
   .chug-stage {
-    min-height: 560px;
-    padding: 38px 16px 22px;
+    min-height: 640px;
+    padding: 20px 14px 20px;
   }
 
-  .drinkers-grid { grid-template-columns: 1fr; }
+  .drinkers-grid { grid-template-columns: minmax(0, 1fr); }
 
   .chug-actions { flex-direction: column; }
 
@@ -2657,23 +2982,25 @@ body:not(.has-dmbar) .chat-fab {
 }
 /* 单卡（一期常态）：主卡感更强一点，霓虹口吻不变 */
 .deck-cards.single .deck-card {
-  padding: 17px 18px;
-  border-color: var(--neon-pink);
-  box-shadow: 0 0 18px rgba(255, 45, 120, 0.26), inset 0 0 14px rgba(255, 45, 120, 0.1);
+  padding: 18px;
+  border-left-color: var(--brass);
+  background-color: var(--wood);
+  box-shadow: var(--edge-brass), 0 8px 20px rgba(0, 0, 0, 0.5), 0 0 24px var(--glow-amber-25);
 }
 .deck-cards.single .deck-card b { font-size: 20px; }
-.deck-cards.single .dc-kicker { color: var(--neon-pink); opacity: 1; }
+.deck-cards.single .dc-kicker { color: var(--amber-hi); opacity: 1; }
 .deck-card {
   position: relative;
   display: grid;
   gap: 4px;
   padding: 14px 16px;
   text-align: left;
-  border: var(--stroke-thin) solid var(--line-neon);
+  border: 0;
+  border-left: 4px solid var(--brass-dim);
   border-radius: var(--radius-sm);
-  background:
-    repeating-linear-gradient(45deg, var(--line-soft) 0 1px, transparent 1px 9px),
-    var(--panel-solid);
+  background-color: var(--panel-solid);
+  background-image: var(--tex-wood);
+  box-shadow: var(--edge-wood), 0 6px 16px rgba(0, 0, 0, 0.42);
   color: var(--ink-hi);
   cursor: pointer;
   transition: border-color 0.14s ease, box-shadow 0.14s ease, transform 0.14s ease;
@@ -2686,19 +3013,21 @@ body:not(.has-dmbar) .chat-fab {
   overflow-wrap: anywhere; /* 「满分男 · 满分女」在 390 窄屏折行，不横向裁切 */
 }
 .dc-kicker {
-  font-family: var(--font-pixel, monospace);
-  font-size: 10px;
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  font-weight: 800;
   letter-spacing: 0.22em;
-  color: var(--neon-cyan);
-  opacity: 0.75;
+  color: var(--brass);
+  opacity: 0.9;
 }
 .dc-line { font-size: 12.5px; line-height: 1.45; color: var(--ink-lo, rgba(244, 236, 255, 0.62)); }
-.deck-card:hover { transform: translateY(-2px); border-color: var(--neon-cyan); }
+.deck-card:hover { transform: translateY(-2px); background-color: var(--wood-hi); }
 .deck-card.sel {
-  border-color: var(--neon-pink);
-  box-shadow: 0 0 16px rgba(255, 45, 120, 0.3), inset 0 0 12px rgba(255, 45, 120, 0.12);
+  border-left-color: var(--brass);
+  background-color: var(--wood-hi);
+  box-shadow: var(--edge-brass), 0 8px 20px rgba(0, 0, 0, 0.5), 0 0 26px var(--glow-amber-55);
 }
-.deck-card.sel .dc-kicker { color: var(--neon-pink); opacity: 1; }
+.deck-card.sel .dc-kicker { color: var(--amber-hi); opacity: 1; }
 
 /* 大厅：本桌卡组小标 */
 .deck-chip {
@@ -2706,10 +3035,11 @@ body:not(.has-dmbar) .chat-fab {
   align-items: baseline;
   flex-wrap: wrap;
   gap: 4px 8px;
-  padding: 7px 13px;
-  border: var(--stroke-thin) solid var(--line-neon);
+  padding: 7px 14px;
+  border: var(--stroke-thin) solid var(--brass-dim);
   border-radius: 999px;
-  background: var(--panel-solid);
+  background-color: var(--velvet);
+  box-shadow: var(--edge-brass);
 }
 .deck-chip b { font-size: 15px; font-weight: 800; color: var(--ink-hi); }
 .deck-chip .dc-kicker { font-size: 9px; }
@@ -2725,14 +3055,17 @@ body:not(.has-dmbar) .chat-fab {
 .settings-row select { flex: 1 1 auto; min-width: 0; }
 
 /* --- 老K锐评 NPC --- */
+/* 九八锐评 = 他从吧台里递过来的一张小条 */
 .laok-box {
   display: flex;
   gap: 11px;
   align-items: flex-start;
-  padding: 11px 13px;
-  border-left: 3px solid var(--neon-amber, #ffd24a);
+  padding: 12px 14px;
+  border-left: 3px solid var(--brass);
   border-radius: var(--radius-sm);
-  background: linear-gradient(90deg, rgba(255, 210, 74, 0.08), rgba(20, 12, 28, 0.35));
+  background-color: var(--velvet);
+  background-image: var(--tex-velvet);
+  box-shadow: var(--edge-wood), 0 5px 14px rgba(0, 0, 0, 0.42);
   opacity: 0;
   transform: translateY(6px);
   transition: opacity 0.4s ease, transform 0.4s ease;
@@ -2745,7 +3078,8 @@ body:not(.has-dmbar) .chat-fab {
   border-radius: 50%;
   overflow: hidden;
   background: var(--bar-bg-deep);
-  border: 1px solid var(--neon-amber-deep, rgba(255, 210, 74, 0.5));
+  border: 2px solid var(--brass-dim);
+  box-shadow: var(--edge-brass), 0 3px 7px rgba(0, 0, 0, 0.5);
   display: grid;
   place-items: center;
 }
@@ -2753,11 +3087,12 @@ body:not(.has-dmbar) .chat-fab {
 .laok-line { min-width: 0; }
 .laok-line b {
   display: block;
-  font-family: var(--font-pixel, monospace);
-  font-size: 11px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 800;
   letter-spacing: 0.14em;
-  color: var(--neon-amber, #ffd24a);
-  margin-bottom: 2px;
+  color: var(--amber-hi);
+  margin-bottom: 3px;
 }
 .laok-text { margin: 0; font-size: 14px; line-height: 1.55; color: var(--ink-hi); }
 
@@ -2773,12 +3108,12 @@ body:not(.has-dmbar) .chat-fab {
   flex: 0 0 auto;
 }
 .row-lamp.on {
-  background: radial-gradient(circle at 40% 35%, #ffd0e2, var(--neon-pink, #ff2d78));
-  box-shadow: 0 0 8px rgba(255, 45, 120, 0.75);
+  background-image: radial-gradient(circle at 40% 35%, var(--neon-pink-hot) 0 26%, var(--neon-pink) 100%);
+  box-shadow: 0 0 10px var(--glow-pink-70);
 }
 .row-lamp.dead {
-  background: #2a2333;
-  box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.6);
+  background: var(--bar-bg-deep);
+  box-shadow: inset 0 -2px 3px rgba(0, 0, 0, 0.7), 0 0 0 1px var(--brass-shade);
 }
 
 /* --- 号码国王（R2.5 匿名号码对抗版）--- */
@@ -2795,12 +3130,11 @@ body:not(.has-dmbar) .chat-fab {
   gap: 3px;
   width: min(150px, 62vw);
   padding: 14px 16px 16px;
-  border: 2px solid var(--neon-cyan, #2de2ff);
+  border: 0;
   border-radius: 14px;
-  background:
-    repeating-linear-gradient(45deg, rgba(45, 226, 255, 0.06) 0 2px, transparent 2px 9px),
-    var(--panel-solid);
-  box-shadow: 0 0 18px rgba(45, 226, 255, 0.28), inset 0 0 14px rgba(45, 226, 255, 0.1);
+  background-color: var(--velvet);
+  background-image: var(--tex-velvet);
+  box-shadow: var(--edge-brass), 0 10px 24px rgba(0, 0, 0, 0.55), 0 0 22px var(--glow-amber-25);
   animation: kingDealIn 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
 }
 @keyframes kingDealIn {
@@ -2808,19 +3142,20 @@ body:not(.has-dmbar) .chat-fab {
   100% { opacity: 1; transform: none; }
 }
 .knc-kicker {
-  font-family: var(--font-pixel, monospace);
+  font-family: var(--font-display);
   font-size: 9.5px;
+  font-weight: 800;
   letter-spacing: 0.2em;
-  color: var(--neon-cyan);
-  opacity: 0.8;
+  color: var(--brass);
+  opacity: 0.95;
 }
 .knc-num {
   font-family: var(--font-pixel, monospace);
   font-size: 58px;
   line-height: 1;
   font-weight: 800;
-  color: #d8f7ff;
-  text-shadow: 0 0 14px rgba(45, 226, 255, 0.8);
+  color: var(--amber-hi);
+  text-shadow: var(--neon-text-amber);
 }
 .knc-hint { font-size: 10.5px; color: var(--ink-lo, rgba(244, 236, 255, 0.6)); text-align: center; }
 .kc-head {
@@ -2838,10 +3173,11 @@ body:not(.has-dmbar) .chat-fab {
   place-items: center;
   width: 26px;
   height: 30px;
-  border: 1px solid var(--neon-pink, #ff2d78);
+  border: 0;
   border-radius: 4px;
-  background: var(--bar-bg-deep);
-  color: var(--neon-pink, #ff2d78);
+  background-image: linear-gradient(172deg, var(--brass-hi), var(--brass) 46%, var(--brass-dim));
+  box-shadow: var(--edge-brass);
+  color: var(--wood-dim);
   line-height: 1;
   font-family: var(--font-pixel, monospace);
 }
@@ -2849,12 +3185,15 @@ body:not(.has-dmbar) .chat-fab {
 .kc-mini span { font-size: 9px; }
 .king-results { display: flex; flex-direction: column; gap: 9px; }
 .king-result-line {
-  padding: 10px 12px;
-  border: var(--stroke-thin) solid var(--line-neon);
+  padding: 11px 13px;
+  border: 0;
+  border-left: 3px solid var(--brass-dim);
   border-radius: var(--radius-sm);
-  background: var(--panel-solid);
+  background-color: var(--panel-solid);
+  background-image: var(--tex-wood);
+  box-shadow: var(--edge-wood), 0 4px 11px rgba(0, 0, 0, 0.4);
 }
-.king-result-line b { font-size: 14px; color: var(--neon-cyan); }
+.king-result-line b { font-size: 14px; color: var(--amber-hi); }
 .king-order-text { margin: 5px 0 0; font-size: 14px; line-height: 1.5; color: var(--ink-hi); }
 .king-nums {
   display: flex;
@@ -2866,9 +3205,11 @@ body:not(.has-dmbar) .chat-fab {
   min-width: 48px;
   min-height: 48px;
   padding: 6px 10px;
-  border: var(--stroke-thin) solid var(--line-neon);
+  border: 0;
   border-radius: 10px;
-  background: var(--panel-solid);
+  background-color: var(--wood);
+  background-image: var(--tex-wood);
+  box-shadow: var(--edge-wood), 0 3px 0 var(--wood-dim), 0 6px 14px rgba(0, 0, 0, 0.42);
   color: var(--ink-hi);
   font-family: var(--font-pixel, monospace);
   font-size: 20px;
@@ -2877,21 +3218,21 @@ body:not(.has-dmbar) .chat-fab {
   transition: border-color 0.12s ease, box-shadow 0.12s ease, transform 0.12s ease;
 }
 .king-num small { display: block; font-size: 9px; font-family: inherit; opacity: 0.7; }
-.king-num:hover { transform: translateY(-1px); border-color: var(--neon-cyan); }
+.king-num:hover { transform: translateY(-1px); background-color: var(--wood-hi); }
 .king-num.sel {
-  border-color: var(--neon-pink, #ff2d78);
-  color: #fff;
-  box-shadow: 0 0 14px rgba(255, 45, 120, 0.4), inset 0 0 10px rgba(255, 45, 120, 0.18);
+  color: var(--wood-dim);
+  background-image: linear-gradient(172deg, var(--brass-hi), var(--brass) 46%, var(--brass-dim));
+  box-shadow: var(--edge-brass), 0 3px 0 var(--brass-shade), 0 0 22px var(--glow-amber-55);
 }
 .king-option.sel {
-  border-color: var(--neon-pink, #ff2d78);
-  box-shadow: 0 0 14px rgba(255, 45, 120, 0.35), 0 4px 12px rgba(0, 0, 0, 0.4);
+  background-color: var(--wood-hi);
+  box-shadow: var(--edge-brass), 0 0 24px var(--glow-amber-55), 0 6px 16px rgba(0, 0, 0, 0.45);
 }
 .king-order-preview {
-  padding: 10px 13px;
-  border: 1px dashed var(--neon-amber, #ffd24a);
+  padding: 11px 14px;
+  border: 1px dashed var(--brass);
   border-radius: var(--radius-sm);
-  background: rgba(255, 210, 74, 0.07);
+  background-color: rgba(232, 167, 92, 0.09);
   font-size: 14px;
   line-height: 1.5;
   color: var(--ink-hi);
@@ -2906,19 +3247,19 @@ body:not(.has-dmbar) .chat-fab {
 
 /* ============ 图鉴（R8 CODEX：按 deck 分本收集型号徽章）+ 满分人生入口 ============ */
 .gx-banner {
-  padding: 12px 16px;
+  padding: 13px 16px;
   text-align: center;
   font-size: 13.5px;
   letter-spacing: 0.04em;
-  color: var(--neon-amber, #ffd24a);
-  border-left: 4px solid var(--neon-amber, #ffd24a);
-  background: rgba(255, 182, 72, 0.08);
+  color: var(--amber-hi);
+  border-left: 4px solid var(--brass);
+  background-color: rgba(232, 167, 92, 0.08);
 }
 .gx-life { flex-direction: row; align-items: center; gap: 12px; }
 .gx-life-title {
   font-size: 17px;
   font-weight: 800;
-  color: var(--neon-amber, #ffd24a);
+  color: var(--amber-hi);
   text-shadow: var(--neon-text-amber);
 }
 /* 宽视口横排：基类 .btn 是 width:100%，flex:none 下 basis=auto 会按 100% 结算、
@@ -2936,26 +3277,28 @@ body:not(.has-dmbar) .chat-fab {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
+/* 图鉴分册 tab = 酒柜上四块木牌 */
 .gx-book-tab {
   display: grid;
   gap: 2px;
   min-width: 0;
-  padding: 9px 4px;
-  border: var(--stroke-thin) solid var(--line-neon);
+  padding: 10px 4px;
+  border: 0;
   border-radius: var(--radius-sm);
-  background: var(--panel-solid, #241536);
-  color: var(--ink-hi, #f4ecff);
+  background-color: var(--wood);
+  background-image: var(--tex-wood);
+  box-shadow: var(--edge-wood), 0 3px 0 var(--wood-dim);
+  color: var(--ink-hi);
   cursor: pointer;
   text-align: center;
 }
 .gx-book-tab b { font-size: 13px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gx-book-tab small { font-size: 10.5px; color: var(--ink-lo, rgba(244, 236, 255, 0.55)); letter-spacing: 0.06em; }
 .gx-book-tab.sel {
-  border-color: var(--neon-pink);
-  box-shadow: var(--neon-box-pink);
-  background: rgba(255, 45, 120, 0.12);
+  background-color: var(--wood-hi);
+  box-shadow: var(--edge-brass), 0 3px 0 var(--brass-shade), 0 0 20px var(--glow-amber-25);
 }
-.gx-book-tab.sel small { color: var(--neon-pink); }
+.gx-book-tab.sel small { color: var(--amber-hi); }
 
 .gx-book-head {
   display: flex;
@@ -2965,7 +3308,7 @@ body:not(.has-dmbar) .chat-fab {
   min-width: 0;
   padding: 0 2px;
 }
-.gx-book-head b { font-size: 16px; font-weight: 800; color: var(--ink-hi, #f4ecff); }
+.gx-book-head b { font-size: 16px; font-weight: 800; color: var(--ink-hi); }
 .gx-book-head .dim { font-size: 12px; }
 
 /* 16 格型号徽章墙：4×4，轨道一律 minmax(0,1fr)（427>390 裁切事故复发点，别改回 1fr） */
@@ -2983,42 +3326,50 @@ body:not(.has-dmbar) .chat-fab {
   min-width: 0;
   aspect-ratio: 3 / 4;
   padding: 6px 4px;
-  border: var(--stroke-thin) solid var(--line-neon);
+  border: 0;
   border-radius: var(--radius-sm);
-  background:
-    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 9px),
-    linear-gradient(180deg, #2c1a42, #120a1c);
+  /* 每一格 = 酒柜里的一个格子：绒面背板 + 顶上一道层板光 */
+  background-color: var(--bar-bg-deep);
+  background-image:
+    linear-gradient(180deg, var(--glow-amber-25) 0 2px, transparent 2px 100%),
+    var(--tex-velvet);
+  box-shadow: var(--edge-carve);
   text-align: center;
   overflow: hidden;
 }
 .gx-type.locked { filter: grayscale(0.6) brightness(0.72); }
-.gx-type.locked .gx-type-sil { font-size: 22px; opacity: 0.45; filter: brightness(0); text-shadow: 0 0 0 #3a2a52; }
-.gx-type.locked .gx-type-code { font-size: 12px; color: var(--ink-lo, rgba(244, 236, 255, 0.5)); letter-spacing: 0.08em; }
+.gx-type.locked .gx-type-sil { font-size: 22px; opacity: 0.45; filter: brightness(0); text-shadow: 0 0 0 var(--wood-dim); }
+.gx-type.locked .gx-type-code { font-size: 12px; color: var(--ink-dim); letter-spacing: 0.08em; }
 .gx-type.locked.hidden-type { border-style: dashed; }
+/* 已收集 = 这一格里的酒被灯照亮了（粉只用一道细边点心动，不铺满） */
 .gx-type.unlocked {
-  border-color: var(--neon-pink);
-  box-shadow: var(--neon-box-pink);
-  background:
-    repeating-linear-gradient(45deg, rgba(255, 45, 120, 0.08) 0 1px, transparent 1px 9px),
-    linear-gradient(180deg, #3a1c4e, #1a1026);
+  background-color: var(--velvet-hi);
+  background-image:
+    linear-gradient(180deg, var(--neon-pink) 0 2px, transparent 2px 100%),
+    radial-gradient(ellipse 90% 60% at 50% 0%, var(--glow-pink-18), transparent 70%),
+    var(--tex-velvet);
+  box-shadow: var(--edge-brass), 0 0 18px var(--glow-pink-18);
 }
 .gx-type.unlocked.hidden-type {
-  border-color: var(--neon-amber, #ffd24a);
-  box-shadow: 0 0 14px rgba(255, 182, 72, 0.4);
+  background-image:
+    linear-gradient(180deg, var(--brass-hi) 0 2px, transparent 2px 100%),
+    radial-gradient(ellipse 90% 60% at 50% 0%, var(--glow-amber-25), transparent 70%),
+    var(--tex-velvet);
+  box-shadow: var(--edge-brass), 0 0 20px var(--glow-amber-55);
 }
-.gx-type-code { font-size: 12px; font-weight: 800; color: var(--ink-hi, #f4ecff); letter-spacing: 0.04em; }
-.gx-type-star { color: var(--neon-amber, #ffd24a); text-shadow: var(--neon-text-amber); }
+.gx-type-code { font-size: 12px; font-weight: 800; color: var(--ink-hi); letter-spacing: 0.04em; }
+.gx-type-star { color: var(--amber-hi); text-shadow: var(--neon-text-amber); }
 .gx-type-name {
   font-size: 10px;
   line-height: 1.25;
-  color: var(--ink-hi, #f4ecff);
+  color: var(--ink-hi);
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
   word-break: break-all;
 }
-.gx-type-count { font-size: 10px; color: var(--neon-pink); font-weight: 700; }
+.gx-type-count { font-size: 10px; color: var(--neon-pink-hot); font-weight: 700; }
 .gx-type-loading { grid-column: 1 / -1; text-align: center; padding: 28px 0; }
 .gx-book-note { font-size: 11.5px; text-align: center; letter-spacing: 0.03em; padding: 0 6px; }
 
@@ -3036,12 +3387,12 @@ body:not(.has-dmbar) .chat-fab {
   gap: 3px;
   min-width: 0;
   padding: 14px 8px;
-  border: 1px dashed var(--line-soft, rgba(168, 107, 255, 0.3));
+  border: 1px dashed var(--brass-shade);
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.25);
+  background: rgba(0, 0, 0, 0.3);
 }
-.gx-soon b { font-size: 13.5px; font-weight: 800; color: var(--ink-lo, rgba(244, 236, 255, 0.6)); }
-.gx-soon span { font-size: 10.5px; color: var(--ink-lo, rgba(244, 236, 255, 0.45)); letter-spacing: 0.1em; }
+.gx-soon b { font-size: 13.5px; font-weight: 800; color: var(--ink-dim); }
+.gx-soon span { font-size: 10.5px; color: var(--ink-ghost); letter-spacing: 0.1em; }
 
 /* 亮相页型号角标（renderAha 第一页 caption 顶部）：#07 · 名称，隐藏款带 ✦ */
 .gx-type-badge {
@@ -3051,31 +3402,32 @@ body:not(.has-dmbar) .chat-fab {
   max-width: 100%;
   min-width: 0;
   margin-bottom: 6px;
-  padding: 4px 10px;
-  border: var(--stroke-thin) solid var(--profile-accent, var(--neon-cyan, #2de2ff));
+  padding: 4px 11px;
+  border: var(--stroke-thin) solid var(--profile-accent, var(--brass));
   border-radius: 999px;
-  background: rgba(45, 226, 255, 0.08);
+  background-color: rgba(232, 167, 92, 0.1);
+  box-shadow: var(--edge-carve);
   font-size: 12px;
   line-height: 1.3;
 }
 .gx-type-badge-code {
   font-weight: 800;
   letter-spacing: 0.06em;
-  color: var(--profile-accent, var(--neon-cyan, #2de2ff));
+  color: var(--profile-accent, var(--amber-hi));
   flex: none;
 }
 .gx-type-badge-name {
-  color: var(--ink-hi, #f4ecff);
+  color: var(--ink-hi);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .gx-type-badge.hidden-type {
-  border-color: var(--neon-amber, #ffd24a);
-  background: rgba(255, 182, 72, 0.1);
+  border-color: var(--brass);
+  background-color: rgba(232, 167, 92, 0.14);
 }
-.gx-type-badge.hidden-type .gx-type-badge-code { color: var(--neon-amber, #ffd24a); }
+.gx-type-badge.hidden-type .gx-type-badge-code { color: var(--amber-hi); }
 
 /* 满分人生 付费占位 modal */
 .life-modal-overlay {
@@ -3086,7 +3438,7 @@ body:not(.has-dmbar) .chat-fab {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(9, 5, 16, 0.72);
+  background: rgba(12, 6, 7, 0.76);
   backdrop-filter: blur(3px);
 }
 .life-modal {
@@ -3095,12 +3447,12 @@ body:not(.has-dmbar) .chat-fab {
   display: grid;
   gap: 14px;
   text-align: center;
-  padding: 24px 22px;
-  border: var(--stroke) solid var(--neon-amber, #ffd24a);
-  box-shadow: 0 0 24px var(--glow-amber-55, rgba(255, 182, 72, 0.55));
+  padding: 26px 22px;
+  border: var(--stroke) solid var(--brass);
+  box-shadow: var(--edge-brass), 0 24px 56px rgba(0, 0, 0, 0.7), 0 0 30px var(--glow-amber-55);
 }
 .life-modal-title { font-size: 22px; font-weight: 800; }
-.life-modal-body { font-size: 14px; line-height: 1.6; color: var(--ink-hi, #f4ecff); }
+.life-modal-body { font-size: 14px; line-height: 1.6; color: var(--ink-hi); }
 
 @media (max-width: 480px) {
   /* 390 宽验收硬指标：16 格保持 4×4 不裁切（minmax(0,1fr) 轨道 + 字号缩一档） */
@@ -3112,4 +3464,389 @@ body:not(.has-dmbar) .chat-fab {
   .gx-book-tab b { font-size: 12px; }
   .gx-life { flex-direction: column; align-items: stretch; text-align: center; }
   .gx-life .btn { width: 100%; }
+}
+
+/* ==========================================================================
+   R10 · 布局收敛（PRD-R10-UI-IP §四）
+   艺术皮肤本轮不换：以下全部沿用 theme-v2 的变量与既有组件质感，
+   只做信息架构：新首页 / 桌局组件（房主·客人）/ 反馈小弹窗 / 方向确认弹层。
+   竖屏铁律：所有新 grid 轨道一律 minmax(0, 1fr)，390 宽零横向溢出。
+   ========================================================================== */
+
+/* ---- 首页/桌局共用的极简顶栏 ---- */
+.mini-topbar {
+  min-height: 34px;
+}
+
+/* ---- 4.1 新首页 ---- */
+.landing {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  justify-items: center;
+  text-align: center;
+  padding: 6px 0 0;
+}
+
+.landing-logo {
+  width: 96px;
+  max-width: 40vw;
+  margin-bottom: 2px;
+}
+
+.landing-logo svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  /* logo 是马天尼杯 + 那颗橄榄（九八天线上的同一颗）：心动色的合法出场地 */
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.7)) drop-shadow(0 0 18px var(--glow-pink-40));
+}
+
+.landing-title {
+  font-size: clamp(26px, 8.5vw, 38px);
+  line-height: 1.15;
+}
+
+.landing-tag {
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  margin-top: -4px;
+}
+
+.landing-cta {
+  width: 100%;
+  margin-top: 6px;
+  font-size: 20px;
+  padding-top: 18px;
+  padding-bottom: 18px;
+}
+
+.landing-second {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 3px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.landing-second b { font-size: 16px; }
+
+.landing-second small {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-mid);
+  letter-spacing: 0.02em;
+}
+
+.landing-how {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  text-align: left;
+  padding: 14px 16px;
+}
+
+/* 「怎么玩」= 钉在墙上的店规牌，每一条前面一根铜条 */
+.landing-how p {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink-mid);
+  padding-left: 13px;
+  border-left: 3px solid var(--brass-dim);
+}
+
+.landing-feedback {
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--ink-dim);
+}
+
+/* ---- 4.2 桌局组件 ---- */
+.table-head {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.table-back {
+  font-size: 13px;
+  justify-self: start;
+}
+
+.table-head-title {
+  font-size: 15px;
+  color: var(--ink-mid);
+  justify-self: end;
+  letter-spacing: 0.08em;
+}
+
+.table-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+/* 开桌/入桌 = 门口两块木牌，选中的那块被挑到灯下 */
+.table-tab {
+  min-width: 0;
+  padding: 13px 6px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink-mid);
+  background-color: var(--wood-dim);
+  background-image: var(--tex-wood);
+  border: 0;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--edge-wood), inset 0 3px 8px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.table-tab.sel {
+  color: var(--ink-hi);
+  background-color: var(--wood-hi);
+  box-shadow: var(--edge-brass), 0 3px 0 var(--brass-shade), 0 0 20px var(--glow-amber-25);
+}
+
+/* 人数 1-10（Kim 定死的常量）= 10 个选项，5×2 一屏放得下；「1」那格带「一个人玩」小标注 */
+.seats-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+/* 人数 = 吧台上摆开的十个座位牌 */
+.seats-grid button {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: center;
+  gap: 1px;
+  padding: 10px 2px;
+  font-family: inherit;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--ink-mid);
+  background-color: var(--wood);
+  background-image: var(--tex-wood);
+  border: 0;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--edge-wood), 0 3px 0 var(--wood-dim);
+  cursor: pointer;
+}
+
+.seats-grid button b { font-size: 17px; line-height: 1.2; }
+
+.seats-grid button small {
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0;
+  white-space: nowrap;
+  color: var(--ink-dim);
+}
+
+.seats-grid button.sel small { color: var(--amber-hi); }
+
+.seats-grid button.sel {
+  color: var(--wood-dim);
+  background-image: linear-gradient(172deg, var(--brass-hi), var(--brass) 46%, var(--brass-dim));
+  box-shadow: var(--edge-brass), 0 3px 0 var(--brass-shade), 0 0 20px var(--glow-amber-55);
+}
+
+.code-entry input {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 0.4em;
+  text-align: center;
+}
+
+.table-cta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.table-cta .btn { width: 100%; }
+
+.lobby-cta { margin-top: -4px; }
+
+/* 准备状态 = 酒杯满上（圣经 §五）：徽章左边画一只小杯，
+   还没准备是空杯（只有杯壁），坐稳了酒就满到杯口 + 灯照上去。
+   （BACK 契约 player.ready；字段没到时根本不渲染） */
+.ready-badge {
+  position: relative;
+  flex: none;
+  padding: 4px 10px 4px 22px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  color: var(--ink-dim);
+  border: var(--stroke-thin) solid var(--brass-shade);
+  border-radius: var(--radius-pill);
+  background-color: rgba(0, 0, 0, 0.28);
+}
+
+/* 空杯 */
+.ready-badge::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 50%;
+  width: 9px;
+  height: 12px;
+  margin-top: -6px;
+  border-radius: 1px 1px 4px 4px;
+  box-shadow: inset 0 0 0 1.5px var(--brass-shade);
+  background-image: linear-gradient(180deg, transparent 0 78%, var(--brass-shade) 78% 100%);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* 坐稳了 = 满上 */
+.ready-badge.on {
+  color: var(--amber-hi);
+  border-color: var(--brass);
+  background-color: rgba(232, 167, 92, 0.1);
+  box-shadow: 0 0 12px var(--glow-amber-25);
+}
+
+.ready-badge.on::before {
+  box-shadow: inset 0 0 0 1.5px var(--brass);
+  background-image:
+    linear-gradient(180deg, var(--foam) 0 2px, var(--neon-amber) 2px 30%, var(--liquor) 30% 100%);
+}
+
+.seat-count { font-size: 13px; font-weight: 500; }
+
+/* ---- 反馈小弹窗 ---- */
+.fb-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(12, 6, 7, 0.76);
+  backdrop-filter: blur(3px);
+}
+
+.fb-modal {
+  width: 100%;
+  max-width: 340px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  padding: 20px 18px;
+}
+
+.fb-title { font-size: 17px; }
+
+.fb-modal textarea {
+  width: 100%;
+  max-width: 100%;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 12px;
+  color: var(--ink-hi);
+  background: var(--bar-bg-deep);
+  border: var(--stroke-thin) solid var(--brass-dim);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--edge-carve);
+}
+
+.fb-modal textarea:focus,
+.fb-modal input:focus { outline: none; border-color: var(--brass); }
+
+.fb-actions { display: flex; gap: 8px; }
+.fb-actions .btn { min-width: 0; }
+
+/* ---- 4.3 方向确认弹层 ---- */
+.dir-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(12, 6, 7, 0.8);
+  backdrop-filter: blur(3px);
+}
+
+.dir-modal {
+  width: 100%;
+  max-width: 340px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  padding: 22px 18px;
+  text-align: center;
+}
+
+.dir-title { font-size: 18px; line-height: 1.3; }
+.dir-sub { font-size: 12.5px; }
+
+.dir-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.dir-grid.dir-gender { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* 方向选择 = 三块木杯垫；选中的那块推到灯下（这是「今晚想品鉴谁」，心动前一秒） */
+.dir-grid button {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  padding: 13px 4px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-mid);
+  background-color: var(--wood);
+  background-image: var(--tex-wood);
+  border: 0;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--edge-wood), 0 3px 0 var(--wood-dim);
+  cursor: pointer;
+}
+
+.dir-grid button.sel {
+  color: var(--ink-hi);
+  background-color: var(--wood-hi);
+  box-shadow: var(--edge-brass), 0 3px 0 var(--brass-shade), 0 0 20px var(--glow-pink-40);
+}
+
+.dir-emoji { font-size: 20px; line-height: 1.1; }
+.dir-waiting { gap: 8px; }
+
+@media (max-width: 480px) {
+  .landing-cta { font-size: 19px; }
+  .seats-grid { gap: 6px; }
+  .seats-grid button { padding: 9px 1px; }
+  .seats-grid button b { font-size: 16px; }
+  .seats-grid button small { font-size: 8.5px; }
+  .dir-grid button { font-size: 12px; }
+}
+
+/* 大厅成员行加了准备徽章后 390 宽会挤：酒水说明不换行、徽章缩一档，名字仍可省略号 */
+.player .dim { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+@media (max-width: 480px) {
+  .player { gap: 7px; padding: 9px 10px; }
+  .player .dim { font-size: 12px; }
+  .player .ready-badge { padding: 2px 6px; font-size: 10px; }
+  .player .tag { padding: 2px 6px; font-size: 10px; }
 }

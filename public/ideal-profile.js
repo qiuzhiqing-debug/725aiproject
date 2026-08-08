@@ -1,9 +1,10 @@
-// 理想型画像生成 V2（像素风 + 双层文案）
+// 理想型画像生成 V5（审美风 + 双层文案）
 // 文案层：①核心画像 = 8 维度打分器（每维 3 档，组合空间 3^8=6561）
 //        ②相处细节 = 发散细节池（≥60 条，按维度标签抽取，与题库不直接关联）
-// 生图层：像素风 + 特征夸张；禁止任何真人/名人元素；pollinations 必须带 referrer=idealtype
+// 生图层：审美风立绘——有脸、年轻、好看、有风情，暖夜酒吧光（琥珀主光+少量霓虹）；
+//        禁止任何真人/名人元素；pollinations 必须带 referrer=idealtype
 // LLM 层：generateProfileText(gameData) 先试 /api/bartender(scene:"profile_text")，失败降级本地拼装
-const PROFILE_VERSION = "ideal-profile-v3-pixel";
+const PROFILE_VERSION = "ideal-profile-v5-aesthetic";
 
 /* ================================================================
  * 一、8 维度定义（打分器骨架）
@@ -457,10 +458,14 @@ export const MODULE_PROFILES = Object.freeze({
     intros: [
       "调了一整晚，杯底沉淀出来的是一位「{A}」。",
       "你的理想型已经从后厨端出来了：一位「{A}」。",
+      "这一杯是按你的分数配的，出来是一位「{A}」。",
+      "灯打下来，坐在你对面的是一位「{A}」。",
     ],
     outros: [
       "——以上判词，出自你自己按下的每一个分数。",
       "这杯先给你，慢慢品，不许说不像。",
+      "店只能调到99%，剩下那1%你自己走过去。",
+      "喝完别急着走，人还在这儿。",
     ],
   },
   boss: {
@@ -469,10 +474,14 @@ export const MODULE_PROFILES = Object.freeze({
     intros: [
       "人事系统刚刚推送：你的满分老板到岗，是一位「{A}」型上司。",
       "全网招聘平台联合认证，你的满分老板画像出炉：「{A}」。",
+      "打卡机刚响，你的满分老板到了：一位「{A}」。",
+      "这位是按你的分数招进来的：「{A}」型上司。",
     ],
     outros: [
       "——该画像由你的每一次打分背书，离职时可申请打印留念。",
       "画饼部分已自动过滤，剩下的都是真饼。",
+      "——工位、假期和体面，这三样TA都给你留着。",
+      "以上不是画的饼，是端出来的。",
     ],
   },
   agent: {
@@ -481,10 +490,14 @@ export const MODULE_PROFILES = Object.freeze({
     intros: [
       "模型加载完成，你的满分Agent已上线：内核是「{A}」。",
       "经过一整晚的对齐训练，你的满分Agent部署成功：「{A}」型人格。",
+      "权重加载完毕，你的满分Agent睁眼了：「{A}」。",
+      "按你的分数编译，跑出来一个「{A}」。",
     ],
     outros: [
       "——本画像无幻觉成分，每一条都有你的打分作为训练数据。",
       "Token 不要钱一样地爱你。",
+      "——它不会累，也不会敷衍你。",
+      "关机之后，它也记得你。",
     ],
   },
   roommate: {
@@ -493,10 +506,14 @@ export const MODULE_PROFILES = Object.freeze({
     intros: [
       "合租雷达扫描完毕，你的满分室友搬进来了：一位「{A}」。",
       "中介不会告诉你的真相：你的满分室友长这样——「{A}」。",
+      "钥匙已经配好，你的满分室友进门了：一位「{A}」。",
+      "按你的分数摇的号，摇到一位「{A}」。",
     ],
     outros: [
       "——押金一分不少，边界一寸不让，这就是满分室友。",
       "冰箱第二层永远给你留着。",
+      "——公共区域归你们俩，边界归TA守。",
+      "客厅那盏灯，TA会给你留着。",
     ],
   },
   teacher: {
@@ -505,10 +522,14 @@ export const MODULE_PROFILES = Object.freeze({
     intros: [
       "上课铃响，你的满分老师抱着教案进门：一位「{A}」。",
       "教务系统查无此人，但你的满分老师确实存在：「{A}」型班主任。",
+      "粉笔灰还没落，你的满分老师站上了讲台：一位「{A}」。",
+      "按你的分数排的课，来的是一位「{A}」。",
     ],
     outros: [
       "——期末评语：该老师由你的青春回忆和今晚的分数共同签发。",
       "下课之后，TA还是会站在走廊尽头等你问问题。",
+      "——这份评语，是你自己签的字。",
+      "毕业很多年之后，TA还认得你。",
     ],
   },
   bestie: {
@@ -517,10 +538,14 @@ export const MODULE_PROFILES = Object.freeze({
     intros: [
       "闺蜜雷达锁定完毕，你的满分闺蜜空降：一位「{A}」。",
       "全世界最懂你的搭子已就位，你的满分闺蜜画像出炉：「{A}」。",
+      "电话一响就到，你的满分闺蜜进场：一位「{A}」。",
+      "按你的分数配的搭子，是一位「{A}」。",
     ],
     outros: [
       "——这份鉴定由你俩的每一条聊天记录和今晚的分数共同背书。",
       "有事没事都能喊的那个人，就是TA了。",
+      "——你的黑历史全在TA那儿，安全得很。",
+      "凌晨两点打过去，TA接。",
     ],
   },
 });
@@ -540,7 +565,15 @@ function hashStr(s) {
   }
   return h;
 }
-function seedPick(arr, s) { return arr[hashStr(s) % arr.length]; }
+// seed→下标：必须走高位。FNV-1a 的最低位极度偏斜（实测 mod 14 时奇数下标只占 ~1.6%），
+// 直接 `hash % len` 会让所有偶数长度的池「一半条目永远抽不到」——这正是 Kim
+// 反复撞见同一批职业/称号的根因（旧 OCCUPATIONS 每维 4 条实际只有 2 条可达）。
+// 用 h/2^32 取小数再乘长度，只吃高位，分布均匀；确定性不变（纯函数，同 s 同结果）。
+function seedIndex(s, len) {
+  if (!len || len <= 0) return 0;
+  return Math.floor((hashStr(s) / 4294967296) * len);
+}
+function seedPick(arr, s) { return arr[seedIndex(s, arr.length)]; }
 
 // tag → 维度权重；未命中的 tag 用哈希兜底
 function hashTagDimension(tag) {
@@ -609,31 +642,65 @@ const IDENTITY_POOL = Object.freeze({
     "家里永远备着两副碗筷",
     "朝九晚不定，周末必空出一天",
     "阳台种着一排叫不上名字的绿植",
+    "冰箱门贴满了没去成的展览门票",
+    "住六楼没电梯，搬水从不叫人",
+    "租的房子不大，但灯全是暖的",
+    "下班绕两条街，只为路过那家面包店",
+    "手机常年静音，你的名字单独留了铃声",
+    "常备两把伞，有一把从没自己撑过",
+    "周末睡到中午，醒了先去菜市场",
+    "搬过五次家，那口锅一直没换",
+    "楼下便利店认得TA，也记得你的口味",
   ],
   boss: [
     "你的直属上司 · 办公室离你工位最近",
     "全公司最早到、也最早赶你下班的人",
     "会议永远压在半小时内的那位",
+    "工位上没有隔断，谁都能直接走过去",
+    "报销单当天签完的那位",
+    "年会上第一个上台、也第一个买单的人",
+    "周五六点准时关灯赶人",
+    "把「这事我担着」当口头禅的人",
   ],
   agent: [
     "常驻你终端的AI搭子 · 全年无休",
     "凌晨三点也在线的那个进程",
     "你提示词历史的唯一读者",
+    "开机就在，关机也不抱怨",
+    "跑在后台那个从不喊累的窗口",
+    "把你的烂草稿全存了一份的家伙",
+    "永远等你说完才动手的那个",
+    "出错会自己举手的那版模型",
   ],
   roommate: [
     "隔壁房间的合租人 · 作息成谜",
     "冰箱第二层的共同管理员",
     "水电费从没让你操过心的人",
+    "客厅灯常年给你留一盏",
+    "阳台那半边晾着TA的球衣",
+    "垃圾永远在你想起之前就下楼了",
+    "厨房调料柜贴着两个人的名字",
+    "退租那天把押金算得比房东还清楚",
   ],
   teacher: [
     "教务系统查无此人的班主任",
     "办公室永远给你留一把椅子的人",
     "走廊尽头等你问问题的人",
+    "抽屉里常年备着几袋面包",
+    "自行车永远停在校门口第一个位置",
+    "教案边角写满了学生的名字",
+    "下课铃响还站在讲台上的那位",
+    "十年后还叫得出你名字的人",
   ],
   bestie: [
     "住你楼下的头号搭子 · 随叫随到",
     "你的24小时吐槽热线接线员",
     "衣柜和秘密都对你敞开的那个人",
+    "和你共用一个外卖账号的人",
+    "你相册里出镜最多的那位",
+    "拉黑你三次又加回来的那个",
+    "记得你所有前任的名字和罪状",
+    "凌晨两点唯一会接电话的人",
   ],
 });
 
@@ -644,14 +711,15 @@ const PRESENTATIONS = Object.freeze({
   n: "中性呈现", androgynous: "中性呈现", any: "中性呈现",
 });
 
-// 立绘配色对（primary/accent），全部霓虹系，seed 确定性抽取
+// 立绘配色对（primary/accent），seed 确定性抽取。
+// 审美风改版：琥珀暖光主导 + 心动粉/汽水青只做点缀，冷紫已退场（故事圣经 §四「禁冷紫底」）。
 const PALETTES = Object.freeze([
-  { primary: "#ff2d78", accent: "#2de2ff" },
-  { primary: "#b46bff", accent: "#ffd24a" },
-  { primary: "#2de2ff", accent: "#ff7a45" },
-  { primary: "#ff5c8a", accent: "#7cf0c8" },
-  { primary: "#ffd24a", accent: "#ff2d78" },
-  { primary: "#7c5cff", accent: "#2de2ff" },
+  { primary: "#e8a75c", accent: "#ff2d78" },
+  { primary: "#ff2d78", accent: "#e8a75c" },
+  { primary: "#e8a75c", accent: "#2de2ff" },
+  { primary: "#d98b3a", accent: "#ffd24a" },
+  { primary: "#ff5c8a", accent: "#f0c27b" },
+  { primary: "#c96f4a", accent: "#2de2ff" },
 ]);
 
 // 星座边界表：v = 月*100+日，<= 该值即为该星座
@@ -670,20 +738,94 @@ function zodiacOf(month, day) {
 // 相处化学反应标题（按平均分档位）
 function chemistryHeading(avg) {
   if (avg >= 8) return "一拍即合，第一杯还没见底你们就熟了";
-  if (avg >= 6.5) return "慢热型化学反应，后劲全在第三杯之后";
-  if (avg >= 4.5) return "互相试探的路数，火花藏在没说出口的那句里";
+  if (avg >= 6.5) return "慢热，后劲全在第三杯之后";
+  if (avg >= 4.5) return "互相试探，火花在没说出口的那句里";
   return "欢喜冤家的路子，吵着吵着人就近了";
 }
 
+// 职业池（每维 ≥8 条）。选人标准：一句话能在脑子里放出画面，
+// 有地点、有时间、有动作——「凌晨三点收摊的关东煮店主」优于「餐厅主厨」。
 const OCCUPATIONS = Object.freeze({
-  boundary: ["独立设计师", "律师", "档案管理员", "数据分析师"],
-  warmth: ["儿科医生", "心理咨询师", "咖啡师", "社工"],
-  money: ["基金经理", "精算师", "餐厅主厨", "首席财务官"],
-  play: ["自由摄影师", "赛车工程师", "旅游博主", "直播剪辑师"],
-  control: ["项目经理", "航空机长", "战略咨询顾问", "应急调度员"],
-  romance: ["词曲人", "婚礼策划师", "香氛调配师", "独立导演"],
-  absurd: ["游戏策划", "当代艺术策展人", "密室设计师", "科幻编辑"],
-  meme: ["社媒运营", "表情包博主", "短剧编剧", "产品经理"],
+  boundary: [
+    "只接熟客单的独立设计师",
+    "图书馆古籍修复室的管理员",
+    "只做离婚案的律师",
+    "会场后台隔间里的同声传译",
+    "夜里守机房的运维",
+    "老小区门口开锁配钥匙的师傅",
+    "常年出差做尽调的审计",
+    "眼镜店里给人验光的验光师",
+  ],
+  warmth: [
+    "儿科急诊的夜班护士",
+    "社区医院的心理咨询师",
+    "记得每个熟客口味的咖啡师",
+    "凌晨三点收摊的关东煮店主",
+    "陪老人下棋的养老院社工",
+    "宠物医院的兽医",
+    "带小班的幼儿园老师",
+    "跑夜线的长途大巴乘务员",
+  ],
+  money: [
+    "私募基金的风控",
+    "保险公司的精算师",
+    "菜市场里算账最快的干货摊主",
+    "家族企业的财务总监",
+    "只放小微贷的信贷员",
+    "早市摆水果摊的老板",
+    "拍卖行的估价师",
+    "连锁便利店的门店督导",
+  ],
+  play: [
+    "跟着乐队跑巡演的摄影师",
+    "改装摩托车的机修工",
+    "带团进山的户外向导",
+    "音乐节的舞台监督",
+    "剧本杀店的驻场DM",
+    "海边潜水店的教练",
+    "开桌游吧的老板",
+    "常年在路上的旅拍博主",
+  ],
+  control: [
+    "剧组的执行制片",
+    "民航机长",
+    "手术室的护士长",
+    "展会现场的总协调",
+    "消防指挥中心的调度员",
+    "工地上的项目经理",
+    "婚礼当天的现场统筹",
+    "跨省物流的排线调度",
+  ],
+  romance: [
+    "给独立电影写配乐的人",
+    "香水店的调香师",
+    "凌晨去花市进货的花店老板",
+    "只拍婚礼当天的跟拍摄影师",
+    "老唱片行挑碟的店主",
+    "剧院的灯光设计",
+    "山里六间房的民宿老板",
+    "在小剧场演话剧的演员",
+  ],
+  absurd: [
+    "密室逃脱的机关设计师",
+    "独立游戏的关卡策划",
+    "美术馆的策展助理",
+    "科幻杂志的编辑",
+    "开昆虫标本店的老板",
+    "做定格动画的手作人",
+    "天文馆的讲解员",
+    "修老式机械钟表的匠人",
+  ],
+  meme: [
+    "品牌官微的运营",
+    "写竖屏短剧的编剧",
+    "靠表情包吃饭的插画师",
+    "MCN公司的选题策划",
+    "深夜档的电台主播",
+    "剪短视频的后期",
+    "漫展的宣发",
+    "小区团购群的团长",
+  ],
 });
 
 function pickDetails(scores, genderPreference, seed, records, moduleKey) {
@@ -715,7 +857,7 @@ function pickDetails(scores, genderPreference, seed, records, moduleKey) {
   // 确定性抽取 5 条：起点落在「专属区」内，顺序游走，保证多样又稳定。
   const specificCount = sorted.filter(isSpecific).length;
   const span = module !== "lover" && specificCount > 0 ? specificCount : sorted.length;
-  const off = span > 0 ? hashStr(String(seed) + module) % span : 0;
+  const off = seedIndex(String(seed) + module, span);
   const picked = [];
   for (let i = 0; i < sorted.length && picked.length < 5; i++) {
     const t = sorted[(i + off) % sorted.length].text;
@@ -751,8 +893,8 @@ function pickFigureGender(module, seeking, genderPreference, seed) {
   const norm = (g) => (g === "m" || g === "masc") ? "m" : (g === "f" || g === "femme") ? "f" : "n";
   if (module === "bestie") return "f";
   if (module === "lover") return norm(SEEKING_TO_GENDER[seeking] || genderPreference);
-  // % 100 < 50 比 % 2 低位分布更均匀，避免同类 seed 常年偏男。
-  return (hashStr(String(seed) + "fig" + module) % 100 < 50) ? "m" : "f";
+  // 走 seedIndex（高位）取 0/1，彻底避开 FNV 低位偏斜导致的「常年偏男」。
+  return seedIndex(String(seed) + "fig" + module, 2) === 0 ? "m" : "f";
 }
 
 export function buildIdealProfile({ records, genderPreference, seeking, seed }) {
@@ -779,15 +921,17 @@ export function buildIdealProfile({ records, genderPreference, seeking, seed }) 
   const figGender = pickFigureGender(module, seeking, genderPreference, seed);
   const figure = FIGURE_DESC[figGender] || FIGURE_DESC.n;
   const dimDesc = `${DIMENSION_LABELS[top1.key] || "charm"}-focused, ${DIMENSION_LABELS[top2.key] || "playful"}`;
-  // 生图 V4（Kim 推翻旧「无脸抽象」决策）：人物要有清晰的脸和五官、年轻好看、
-  // 符合当下年轻人审美；保留 Kim 满意的精致霓虹赛博酒吧背景与氛围；
+  // 生图 V5「审美风」（海报法则：本版 UI 精致 → 立绘走审美风，不走嘲弄风）。
+  // 硬要求保留：有清晰的脸和五官、年轻、好看。
+  // 变的是气质：有风情、构图讲究、暖夜酒吧光——琥珀主光 + 少量霓虹点缀，
+  // 底色暖黑深酒红（故事圣经 §四），去掉赛博霓虹堆料与高饱和油彩噪感。
   // 继续用 dimDesc（top 维度）让人物气质呼应画像分布。
-  const prompt = `clean modern character illustration of ${figure}, clear detailed attractive face with well-defined expressive features, trendy good-looking youthful appearance that appeals to young adults, ${dimDesc} temperament shown in the eyes and posture, stylish fashionable outfit, soft cel-shaded semi-realistic anime art style, standing in a highly detailed intricate neon cyberpunk bar background full of glowing signs and moody atmospheric lighting, cinematic depth of field, vibrant saturated colors, no text`;
+  const prompt = `elegant editorial portrait illustration of ${figure}, beautiful expressive face with refined delicate features, quiet alluring confidence, ${dimDesc} temperament shown in the eyes and posture, tasteful well-tailored outfit, seated at the polished brass counter of a warm dimly lit late-night cocktail bar, deep amber key light from a low lamp, one small pink neon sign glowing softly far in the background bokeh, dark warm wine-red interior, wood and glass and velvet textures, shallow depth of field, considered cinematic composition with negative space, soft painterly semi-realistic illustration, clean refined line work, restrained warm color grading, high quality, no text`;
 
   const encodedPrompt = encodeURIComponent(prompt);
   const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&seed=${hashStr(seed) % 99999}&referrer=idealtype&nologo=true`;
-  // 兜底立绘：更短的 prompt + 不同 seed，主图挂了再试一次（同样有脸、年轻、保留霓虹酒吧背景）
-  const fallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(`clean modern illustration of ${figure} with a clear pretty detailed face, youthful stylish good-looking look, detailed neon cyberpunk bar background`)}?width=512&height=512&seed=${(hashStr(seed + "fb") % 99999)}&referrer=idealtype&nologo=true`;
+  // 兜底立绘：更短的 prompt + 不同 seed，主图挂了再试一次（同样有脸、年轻、同一套暖夜酒吧审美）
+  const fallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(`elegant portrait illustration of ${figure} with a beautiful refined face, alluring and stylish, warm amber lamp light in a dim wood-and-brass cocktail bar, soft painterly style, no text`)}?width=512&height=512&seed=${(hashStr(seed + "fb") % 99999)}&referrer=idealtype&nologo=true`;
 
   const modProf = MODULE_PROFILES[module] || MODULE_PROFILES.lover;
   const introTemplate = seedPick(modProf.intros, seed + "intro");
@@ -809,9 +953,9 @@ export function buildIdealProfile({ records, genderPreference, seeking, seed }) 
     .map(({ key, score }) => DIM_KEYWORDS[key]?.[dimTier(score)])
     .filter(Boolean);
   // 出生日期/星座：seed 确定性推（1992-2001 年段）
-  const bYear = 1992 + (hashStr(seed + "yy") % 10);
-  const bMonth = 1 + (hashStr(seed + "mm") % 12);
-  const bDay = 1 + (hashStr(seed + "dd") % 28);
+  const bYear = 1992 + seedIndex(seed + "yy", 10);
+  const bMonth = 1 + seedIndex(seed + "mm", 12);
+  const bDay = 1 + seedIndex(seed + "dd", 28);
   const birthDate = `${bYear}-${String(bMonth).padStart(2, "0")}-${String(bDay).padStart(2, "0")}`;
   const zodiac = zodiacOf(bMonth, bDay);
   const identity = seedPick(IDENTITY_POOL[module] || IDENTITY_POOL.lover, seed + "idn");
@@ -833,7 +977,7 @@ export function buildIdealProfile({ records, genderPreference, seeking, seed }) 
   const portrait = {
     prompt, imageUrl, fallbackUrl,
     archetype,
-    alt: `${archetype}的像素立绘`,
+    alt: `${archetype}的立绘`,
     palette: { primary: palette.primary, accent: palette.accent },
   };
   const matchCard = {

@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="robots" content="noindex, nofollow" />
+<title>理想型·加载中 — 埋点看板</title>
+<!--
+  内部数据页（PRD-R9-PHASE1 §五）。刻意不套游戏皮肤：这页是给 Kim 看数的，不是给玩家看的。
+  纯静态 + fetch /api/stats，零外部依赖。口令走 URL：/stats.html?key=xxx
+-->
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --card: #fff;
+    --line: #e3e6ea;
+    --ink: #1b1f24;
+    --dim: #6b7280;
+    --good: #128a4d;
+    --bad: #c0392b;
+    --accent: #2563eb;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 16px 14px 56px;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 19px; margin: 0 0 2px; letter-spacing: .5px; }
+  .sub { color: var(--dim); font-size: 13px; margin-bottom: 16px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 12px;
+  }
+  .hero { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  @media (min-width: 620px) { .hero { grid-template-columns: 1fr 1fr; } }
+  .kpi-label { font-size: 13px; color: var(--dim); }
+  .kpi-num { font-size: 46px; font-weight: 700; line-height: 1.1; margin: 4px 0 2px; letter-spacing: -1px; }
+  .kpi-num.good { color: var(--good); }
+  .kpi-num.bad { color: var(--bad); }
+  .kpi-side { font-size: 13px; color: var(--dim); }
+  .howto {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--line);
+    font-size: 12.5px;
+    color: var(--dim);
+  }
+  .howto b { color: var(--ink); font-weight: 600; }
+  /* 75% 达标线：一条横条，填充到实际完局率，虚线是 75% 的位置 */
+  .bar { position: relative; height: 14px; background: #e9edf2; border-radius: 7px; margin: 14px 0 6px; }
+  .bar i { display: block; height: 100%; background: var(--good); border-radius: 7px; }
+  .bar i.bad { background: var(--bad); }
+  /* H1 达标线：75% 处竖一条，两头出头，永远压在填充条之上 */
+  .bar u { position: absolute; z-index: 2; top: -7px; bottom: -7px; left: 75%; width: 0; border-left: 2px dashed #111; }
+  .bar u::after {
+    content: "75%";
+    position: absolute; top: -15px; left: 3px;
+    font-size: 10px; font-style: normal; text-decoration: none; color: #111; white-space: nowrap;
+  }
+  .bar-legend { font-size: 12px; color: var(--dim); display: flex; justify-content: space-between; }
+  .tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; min-width: 560px; }
+  th, td { padding: 7px 8px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--dim); font-weight: 600; font-size: 12px; text-align: right; }
+  th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: var(--card); }
+  tr.today td { font-weight: 700; }
+  td.hit { color: var(--good); }
+  td.miss { color: var(--bad); }
+  .muted { color: #b6bcc4; }
+  .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  input, select, button {
+    font: inherit;
+    padding: 7px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--ink);
+  }
+  button { cursor: pointer; background: var(--accent); color: #fff; border-color: var(--accent); }
+  .err { color: var(--bad); }
+  ul.read { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--dim); }
+  ul.read li { margin: 3px 0; }
+  ul.read b { color: var(--ink); font-weight: 600; }
+  /* R10 用户反馈：首页小字入口提交上来的，最近 20 条 */
+  ul.fb { list-style: none; margin: 8px 0 0; padding: 0; }
+  ul.fb li { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  ul.fb li:last-child { border-bottom: 0; }
+  /* 用户可以贴满 500 字 / 100 字联系方式：正文超高就自己滚，长串必须硬断，
+     否则一条反馈能把整页撑出横向滚动（390px 手机上实测过）。 */
+  ul.fb .fb-text {
+    color: var(--ink); white-space: pre-wrap;
+    overflow-wrap: anywhere; word-break: break-word;
+    max-height: 7.5em; overflow-y: auto;
+  }
+  ul.fb .fb-meta {
+    color: var(--dim); font-size: 11.5px; margin-top: 3px;
+    overflow-wrap: anywhere; word-break: break-word;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>理想型·加载中 — 埋点看板</h1>
+  <div class="sub" id="sub">加载中…</div>
+
+  <div class="toolbar">
+    <input id="key" type="password" placeholder="口令 key" size="12" autocomplete="off" />
+    <select id="days">
+      <option value="7">近 7 天</option>
+      <option value="14" selected>近 14 天</option>
+      <option value="30">近 30 天</option>
+    </select>
+    <button id="go">刷新</button>
+    <span id="err" class="err"></span>
+  </div>
+
+  <div class="hero">
+    <div class="card">
+      <div class="kpi-label">本周完局桌数（北极星 · 最近 7 天）</div>
+      <div class="kpi-num" id="weekNum">—</div>
+      <div class="kpi-side" id="weekSide">上周 —</div>
+      <div class="howto">
+        <b>这个数怎么读：</b>只看它涨不涨。一周比一周多 = 真有人在酒桌上玩完整局，产品站得住；
+        连续两周不涨或下跌，先别加功能，去问最近这几桌是怎么散的。
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="kpi-label">14 天完局率（完局桌数 ÷ 开局桌数）</div>
+      <div class="kpi-num" id="rateNum">—</div>
+      <div class="bar"><i id="rateBar" style="width:0"></i><u title="H1 达标线 75%"></u></div>
+      <div class="bar-legend"><span>0%</span><span>虚线 = H1 达标线 75%</span><span>100%</span></div>
+      <div class="kpi-side" id="rateSide">— 桌开局 / — 桌完局</div>
+      <div class="howto">
+        <b>这个数怎么读：</b>口径是<b>前两周完局率 ≥ 75%</b> —— 过线说明局能自己跑完。
+        <b>低于 75% 就是流程里有毒点</b>，别猜，按下面表格顺着漏斗看是哪一步掉的：
+        <ul class="read">
+          <li><b>开桌 → 开局</b>掉得多：人凑不齐 / 建完房没人进，问题在邀请和入桌门槛。</li>
+          <li><b>开局 → 完局</b>掉得多：局中弃桌，问题在题目、节奏或轮数太长。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="kpi-label" style="margin-bottom:8px">按日明细（日期为 Asia/Shanghai）</div>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th>日期</th><th>开桌</th><th>入座人</th><th>开局</th><th>完局</th>
+            <th>完局率</th><th>海报</th><th>注册</th>
+          </tr>
+        </thead>
+        <tbody id="rows"><tr><td colspan="8" class="muted">加载中…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="howto">
+      <b>这几列怎么读：</b>
+      <ul class="read">
+        <li><b>开桌</b>：建了几个房（含桌子号开出的房）。没人进也算 —— 它是漏斗最上面一层。</li>
+        <li><b>入座人</b>：真正坐进桌的人次（断线重连不重复计）。÷ 开桌 ≈ 桌均人数，低于 3 就是局太小、玩不起来。</li>
+        <li><b>开局</b>：房主真按了开局。<b>完局</b>：玩到理想型亮相（H1 口径的「完了一局」）。</li>
+        <li><b>完局率</b>：完局 ÷ 开局，绿色 = 当日过 75%，红色 = 没过。单日样本小，别被一天带跑，看趋势。</li>
+        <li><b>海报</b>：亮相后洗出海报的次数 —— 传播意愿的代理指标。<b>注册</b>：留下账号的人数。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="kpi-label" style="margin-bottom:4px">用户反馈（最近 20 条）</div>
+    <ul class="fb" id="feedbacks"><li class="muted">加载中…</li></ul>
+    <div class="howto">
+      <b>这些话怎么读：</b>首页底部「反馈」入口直接写进来的原话，没有加工。
+      同一条意见出现两次以上就别当个例，配着上面的漏斗看是哪一步在劝退人。
+    </div>
+  </div>
+
+  <div class="sub" id="foot"></div>
+</div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var params = new URLSearchParams(location.search);
+  // 口令：优先 URL ?key=，其次上次输入（存 localStorage 免得每次贴）
+  var savedKey = "";
+  try { savedKey = localStorage.getItem("statsKey") || ""; } catch (e) {}
+  $("key").value = params.get("key") || savedKey;
+  if (params.get("days")) $("days").value = params.get("days");
+
+  function pct(v) { return v == null ? "—" : (v * 100).toFixed(1) + "%"; }
+  function esc(s) { return String(s).replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
+
+  function render(data) {
+    var s = data.summary;
+    $("sub").textContent = "数据截至 " + data.today + "（Asia/Shanghai）· 窗口 " + data.days + " 天";
+
+    $("weekNum").textContent = s.week_finished;
+    var delta = s.week_finished - s.prev_week_finished;
+    var arrow = delta > 0 ? "↑ +" + delta : (delta < 0 ? "↓ " + delta : "→ 持平");
+    $("weekSide").textContent = "上周 " + s.prev_week_finished + " 桌 · " + arrow;
+
+    var rate = s.finish_rate_14d;
+    // 达标线只有一个真源：接口回的 target_finish_rate（H1 = 前两周完局率 ≥75%）。
+    // 页面上的文案与逐日红绿都从它算，改线只改后端一处，页面不会再漏改。
+    var target = typeof s.target_finish_rate === "number" ? s.target_finish_rate : 0.75;
+    var targetTxt = Math.round(target * 100) + "%";
+    var hit = rate != null && rate >= target;
+    $("rateNum").textContent = pct(rate);
+    $("rateNum").className = "kpi-num " + (rate == null ? "" : hit ? "good" : "bad");
+    $("rateBar").style.width = Math.min(100, (rate || 0) * 100) + "%";
+    $("rateBar").className = hit ? "" : "bad";
+    $("rateSide").textContent =
+      s.game_started_14d + " 桌开局 / " + s.game_finished_14d + " 桌完局" +
+      (rate == null ? "（还没有开局数据）" : hit ? " · 达标 ✅" : " · 没到 " + targetTxt + " ⚠️");
+
+    var html = "";
+    for (var i = data.daily.length - 1; i >= 0; i--) {
+      var d = data.daily[i];
+      var isToday = d.day === data.today;
+      var cls = d.finish_rate == null ? "muted" : (d.finish_rate >= target ? "hit" : "miss");
+      html += "<tr" + (isToday ? " class='today'" : "") + ">" +
+        "<td>" + esc(d.day) + (isToday ? " · 今天" : "") + "</td>" +
+        "<td>" + d.room_created + "</td>" +
+        "<td>" + d.player_joined + "</td>" +
+        "<td>" + d.game_started + "</td>" +
+        "<td>" + d.game_finished + "</td>" +
+        "<td class='" + cls + "'>" + pct(d.finish_rate) + "</td>" +
+        "<td>" + d.poster_shared + "</td>" +
+        "<td>" + d.register_done + "</td>" +
+      "</tr>";
+    }
+    $("rows").innerHTML = html || "<tr><td colspan='8' class='muted'>还没有数据</td></tr>";
+
+    // R10 用户反馈：/api/stats 的 recent_feedbacks（口令保护，只有带 key 的人看得到）
+    var fbs = data.recent_feedbacks || [];
+    var fbHtml = "";
+    for (var j = 0; j < fbs.length; j++) {
+      var f = fbs[j];
+      var when = f.day + " " + new Date(f.ts).toTimeString().slice(0, 5);
+      fbHtml += "<li><div class='fb-text'>" + esc(f.text) + "</div>" +
+        "<div class='fb-meta'>" + esc(when) +
+        (f.contact ? " · 联系方式：" + esc(f.contact) : " · 没留联系方式") +
+        "</div></li>";
+    }
+    $("feedbacks").innerHTML = fbHtml || "<li class='muted'>还没有人留反馈</li>";
+    $("foot").textContent =
+      "14 天累计：开桌 " + s.room_created_14d + " · 入座 " + s.player_joined_14d +
+      " · 开局 " + s.game_started_14d + " · 完局 " + s.game_finished_14d +
+      " · 海报 " + s.poster_shared_14d + " · 注册 " + s.register_done_14d;
+  }
+
+  function load() {
+    var key = $("key").value.trim();
+    var days = $("days").value;
+    $("err").textContent = "";
+    try { localStorage.setItem("statsKey", key); } catch (e) {}
+    fetch("/api/stats?days=" + encodeURIComponent(days) + "&key=" + encodeURIComponent(key))
+      .then(function (r) {
+        if (r.status === 403) throw new Error("口令不对，右上角填对 key 再刷新");
+        if (!r.ok) throw new Error("读取失败（HTTP " + r.status + "）");
+        return r.json();
+      })
+      .then(render)
+      .catch(function (e) {
+        $("err").textContent = e.message;
+        $("sub").textContent = "没读到数据";
+      });
+  }
+
+  $("go").addEventListener("click", load);
+  $("key").addEventListener("keydown", function (e) { if (e.key === "Enter") load(); });
+  $("days").addEventListener("change", load);
+  load();
+})();
+</script>
+</body>
+</html>

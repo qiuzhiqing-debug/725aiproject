@@ -1,8 +1,8 @@
 /* ==========================================================================
-   调酒仪式 cocktail.js （pixel-bar 风 · 老K对话体）
+   调酒仪式 cocktail.js （pixel-bar 风 · 九八对话体）
    - 数据层：resolveCocktail(answers) 纯函数，4 题索引 → 杯型/配色/名字/酒谱
      第 1 题基酒 7 选（六大基酒 + 无酒精彩蛋），其余 3 题 4 选
-   - 表现层：老K开场 → 问答（可回退）→ 摇一摇物理交互（devicemotion，点按降级）
+   - 表现层：九八开场 → 问答（可回退）→ 摇一摇物理交互（devicemotion，点按降级）
              → 分层倒酒 → 落冰 → 发光定格 → 结果卡
    - 完成回调：window.onCocktailDone(cocktail)（契约字段 name/glass/intro… 不变）
    - 调试参数：?preview=shake | ?preview=result 直达对应状态（QA 截图用）
@@ -14,7 +14,7 @@ import { createBartender } from "./bartender.js";
 /* ---------------- 数据层 ---------------- */
 
 // 4 道快问（基酒=性格底色 / 辅料=社交能量 / 装饰=今晚心情 / 冰量=边界感）
-// 所有文案 = 老K在说话（docs/LAOK-PERSONA.md）
+// 所有文案 = 九八在说话（docs/LAOK-PERSONA.md）
 export const QUESTIONS = [
   {
     key: "base",
@@ -70,7 +70,7 @@ export const QUESTIONS = [
 ];
 
 // 七支基酒 → 七杯有名字有杯型的成品酒（酒谱见 recipe 拼装）
-// intro = 出酒时老K直接说的话（无舞台说明；酒名只在结果卡标题出现一次，intro 不重复报名）
+// intro = 出酒时九八直接说的话（无舞台说明；酒名只在结果卡标题出现一次，intro 不重复报名）
 const BASES = [
   {
     label: "金酒", glass: "highball", prefix: "雾中花园",
@@ -274,9 +274,9 @@ if (typeof document !== "undefined" && document.getElementById("quiz")) {
     console.log("[cocktail] onCocktailDone（占位回调）", c);
   });
 
-  /* ---- 老K 登场：像素立绘 + 三句自我引入（店名「99%」全站唯一一次自介） ---- */
+  /* ---- 九八 登场：像素立绘 + 三句自我引入（店名「99%」全站唯一一次自介） ---- */
   const HOST_LINES = [
-    "来了？我是老K，这店归我管。",
+    "来了？我是九八，这店归我管。",
     "店名叫 99%。酒和灯只能把人送到 99%，差的那 1%，是个人。",
     "今晚就干这个：先调杯酒，再看看你想要的那个人长什么样。",
   ];
@@ -516,7 +516,7 @@ if (typeof document !== "undefined" && document.getElementById("quiz")) {
     caption.textContent = "成了。";
     await sleep(opts.fast ? 200 : 900);
 
-    // 5) 结果卡：老K直接说话，无舞台说明
+    // 5) 结果卡：九八直接说话，无舞台说明
     mixing.classList.add("done"); // 收起摇壶占位，杯子上移
     $("resultName").textContent = cocktail.name;
     $("resultRecipe").textContent = cocktail.recipe;
@@ -535,7 +535,7 @@ if (typeof document !== "undefined" && document.getElementById("quiz")) {
     }, { once: true });
   }
 
-  /* ================= 注册段：告诉老K你是谁 ================= */
+  /* ================= 注册段：告诉九八你是谁 ================= */
 
   let isReturning = false;       // 老客识别通过 → 跳过注册
   const pick = { gender: null, seeking: null };

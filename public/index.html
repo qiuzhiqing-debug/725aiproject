@@ -5,7 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>理想型 · 加载中</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <!-- theme-v2.css 必须在 style.css 之前：它是配色/字体/圆角/阴影的唯一真源（霓虹暗紫像素风） -->
+  <!-- 移动端浏览器 UI 跟着一起进店：暖黑酒红底（故事圣经 §四） -->
+  <meta name="theme-color" content="#1a1014" />
+  <meta name="color-scheme" content="dark" />
+  <!-- theme-v2.css 必须在 style.css 之前：它是配色/材质/字体/圆角/阴影的唯一真源
+       （R10：暖黑酒红底 + 琥珀灯 + 黄铜木质；马天尼粉只给心动时刻） -->
   <link rel="stylesheet" href="/theme-v2.css" />
   <link rel="stylesheet" href="/style.css" />
   <link rel="modulepreload" href="/fx.js" />
@@ -16,15 +20,7 @@
     <div class="boot glass">推门进来，先找个座。</div>
   </div>
   <div id="toast" class="toast hidden"></div>
-  <!-- V2 入场路由：无身份且非加入中 → 调酒仪式 -->
-  <script>
-    (function () {
-      var p = new URLSearchParams(location.search);
-      if (!p.get("room") && !p.get("solo") && !p.get("preview") && !localStorage.getItem("ideal_cocktail")) {
-        location.replace("/v2/cocktail.html");
-      }
-    })();
-  </script>
+  <!-- R10 §4.1：删除 V2 调酒强制跳转闸。落地即新首页，「点一杯」变成首页次入口（/v2/cocktail.html），不再是门。 -->
   <script type="module" src="/app.js"></script>
 </body>
 </html>

@@ -23,9 +23,10 @@
           <filter id="ck-glowTight" x="-30%" y="-30%" width="160%" height="160%">
             <feGaussianBlur stdDeviation="1.1"/>
           </filter>
+          <!-- R10：加载条与 UI 同色系 —— 琥珀灯 → 黄铜 → 马天尼粉（终点是心动色） -->
           <linearGradient id="ck-barFill" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stop-color="#2de2ff"/>
-            <stop offset="0.6" stop-color="#a86bff"/>
+            <stop offset="0" stop-color="#e8a75c"/>
+            <stop offset="0.55" stop-color="#c99a4e"/>
             <stop offset="1" stop-color="#ff2d78"/>
           </linearGradient>
           <path id="ck-glassTube" d="M 30 6 L 102 6 L 66 52 L 66 88 M 46 88 L 86 88 M 42 20 L 90 20"
@@ -51,15 +52,15 @@
 
         <!-- 加载条：停在 99%，整体居中（720 宽 → 条宽 452，x = 134） -->
         <g transform="translate(134,176)">
-          <rect x="0" y="0" width="452" height="30" rx="6" fill="#160c22"
-                stroke="#a86bff" stroke-width="3" opacity="0.5" filter="url(#ck-glowMid)"/>
-          <rect x="0" y="0" width="452" height="30" rx="6" fill="#160c22"
-                stroke="#cfaaff" stroke-width="1.6"/>
+          <rect x="0" y="0" width="452" height="30" rx="6" fill="#140b0e"
+                stroke="#7c5729" stroke-width="4"/>
+          <rect x="0" y="0" width="452" height="30" rx="6" fill="#140b0e"
+                stroke="#f2d79b" stroke-width="1.4" opacity="0.75"/>
           <rect x="5" y="5" width="437" height="20" rx="3" fill="url(#ck-barFill)" opacity="0.55" filter="url(#ck-glowMid)"/>
           <rect x="5" y="5" width="437" height="20" rx="3" fill="url(#ck-barFill)"/>
           <!-- 最后 1% 永远空着 -->
-          <rect x="436" y="4" width="12" height="22" fill="#160c22"/>
-          <g fill="#160c22" opacity="0.35">
+          <rect x="436" y="4" width="12" height="22" fill="#140b0e"/>
+          <g fill="#140b0e" opacity="0.4">
             <rect x="41" y="5" width="4" height="20"/><rect x="83" y="5" width="4" height="20"/>
             <rect x="125" y="5" width="4" height="20"/><rect x="167" y="5" width="4" height="20"/>
             <rect x="209" y="5" width="4" height="20"/><rect x="251" y="5" width="4" height="20"/>
@@ -69,17 +70,17 @@
         </g>
         <g font-family="'Fusion Pixel 12px Proportional SC','Zpix','DotGothic16','PingFang SC','Microsoft YaHei',monospace"
            font-size="26" text-anchor="middle">
-          <text x="360" y="248" fill="#2de2ff" opacity="0.6" filter="url(#ck-glowMid)">LOADING… 99%</text>
-          <text x="360" y="248" fill="#bdf2ff">LOADING… 99%</text>
+          <text x="360" y="248" fill="#e8a75c" opacity="0.65" filter="url(#ck-glowMid)">LOADING… 99%</text>
+          <text x="360" y="248" fill="#ffdca6">LOADING… 99%</text>
         </g>
       </svg>
       <p class="head-sub px-title neon-cyan">卡在 99%？剩下的 1% 没丢，它在路上，赶得比你想的急。</p>
     </header>
 
-    <!-- 老K：第一次登场，自我引入 -->
+    <!-- 九八：第一次登场，自我引入 -->
     <div class="host" id="host">
       <div class="host-sprite" id="hostSprite" aria-hidden="true"></div>
-      <div class="host-bubble" id="hostLine">来了？我是老K，这店归我管。</div>
+      <div class="host-bubble" id="hostLine">来了？我是九八，这店归我管。</div>
     </div>
 
     <!-- 问答区 -->
@@ -122,7 +123,7 @@
       <button class="result-go px-title" id="resultGo" type="button">端着它进场 →</button>
     </section>
 
-    <!-- 注册段：告诉老K你是谁（出酒后、进大厅前；老客跳过） -->
+    <!-- 注册段：告诉九八你是谁（出酒后、进大厅前；老客跳过） -->
     <section class="register hidden" id="register">
       <p class="register-eyebrow px-title neon-cyan">—— 落座之前</p>
       <h2 class="register-title px-title neon-pink">酒调完了，该认识一下了</h2>

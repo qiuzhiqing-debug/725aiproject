@@ -174,3 +174,13 @@ Kim 定了 PM→Dev→QA 循环：零上下文子线程做真实体验 QA（第�
 - 部署：ideal-type-loading Version 4af0cc30。commit 248c0b0（main 已推）。
 - 题库审计 docs/QUESTION-AUDIT-R9.md：数据层干净（中性池 0 视角假设、圈层池 4×18 变体全对），隔离坏在调用不坏在题——Kim review 可只看内容质量。
 - 并行：ui-r9 worktree（去廉价感重设计+老K重绘，docs/UI-BRIEF-R9.md）跑 localhost 给 Kim 晨审，不上线。
+
+## 2026-08-08 通宵（R10：故事圣经+四线大改版，Fable方案/Opus执行）
+- 定稿：docs/STORY-BIBLE.md（99%酒吧/酒保九八=谐音酒吧差一趴/包厢的暗/海报法则UI精致→审美风）+ Kim定死常量（2-10人朋友局/H1前两周完局率≥75%/北极星周完局桌数）+ IP调研(Fable亲笔,docs/IP-AND-ART-RESEARCH.md)。
+- BACK：seats 1-10缺省6(1=solo全链)/ready/allReady开局门/set_seats重开/confirm_direction(题随被拷问者自选)/api/feedback限频落StatsDO/75%达标线真源化。smoke 323/0。
+- FRONT：新首页(玩一局/点一杯/玩法/反馈)/桌局双态/方向弹层/准备/开局终稿/CHUG真进度/灶台三档火/老K→九八(app/cocktail/lobby)。
+- QBANK：180题全改短(最长47→24字)去SM化(11→3清晰款)，结构/池/辣度逐字守恒，PM复验绿。
+- PERSONA：seedPick低位偏斜真bug修复(偶数池一半永不可达=撞款根因)；称号每档1→6条(火化大队长处决)；职业8×8/身份池扩容；生图prompt审美风。type16 9/9+profverify绿。
+- SKIN：全站手绘暖系统(暖黑酒红#1a1014/琥珀主光/粉=心动时刻/木黄铜玻璃绒布)；组件拟物(菜单板/门牌/酒杯满上/三档火)；九八SVG三态(圆头黄铜/橄榄天线/正经的呆)；CHUG一张构图；海报审美风；repeating-gradient全站归零。
+- PM终检：smoke 323/0亲跑；E2E真实点击打穿solo(首页→1人桌→摇签→方向→5轮→亮相#01→爆灯✓→档案→海报区)零pageerror；关键页目检过。
+- 未部署（等Kim明早 localhost:8787 单人试玩点头后上线）。dev常驻8787。

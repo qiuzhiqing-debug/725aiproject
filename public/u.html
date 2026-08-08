@@ -5,16 +5,43 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>理想型档案</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <meta name="theme-color" content="#1a1014" />
+  <meta name="color-scheme" content="dark" />
   <link rel="stylesheet" href="/theme-v2.css" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    /* R10：档案页和游戏是同一家店的同一个夜晚 —— 同一张后吧台场景图 + 同一层暖雾 */
     body {
-      background: var(--bar-bg);
+      position: relative;
+      background-color: var(--bar-bg);
       color: var(--ink-hi);
       font-family: var(--font-sans);
       min-height: 100dvh;
     }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background-image: var(--scene-backbar);
+      background-repeat: no-repeat;
+      background-position: 50% 0;
+      background-size: cover;
+      opacity: 0.9;
+    }
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse 62% 32% at 26% 4%, var(--glow-amber-25), transparent 62%),
+        radial-gradient(ellipse 128% 92% at 50% 44%, transparent 48%, rgba(8, 4, 5, 0.72) 100%);
+    }
+    body > * { position: relative; z-index: 1; }
 
     /* ---- 顶部导航 ---- */
     .nav {
@@ -22,8 +49,10 @@
       align-items: center;
       gap: 12px;
       padding: 14px 16px;
-      border-bottom: 1px solid var(--line-soft);
-      background: var(--bar-bg-deep);
+      border-bottom: 0;
+      background-color: var(--bar-bg-deep);
+      background-image: var(--tex-wood);
+      box-shadow: 0 3px 0 var(--brass-shade), 0 8px 22px rgba(0, 0, 0, 0.55);
     }
     /* 小尺寸下用纯文字 logo：完整招牌 SVG 缩到 28px 时进度条会糊成一团 */
     .nav-logo-text {
@@ -37,13 +66,13 @@
     }
     .nav-back {
       margin-left: auto;
-      color: var(--neon-cyan-soft);
+      color: var(--amber-hi);
       text-decoration: none;
       font-size: 14px;
       font-family: var(--font-pixel);
       opacity: .85;
     }
-    .nav-back:hover { opacity: 1; text-shadow: var(--neon-text-cyan); }
+    .nav-back:hover { opacity: 1; text-shadow: var(--neon-text-amber); }
 
     /* ---- 用户卡片 ---- */
     .user-card {
@@ -62,8 +91,8 @@
       height: 72px;
       border-radius: 50%;
       object-fit: cover;
-      border: 2px solid var(--neon-purple);
-      box-shadow: 0 0 12px var(--glow-purple-45);
+      border: 2px solid var(--brass);
+      box-shadow: 0 0 12px var(--glow-amber-55);
       flex-shrink: 0;
       background: var(--bar-bg-raise);
     }
@@ -71,8 +100,8 @@
       width: 72px;
       height: 72px;
       border-radius: 50%;
-      border: 2px solid var(--neon-purple);
-      box-shadow: 0 0 12px var(--glow-purple-45);
+      border: 2px solid var(--brass);
+      box-shadow: 0 0 12px var(--glow-amber-55);
       flex-shrink: 0;
       background: var(--bar-bg-raise);
       display: flex;
@@ -96,7 +125,7 @@
       width: 52px;
       height: 52px;
       flex-shrink: 0;
-      filter: drop-shadow(0 0 6px var(--glow-purple-45));
+      filter: drop-shadow(0 0 6px var(--glow-amber-55));
     }
     .cocktail-glass-icon svg { width: 100%; height: 100%; display: block; }
     .user-cocktail-text {
@@ -113,7 +142,7 @@
     .stat-num {
       font-family: var(--font-pixel);
       font-size: 18px;
-      color: var(--neon-cyan-soft);
+      color: var(--amber-hi);
     }
     .stat-label { font-size: 11px; color: var(--ink-dim); margin-top: 2px; }
 
@@ -146,7 +175,7 @@
       letter-spacing: .1em;
       margin-bottom: 8px;
       /* 小字号收紧光晕，避免发虚 */
-      text-shadow: 0 0 1px #fff, 0 0 5px var(--glow-purple-45);
+      text-shadow: 0 0 1px #fff, 0 0 5px var(--glow-amber-55);
     }
 
     /* ---- 档案卡片（横向滚动行） ---- */
@@ -217,8 +246,8 @@
       white-space: nowrap;
     }
     .tag-mbti {
-      border-color: var(--neon-cyan);
-      color: var(--neon-cyan-soft);
+      border-color: var(--brass);
+      color: var(--amber-hi);
     }
     .record-summary {
       margin-top: 8px;
@@ -242,7 +271,7 @@
       right: 8px;
       font-size: 10px;
       color: var(--ink-ghost);
-      background: rgba(18,10,28,.7);
+      background: rgba(20,12,14,.72);
       padding: 2px 5px;
       border-radius: 4px;
     }
@@ -299,7 +328,7 @@
       color: var(--ink-mid);
       word-break: break-word;
     }
-    .comment-item .cm-name { color: var(--neon-cyan-soft); }
+    .comment-item .cm-name { color: var(--amber-hi); }
     .comment-empty { font-size: 11px; color: var(--ink-ghost); margin-top: 8px; }
 
     .comment-form {
@@ -319,7 +348,7 @@
       font-size: 13px;
       font-family: inherit;
     }
-    .comment-input:focus { outline: none; border-color: var(--neon-cyan); }
+    .comment-input:focus { outline: none; border-color: var(--brass); }
     .comment-send {
       flex-shrink: 0;
       min-width: 44px;
@@ -327,7 +356,7 @@
       padding: 0 12px;
       border: none;
       border-radius: var(--radius-btn);
-      background: var(--neon-purple);
+      background: var(--brass);
       color: #fff;
       font-size: 13px;
       font-family: inherit;
@@ -355,7 +384,7 @@
       align-items: center;
       justify-content: center;
     }
-    .record-eye:hover { color: var(--neon-cyan-soft); }
+    .record-eye:hover { color: var(--amber-hi); }
     .record-card.is-hidden { opacity: .45; }
     .record-card.is-hidden .record-eye { opacity: 1; color: var(--ink-dim); }
 
@@ -453,14 +482,14 @@
       border: 1px solid var(--line-neon);
       background: var(--bar-bg-raise);
       font-size: 11px;
-      color: var(--neon-cyan-soft);
+      color: var(--amber-hi);
       font-family: var(--font-pixel);
       letter-spacing: .04em;
     }
     .seek-badge .seek-dot {
       width: 6px; height: 6px; border-radius: 50%;
-      background: var(--neon-cyan-soft);
-      box-shadow: 0 0 5px var(--neon-cyan);
+      background: var(--amber-hi);
+      box-shadow: 0 0 5px var(--brass);
       flex-shrink: 0;
     }
 
@@ -539,8 +568,8 @@
     }
     .field input:focus {
       outline: none;
-      border-color: var(--neon-cyan);
-      box-shadow: 0 0 0 2px var(--glow-purple-45);
+      border-color: var(--brass);
+      box-shadow: 0 0 0 2px var(--glow-amber-55);
     }
     .recover-err {
       min-height: 18px;
@@ -567,7 +596,7 @@
       display: block;
       text-align: center;
       margin-top: 16px;
-      color: var(--neon-cyan-soft);
+      color: var(--amber-hi);
       font-size: 13px;
       background: none;
       border: none;
@@ -1015,7 +1044,7 @@
           <div class="error-raw">${esc(msg)}</div>
           ${recoverBtn}
           <div style="margin-top:24px">
-            <a href="/v2/lobby.html" style="color:var(--neon-cyan-soft);font-size:14px">← 去大厅开一局</a>
+            <a href="/v2/lobby.html" style="color:var(--amber-hi);font-size:14px">← 去大厅开一局</a>
           </div>
         </div>`;
       const $r = document.getElementById("errRecover");

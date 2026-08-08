@@ -13,10 +13,14 @@
   ],
   "durable_objects": {
     "bindings": [
-      { "name": "ROOM", "class_name": "RoomDO" }
+      { "name": "ROOM", "class_name": "RoomDO" },
+      // 埋点单例（PRD-R9-PHASE1 §五）：全站一个实例，SQLite 原子累加
+      { "name": "STATS", "class_name": "StatsDO" }
     ]
   },
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["RoomDO"] }
+    { "tag": "v1", "new_sqlite_classes": ["RoomDO"] },
+    { "tag": "v2", "new_sqlite_classes": ["StatsDO"] }
   ]
+  // 仪表盘口令：生产执行 `wrangler secret put STATS_KEY`（未设置时 worker 回退到常量 "dev-stats"）
 }
