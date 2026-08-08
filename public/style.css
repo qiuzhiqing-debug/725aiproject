@@ -645,98 +645,129 @@ select option {
   overflow: hidden;
   align-items: center;
   gap: 20px;
-  /* 抽签舞台 = 站在吧台前：后墙酒瓶剪影（画出来的场景）+ 台面木板 */
+  /* 抽签舞台 = 站在吧台前：后墙酒瓶剪影（画出来的场景）+ 台面暗色实心块（R12 去木纹） */
   background-color: var(--bar-bg-deep);
   background-image:
     var(--scene-backbar),
-    linear-gradient(180deg, transparent 0 62%, var(--wood-dim) 62% 100%);
+    linear-gradient(180deg, transparent 0 62%, var(--bar-floor) 62% 100%);
   background-repeat: no-repeat, no-repeat;
   background-position: 50% -8%, 50% 100%;
   background-size: 128% auto, 100% 100%;
 }
 
-/* 吧台台面：一条画出来的木沿压在舞台底部（签筒就摆在这上面） */
+/* 吧台台面：一条压在舞台底部的暗色台沿（R12 去木纹，只留台面剖面 SVG） */
 .stick-stage::before {
   content: "";
   position: absolute;
   inset: auto 0 0 0;
   height: 74px;
   background-color: var(--bar-counter);
-  background-image:
-    var(--scene-counter),
-    var(--tex-wood);
-  background-repeat: no-repeat, repeat-x;
-  background-position: 0 0, 0 0;
-  background-size: 100% 14px, auto;
+  background-image: var(--scene-counter);
+  background-repeat: no-repeat;
+  background-position: 0 0;
+  background-size: 100% 14px;
   box-shadow: 0 -14px 34px rgba(0, 0, 0, 0.55), inset 0 12px 26px -12px var(--glow-amber-25);
 }
 
-/* 签筒 = 吧台上的黄铜签筒：金属筒身 + 打光棱 + 刻着 100 的铜牌 */
+/* ===== 签筒（R12：把第二版（霓虹紫黑期）的签筒整段搬回来，适配现主题变量）=====
+   Kim 两条否决：① 木纹筒身不要 ② 三根签不能永远露在外面，要「真的像一个签筒」。
+
+   前后遮挡靠 DOM 绘制顺序做，不动 HTML（HTML 结构固定为
+   .stick-cup > .stick.s1 + .stick.s2 + .stick.s3）：
+     .stick-cup 本体 —— 筒内的暗（只有筒口那一段露出来）
+     ::before      —— 筒口「后」沿（在签之前绘制 → 被签压住）
+     .stick × 3    —— 签，默认整根缩在筒里，顶端只在筒口露 2-3px
+     ::after       —— 筒的前壁 + 刻着 100 的面（在签之后绘制 → 把签挡住）
+   只有充能 / 按下 / 摇动时，签才从筒里探出来。 */
 .stick-cup {
   position: relative;
   width: 138px;
   height: 174px;
-  margin-top: 78px;
+  margin-top: 88px;
   border: 0;
-  border-radius: 10px 10px 34px 34px;
-  background-image: linear-gradient(
-    92deg,
-    var(--brass-shade) 0 6%, var(--brass-dim) 6% 18%, var(--brass) 18% 30%,
-    var(--brass-hi) 30% 37%, var(--brass) 37% 58%, var(--brass-dim) 58% 80%,
-    var(--brass-shade) 80% 100%);
-  box-shadow:
-    inset 0 -22px 30px rgba(0, 0, 0, 0.5),
-    inset 0 8px 14px rgba(255, 232, 190, 0.22),
-    0 16px 30px rgba(0, 0, 0, 0.65),
-    0 0 34px var(--glow-amber-25);
+  /* 本体不画任何东西：筒口由 ::before 画、筒身由 ::after 画，
+     中间那段空隙就是「看得见筒里」的开口。 */
+  background: transparent;
+  cursor: pointer;
   will-change: transform;
 }
 
-/* 筒口那圈铜箍 */
+/* 筒口 = 一个真的开口：椭圆的口沿 + 往里暗下去的内壁（画在签后面） */
 .stick-cup::before {
   content: "";
   position: absolute;
-  inset: -14px -5px auto;
-  height: 22px;
+  inset: -14px 2px auto;
+  height: 30px;
+  border: var(--stroke-bold) solid var(--line-counter);
   border-radius: 50%;
-  background-image: linear-gradient(
-    92deg, var(--brass-shade) 0 8%, var(--brass) 22% 34%, var(--brass-hi) 40% 46%,
-    var(--brass) 56% 74%, var(--brass-shade) 92% 100%);
-  box-shadow: inset 0 -4px 8px rgba(0, 0, 0, 0.55), 0 3px 8px rgba(0, 0, 0, 0.6);
+  background-color: var(--bar-bg-deep);
+  background-image: radial-gradient(ellipse 78% 120% at 50% 8%, #000 0%, transparent 76%);
+  box-shadow: inset 0 -3px 7px rgba(0, 0, 0, 0.7), 0 1px 0 var(--glass-edge);
 }
 
-/* 筒身上刻的「100」（凹进金属，不是发光贴纸） */
+/* 筒前壁 = 签筒的正脸：暗紫金属筒身 + 一道打光棱 + 霓虹粉「100」。
+   它盖住筒口以下的全部区域，所以缩在筒里的签在这里被完全挡住。 */
 .stick-cup::after {
   content: "100";
   position: absolute;
-  left: 50%;
-  top: 54%;
-  transform: translate(-50%, -50%);
-  color: var(--brass-shade);
+  inset: 6px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: var(--stroke-bold) solid var(--line-counter);
+  /* 上沿走椭圆（筒口前唇，跟 ::before 的口沿同一条弧），下沿是筒底的圆角 */
+  border-radius: 50% 50% 38px 38px / 24px 24px 38px 38px;
+  background-color: var(--bar-counter);
+  background-image:
+    linear-gradient(90deg, transparent 0 14%, var(--glow-amber-25) 14% 18%, transparent 18% 100%),
+    linear-gradient(150deg, var(--bar-bg-raise) 0%, var(--bar-bg-wall) 34%, var(--bar-counter) 72%, var(--bar-counter-top) 100%);
+  box-shadow:
+    inset -14px -16px 22px rgba(0, 0, 0, 0.45),
+    8px 10px 0 rgba(0, 0, 0, 0.5),
+    0 0 30px var(--glow-purple-45);
+  color: var(--neon-pink-hot);
   font-family: var(--font-pixel);
-  font-size: 30px;
+  font-size: 26px;
   line-height: 1;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-shadow: 0 1px 0 rgba(255, 232, 190, 0.42);
+  text-shadow: 0 0 2px rgba(255, 255, 255, 0.6), 0 0 12px var(--glow-pink-70);
 }
 
-/* 签 = 木签 + 琥珀签头 */
+/* 签：琥珀签头 + 暗签身。默认 translate 为 0 = 缩在筒里。
+   探出用 translate 属性（不用 transform），才不会覆盖各根签自己的 rotate。 */
 .stick-cup .stick {
   position: absolute;
-  top: -70px;
-  width: 11px;
-  height: 92px;
+  top: 7px;
+  width: 10px;
+  height: 96px;
+  border: var(--stroke-thin) solid var(--line-counter);
   border-radius: 4px 4px 2px 2px;
-  background-image:
-    linear-gradient(90deg, rgba(0, 0, 0, 0.45) 0 2px, transparent 2px 7px, rgba(255, 226, 178, 0.3) 7px 100%),
-    linear-gradient(180deg, var(--neon-amber) 0 16px, #cbb68b 16px 40%, #a4906c 40% 100%);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6), 0 0 10px var(--glow-amber-25);
+  background-image: linear-gradient(180deg, var(--neon-amber) 0 15px, var(--ink-mid) 15px 100%);
+  box-shadow: 0 0 8px var(--glow-amber-25);
+  translate: 0 0;
+  transition: translate 0.22s cubic-bezier(0.2, 1.5, 0.4, 1);
 }
 
-.stick-cup .s1 { left: 24px; transform: rotate(-8deg); }
-.stick-cup .s2 { left: 62px; top: -82px; }
-.stick-cup .s3 { left: 100px; transform: rotate(7deg); }
+.stick-cup .s1 { left: 26px; transform: rotate(-6deg); }
+.stick-cup .s2 { left: 64px; top: 2px; }
+.stick-cup .s3 { left: 100px; transform: rotate(5deg); }
+
+/* 充能中（舞台上出现进度槽时）：签在筒里打架，只露一点点头，不整根跳出来 */
+.stick-stage:has(.progress-track) .stick-cup .s1 { animation: stickJostle 0.62s ease-in-out infinite; }
+.stick-stage:has(.progress-track) .stick-cup .s2 { animation: stickJostle 0.52s ease-in-out infinite 0.09s; }
+.stick-stage:has(.progress-track) .stick-cup .s3 { animation: stickJostle 0.7s ease-in-out infinite 0.18s; }
+
+@keyframes stickJostle {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -7px; }
+}
+
+/* 真的在摇 / 手指按住签筒：签探出来（这才是「有一支要跳出来了」）。
+   选择器刻意比上面那三条充能规则多一级，才压得住 :has() 带来的特异性。 */
+.stick-stage .stick-cup:active .stick { translate: 0 -34px; animation: none; }
+.stick-stage .stick-cup:active .s2 { translate: 0 -44px; animation: none; }
+.stick-stage .stick-cup.shaking .stick { translate: 0 -40px; animation: none; }
+.stick-stage .stick-cup.shaking .s2 { translate: 0 -52px; animation: none; }
 
 .shaking { animation: shake 0.5s ease-in-out infinite; }
 
@@ -746,7 +777,11 @@ select option {
   75% { transform: rotate(9deg) translateX(4px); }
 }
 
-/* 抽出来的那根签：被灯照着的木牌，字是烙上去的 */
+@media (prefers-reduced-motion: reduce) {
+  .stick-stage:has(.progress-track) .stick-cup .stick { animation: none; }
+}
+
+/* 抽出来的那根签：被灯照着的琥珀签牌（R12 去掉签身上的假木纹条） */
 .stick-out {
   max-width: 100%;
   padding: 16px 20px;
@@ -756,7 +791,6 @@ select option {
   color: var(--wood-dim);
   background-color: var(--neon-amber);
   background-image:
-    linear-gradient(179deg, rgba(0, 0, 0, 0.14) 0 1px, transparent 1px 11px, rgba(0, 0, 0, 0.1) 11px 12px, transparent 12px 100%),
     radial-gradient(ellipse 90% 120% at 30% 0%, rgba(255, 240, 210, 0.65), transparent 68%);
   box-shadow: var(--edge-brass), 0 0 26px var(--glow-amber-55), 0 12px 26px rgba(0, 0, 0, 0.55);
   font-family: var(--font-display);
@@ -2736,10 +2770,9 @@ body:not(.has-dmbar) .chat-fab {
   border: var(--stroke-thin) solid var(--neon-amber);
   border-radius: var(--radius-sm);
   color: var(--ink-hi);
-  /* 圣旨 = 卷起来的酒单纸：纸纹是画出来的横向纤维，不是斜格 */
+  /* 圣旨 = 卷起来的酒单纸（R12 去掉横向纤维纹：纯色纸面 + 顶上一盏灯） */
   background-color: var(--panel-deep);
   background-image:
-    linear-gradient(179deg, rgba(255, 226, 178, 0.05) 0 1px, transparent 1px 13px, rgba(0, 0, 0, 0.16) 13px 14px, transparent 14px 100%),
     radial-gradient(ellipse 90% 70% at 50% -10%, var(--glow-amber-25), transparent 70%);
   box-shadow: var(--edge-brass), 0 0 20px var(--glow-amber-25);
   font-size: 17px;

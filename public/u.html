@@ -655,25 +655,44 @@
        key 列表与 app.js RESET_COCKTAIL_KEYS 保持一致（两处入口清一样的东西）：
        ideal_cocktail / ideal_userId / ideal_token / ideal_gender / ideal_seeking /
        mfn_seeking / mfn_name / mfn_emoji / mfn_drink / mfn_deck /
-       mfn_aha_saved / mfn_codex_saved / statsKey + 前缀 mfn_token_*。
-       不动 mfn_sound（音量偏好），也不动 liked:*（点赞去重与身份无关）。 */
+       mfn_aha_saved / mfn_codex_saved / statsKey + 前缀 mfn_token_* + 前缀 liked:*。
+       不动 mfn_sound（音量偏好，跟身份无关）。
+       R12：liked:* 改为一起清 —— 不清的话「生面孔」重走一遍，别人展示柜上的卡还是
+       灰的点不了赞，提示就成了假话（app.js clearCocktailIdentity 同步改过）。 */
     const RESET_COCKTAIL_KEYS = [
       "ideal_cocktail", "ideal_userId", "ideal_token", "ideal_gender", "ideal_seeking",
       "mfn_seeking", "mfn_name", "mfn_emoji", "mfn_drink", "mfn_deck",
       "mfn_aha_saved", "mfn_codex_saved", "statsKey",
     ];
-    function resetCocktailIdentity() {
+    function clearCocktailIdentity() {
       try {
         for (const k of RESET_COCKTAIL_KEYS) localStorage.removeItem(k);
         const doomed = [];
         for (let i = 0; i < localStorage.length; i++) {
           const k = localStorage.key(i);
-          if (k && k.startsWith("mfn_token_")) doomed.push(k);
+          if (k && (k.startsWith("mfn_token_") || k.startsWith("liked:"))) doomed.push(k);
         }
         doomed.forEach(k => localStorage.removeItem(k));
       } catch (e) { /* 隐私模式清不了也别拦跳转 */ }
+    }
+    function resetCocktailIdentity() {
+      clearCocktailIdentity();
       location.href = "/v2/cocktail.html";
     }
+
+    /* R12 ?fresh=1 强制清档：Kim 的微信里存着旧档案，要一条「打开就是全新体验」的链接。
+       进页即清（同一份 key 清单）→ 抹掉参数（replaceState，不跳转不刷新）→ 原地继续。
+       必须跑在下面读 ideal_userId / ideal_token 之前。 */
+    (function applyFreshParam() {
+      try {
+        const q = new URLSearchParams(location.search);
+        if (q.get("fresh") !== "1") return;
+        clearCocktailIdentity();
+        q.delete("fresh");
+        const qs = q.toString();
+        history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "") + location.hash);
+      } catch (e) { /* 参数处理失败绝不能挡住进页 */ }
+    })();
 
     /* ---- 工具 ---- */
     function esc(s) {
@@ -935,6 +954,13 @@
           btn.disabled = true;
           localStorage.setItem("liked:" + recordId, "1");
           setCount(prev + 1);
+          // 任一失败路径都必须走这里：乐观状态全撤，重新可点（否则按钮被永久锁死）
+          const rollback = () => {
+            btn.classList.remove("liked");
+            btn.disabled = false;
+            localStorage.removeItem("liked:" + recordId);
+            setCount(prev);
+          };
 
           try {
             const res = await fetch("/api/showcase/like", {
@@ -945,18 +971,17 @@
             if (res.ok) {
               const data = await res.json().catch(() => null);
               if (data && typeof data.likes === "number") setCount(data.likes);
-            } else if (res.status === 404) {
-              toast("先记下了，稍后同步");
             } else {
-              // 回滚
-              btn.classList.remove("liked");
-              btn.disabled = false;
-              localStorage.removeItem("liked:" + recordId);
-              setCount(prev);
+              // R12 审查修复（提示=功能铁律）：原来 404 / 网络异常两条路径都说「先记下了，稍后同步」，
+              // 但全站根本没有重试队列 / pending 存储 / 启动 flush——这个赞永远发不出去。
+              // 更糟的是乐观写的 liked:<id> 还留着，按钮被永久锁死，用户连重试的机会都没有。
+              // 现在统一回滚（含清掉 liked 台账），说实话：没点上，可以再点一次。
+              rollback();
               toast("没点上，再试一次");
             }
           } catch {
-            toast("先记下了，稍后同步");
+            rollback();
+            toast("没点上，再试一次");
           }
         });
       });
@@ -1007,17 +1032,14 @@
                 prependComment(list, { name: localName, text });
               }
               input.value = "";
-            } else if (res.status === 404) {
-              prependComment(list, { name: localName, text });
-              input.value = "";
-              toast("先记下了，稍后同步");
             } else {
+              // R12 审查修复：原来 404 / 网络异常会把评论插进 DOM、清空输入框，再说「稍后同步」——
+              // 实际上没有任何重试队列，这条评论刷新就没了，用户还以为发出去了。
+              // 现在两条失败路径都不动 DOM、不清输入框（内容不丢，能直接再点一次「发」），文案说实话。
               toast("没发出去，再试一次");
             }
           } catch {
-            prependComment(list, { name: localName, text });
-            input.value = "";
-            toast("先记下了，稍后同步");
+            toast("没发出去，再试一次");
           }
           send.disabled = false;
         });
@@ -1047,16 +1069,18 @@
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ token, hidden: willHide }),
             });
-            if (res.status === 404) {
-              toast("先记下了，稍后同步");
-            } else if (!res.ok) {
+            if (!res.ok) {
+              // R12 审查修复：这条最危险 —— 原来 404 / 网络异常只说「先记下了，稍后同步」，
+              // 眼睛图标却已经翻成🙈，用户以为这张卡藏起来了，服务端其实一个字没改，
+              // 卡片对所有人依旧是公开的。现在失败一律把图标翻回去，并说清楚没改成。
               apply(!willHide);
               toast("没改成，再点一次试试");
             } else {
               toast(willHide ? "这条收进柜子里层了，只有你看得见" : "这条摆出来了");
             }
           } catch {
-            toast("先记下了，稍后同步");
+            apply(!willHide);
+            toast("没改成，再点一次试试");
           }
         });
       });

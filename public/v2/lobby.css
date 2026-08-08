@@ -1,1061 +1,669 @@
 /* ==========================================================================
-   酒吧大厅 lobby.css （pixel-bar 风 · 横屏优先）
-   场景分层（z-index）：
-     wall(0) < backwall(1) < bartender(2) < counter(3) < floor tables(4)
-     < stool-row(5) < ceiling(6) < marquee(7)
-     < quotes(50) < 质感层(59-61 in theme) < rotate-hint(70) < codeboard(80)
+   大厅 lobby.css —— R12「走过卡座」（竖屏原生 · 390 手机优先）
+   --------------------------------------------------------------------------
+   Kim 的三条否定，逐条对应：
+     ① 手机端特别挤 / 只能同时坐 8 个桌 / 没有整体性
+        → 整页改成一条从上往下走的动线（门头 → 酒柜 → 吧台 → 卡座 → 店规），
+          每个区块都是同一间店的连续墙面；卡座改成纵向列表，天然不封顶。
+     ② 雪克是透明的
+        → 见 bartender.js（材质换木、脸罩实色）；这里只负责把他放进
+          真实场景：吧台盖住他下半身，他是"站在吧台后"而不是"贴在墙上的画"。
+     ③ 背景特别空
+        → 酒柜整面墙由 lobby.js 画满（三层密集瓶群 + 三幅像素小画相框 +
+          黑板价目牌 + 壁灯 + 霓虹 99% 招牌），每一件都是有框有钉有支架的实体。
+
+   分区（文档流，不再是绝对定位堆叠）：
+     .doorbar(sticky) / .zone-door / .zone-backbar / .zone-bar / .zone-booths / .zone-foot
    ========================================================================== */
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-[hidden] { display: none !important; }
+html { background: var(--bar-bg-deep, #0d0a16); }
 
-html, body {
-  height: 100%;
-  background: var(--bar-bg-deep);
+body {
+  min-height: 100%;
+  background: var(--bar-bg-deep, #0d0a16);
+  color: var(--ink-hi, #f3ecff);
   font-family: var(--font-sans);
-  color: var(--ink-hi);
-  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;                 /* 零横向溢出的最后一道保险 */
 }
 
-.scene {
-  --counter-bottom: 30%;
-  --counter-h: clamp(58px, 9vh, 80px);
-  --floor-h: 30%;
-  --counter-w: min(900px, 92vw);
-  position: relative;
-  width: 100vw;
-  height: 100vh;
-  height: 100dvh;
-  overflow: hidden;
-  background:
-    radial-gradient(ellipse 90% 60% at 50% 30%, var(--bar-bg-wall) 0%, transparent 70%),
-    linear-gradient(180deg, var(--bar-bg-deep) 0%, var(--bar-bg) 40%, var(--bar-floor) 100%);
-}
-
-/* ---------- 墙面质感：竖向护墙板缝 + 侧墙氛围光 + 踢脚暗部 ---------- */
-.wall {
-  position: absolute;
-  inset: 0 0 var(--floor-h) 0;
-  z-index: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(ellipse 42% 55% at 6% 62%, var(--glow-purple-20), transparent 72%),
-    radial-gradient(ellipse 42% 55% at 94% 62%, var(--glow-pink-18), transparent 72%),
-    linear-gradient(90deg, rgba(0,0,0,.28) 0 2px, transparent 2px 14%, rgba(255,214,160,.06) 14% 15%, transparent 15% 38%, rgba(0,0,0,.2) 38% 39%, transparent 39% 66%, rgba(255,214,160,.05) 66% 67%, transparent 67% 88%, rgba(0,0,0,.22) 88% 89%, transparent 89% 100%);
-}
-.wall::before {
-  /* 墙脚暗带（wainscot）：让墙和地板有交接线 */
+/* 宽屏时两侧是店的侧墙（护墙板 + 压暗），中间那条才是店里 */
+body::before {
   content: "";
-  position: absolute;
-  left: 0; right: 0; bottom: 0;
-  height: 16%;
-  background: linear-gradient(180deg, rgba(8, 3, 15, 0.2), rgba(8, 3, 15, 0.5));
-  border-top: 2px solid var(--line-soft);
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(120% 60% at 50% 0%, rgba(162, 75, 255, 0.16), transparent 70%),
+    repeating-linear-gradient(90deg, #120d1d 0 46px, #0d0a16 46px 48px);
 }
 
-/* ---------- 天花板 ---------- */
+/* ---------- 店身：竖条一间店 ---------- */
+.bar {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  padding-bottom: 28px;
+  background: var(--bar-bg, #14101f);
+  box-shadow: 0 0 0 1px rgba(162, 75, 255, 0.14), 0 0 60px rgba(0, 0, 0, 0.7);
+  overflow: hidden;                   /* 装饰不许顶出店门 */
+}
+
+.zone { position: relative; }
+
+/* ==========================================================================
+   常驻工具条：钉在门框上的两块黄铜挂牌
+   ========================================================================== */
+.doorbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px calc(8px + env(safe-area-inset-top, 0px));
+  background: linear-gradient(180deg, #0b0813 62%, rgba(11, 8, 19, 0));
+}
+.brasstag {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+  font: 600 13px/1 var(--font-sans);
+  letter-spacing: 0.02em;
+  color: #f4e6c6;
+  cursor: pointer;
+  /* 黄铜牌：斜切光泽 + 上下棱 + 两颗钉（::before/::after 是钉） */
+  background: linear-gradient(180deg, #b08a4c 0%, #8a6a34 46%, #5c451f 100%);
+  border: 1px solid #2f2413;
+  border-radius: 7px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 240, 200, 0.55),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.4),
+    0 3px 0 #241a0d, 0 6px 12px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
+}
+.brasstag:active { transform: translateY(2px); box-shadow: inset 0 1px 0 rgba(255, 240, 200, 0.4), 0 1px 0 #241a0d; }
+.brasstag-ico {
+  width: 15px; height: 15px; flex: none;
+  border-radius: 3px 3px 5px 5px;
+  background: #2b2114;
+  box-shadow: inset 0 0 0 1.6px #e8c98f;
+  position: relative;
+}
+.brasstag-ico::after {           /* 电话听筒的线 */
+  content: ""; position: absolute; left: 3px; top: 4.5px;
+  width: 9px; height: 2px; border-radius: 2px; background: #e8c98f;
+}
+.brasstag-ico.ico-book { border-radius: 2px; }
+.brasstag-ico.ico-book::after { top: 3px; height: 8px; width: 2px; left: 6.5px; }
+
+/* ==========================================================================
+   一、门头：天花板 + 吊灯 + 招牌（吊杆 + 灯管）
+   ========================================================================== */
+.zone-door {
+  padding: 4px 16px 20px;
+  background:
+    linear-gradient(180deg, #0b0813 0%, #150f22 58%, #1a1329 100%);
+}
 .ceiling {
   position: absolute;
-  top: 0; left: 0; right: 0;
+  inset: 0 0 auto 0;
   height: 120px;
-  z-index: 6;
   pointer-events: none;
-  background: linear-gradient(180deg, rgba(8, 3, 15, 0.55), transparent 70%);
-}
-.disco-wrap {
-  position: absolute;
-  left: 13%;
-  top: 30px;
 }
 .hang-lamp {
   position: absolute;
   top: 0;
-  width: 3px;
-  height: 52px;
-  background: linear-gradient(180deg, rgba(0,0,0,.3) 0 2px, transparent 2px 22%, rgba(255,214,160,.06) 22% 23%, transparent 23% 58%, rgba(0,0,0,.22) 58% 59%, transparent 59% 100%);
-  transform-origin: 50% 0;
-  animation: lamp-sway 7s ease-in-out infinite alternate;
+  width: 66px;
+  height: 92px;
 }
-.hang-lamp.lamp-l { left: 27%; }
-.hang-lamp.lamp-r { left: 73%; animation-delay: -3.2s; }
-@keyframes lamp-sway {
-  from { transform: rotate(-1.2deg); }
-  to   { transform: rotate(1.2deg); }
+.hang-lamp.l1 { left: 5%; }
+.hang-lamp.l2 { right: 6%; width: 48px; }
+.hang-lamp::before {           /* 电线 */
+  content: ""; position: absolute; left: 50%; top: 0;
+  width: 2px; height: 30px; margin-left: -1px;
+  background: #3f3252;
 }
-.hang-lamp i {
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 36px;
-  height: 20px;
-  background: linear-gradient(180deg, #3a2a12, var(--neon-amber-deep));
-  clip-path: polygon(28% 0, 72% 0, 100% 100%, 0 100%);
+.hang-lamp i {                 /* 灯罩：黄铜 */
+  position: absolute; left: 0; top: 28px; width: 100%; height: 30px;
+  background: linear-gradient(180deg, #4a3a26, #8f7440 55%, #ffd9a0);
+  border-radius: 50% 50% 6px 6px / 82% 82% 6px 6px;
+  box-shadow: 0 10px 26px rgba(255, 200, 120, 0.16);
 }
-.hang-lamp i::before {
-  /* 灯泡亮芯 */
-  content: "";
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translate(-50%, -55%);
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #ffe9c4;
-  box-shadow: 0 0 10px var(--glow-amber-55), 0 0 26px var(--glow-amber-25);
+.hang-lamp i::after {          /* 灯下光锥 */
+  content: ""; position: absolute; left: -22%; top: 100%;
+  width: 144%; height: 130px;
+  background: linear-gradient(180deg, rgba(255, 217, 160, 0.22), rgba(255, 217, 160, 0));
+  clip-path: polygon(30% 0, 70% 0, 100% 100%, 0 100%);
 }
-.hang-lamp i::after {
-  /* 光锥光晕 */
-  content: "";
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 170px;
-  height: 230px;
-  background:
-    radial-gradient(ellipse 50% 100% at 50% 0%,
-      var(--glow-amber-25) 0%, var(--glow-amber-12) 45%, transparent 78%);
-}
+.disco-wrap { position: absolute; left: 50%; top: 0; transform: translateX(-50%); }
 
-/* ---------- 霓虹招牌 ---------- */
-.marquee {
-  position: absolute;
-  top: 8px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 7;
-  width: min(440px, 58vw);
-  pointer-events: none;
-}
-.logo { display: block; width: 100%; }
-
-/* ---------- 背墙酒柜（木框 + 顶檐射灯 + 双层瓶架） ---------- */
-.backwall {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: 38%;
-  width: min(820px, 86vw);
-  height: clamp(170px, 26vh, 240px);
-  z-index: 1;
-  border: 3px solid var(--line-counter);
-  border-radius: 6px;
-  background:
-    linear-gradient(180deg, rgba(92, 52, 35, 0.28), rgba(18, 10, 28, 0.4)),
-    linear-gradient(90deg, rgba(0,0,0,.28) 0 2px, transparent 2px 14%, rgba(255,214,160,.06) 14% 15%, transparent 15% 38%, rgba(0,0,0,.2) 38% 39%, transparent 39% 66%, rgba(255,214,160,.05) 66% 67%, transparent 67% 88%, rgba(0,0,0,.22) 88% 89%, transparent 89% 100%),
-    linear-gradient(180deg, #2b1a33, #1d1126);
-  box-shadow:
-    0 16px 44px rgba(0, 0, 0, 0.5),
-    inset 0 0 46px rgba(0, 0, 0, 0.45),
-    inset 0 2px 0 var(--glow-amber-12);
-}
-.backwall::before {
-  /* 柜顶木檐 */
-  content: "";
-  position: absolute;
-  left: -6px; right: -6px; top: -8px;
-  height: 10px;
-  background: linear-gradient(180deg, var(--bar-counter-top), var(--bar-counter));
-  border: 2px solid var(--line-counter);
-  border-radius: 3px;
-}
-.backwall::after {
-  /* 柜檐下三束射灯光 */
-  content: "";
-  position: absolute;
-  left: 0; right: 0; top: 2px;
-  height: 54px;
-  pointer-events: none;
-  background:
-    radial-gradient(ellipse 70px 48px at 18% 0%, var(--glow-amber-12), transparent 72%),
-    radial-gradient(ellipse 70px 48px at 50% 0%, var(--glow-amber-12), transparent 72%),
-    radial-gradient(ellipse 70px 48px at 82% 0%, var(--glow-amber-12), transparent 72%);
-}
-.shelf {
-  position: absolute;
-  left: 4%;
-  right: 4%;
-  height: 8px;
-  background: linear-gradient(180deg, var(--bar-counter-top), var(--bar-counter));
-  border: 2px solid var(--line-counter);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
-}
-.shelf::after {
-  /* 层板下暖灯带 */
-  content: "";
-  position: absolute;
-  left: 6%; right: 6%; top: 100%;
-  height: 3px;
-  background: var(--glow-amber-25);
-  box-shadow: 0 2px 12px var(--glow-amber-25);
-}
-.shelf-1 { bottom: 46%; }
-.shelf-2 { bottom: 8%; }
-
-/* 酒瓶群：76px 周期三支瓶（绿玻璃/琥珀/紫玻璃），瓶身+瓶颈+高光三层对齐，
-   背光暖灯从后面透出来。两排 background-position 错位，避免复制感 */
-.bottles {
-  position: absolute;
-  left: 6%;
-  right: 6%;
-  height: 34px;
-  /* R10：旧版靠 repeating 条纹「摆」出瓶子（复制感=廉价感）。
-     改成一张画出来的酒瓶剪影 —— 六支瓶高矮胖瘦各不同，每支左肩一道反光。 */
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 228 46' preserveAspectRatio='xMidYMax meet'%3E%3Cg fill='%230d0709'%3E%3Cpath d='M18 46V16c0-4 3-6 3-10V0h8v6c0 4 3 6 3 10v30z'/%3E%3Cpath d='M52 46V20c0-3 2-5 2-8V4h7v8c0 3 2 5 2 8v26z'/%3E%3Cpath d='M86 46V13c0-5 4-7 4-11V0h9v2c0 4 4 6 4 11v33z'/%3E%3Cpath d='M124 46V19c0-4 3-6 3-9V2h8v8c0 3 3 5 3 9v27z'/%3E%3Cpath d='M158 46V14c0-4 3-7 3-11V0h9v3c0 4 3 7 3 11v32z'/%3E%3Cpath d='M194 46V22c0-3 2-5 2-8V5h7v9c0 3 2 5 2 8v24z'/%3E%3C/g%3E%3Cg fill='%23ffdca6' opacity='.22'%3E%3Crect x='20' y='20' width='2' height='22'/%3E%3Crect x='54' y='24' width='2' height='18'/%3E%3Crect x='88' y='18' width='2' height='24'/%3E%3Crect x='126' y='23' width='2' height='19'/%3E%3Crect x='160' y='19' width='2' height='23'/%3E%3Crect x='196' y='26' width='2' height='16'/%3E%3C/g%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: 50% 100%;
-  background-size: 100% 100%;
-}
-.bottles::before {
-  /* 背光：暖色灯带打亮瓶群 */
-  content: "";
-  position: absolute;
-  inset: -14px -2% -2px;
-  z-index: -1;
-  background: linear-gradient(180deg,
-    var(--glow-amber-12) 0%, var(--glow-amber-25) 60%, transparent 100%);
-}
-.bottles::after {
-  /* 瓶群顶上那道层板漏下来的光边 */
-  content: "";
-  position: absolute;
-  left: 0; right: 0; top: -3px; height: 3px;
-  background-image: linear-gradient(180deg, var(--brass) 0 1px, var(--glow-amber-25) 1px 100%);
-}
-.bottles-1 { bottom: calc(46% + 8px); }
-/* 第二排镜像 + 缩一档：同一张剪影不会看出复制感 */
-.bottles-2 { bottom: calc(8% + 8px); height: 30px; transform: scaleX(-1); }
-
-/* 酒柜中段吧镜：九八身后的暗镜面，把人从瓶群里衬出来 */
-.mirror {
-  position: absolute;
-  left: 50%;
-  top: 9%;
-  bottom: 7%;
-  transform: translateX(-50%);
-  width: clamp(140px, 21%, 190px);
-  background: linear-gradient(160deg,
-    rgba(232, 167, 92, 0.16), rgba(20, 12, 14, 0.88) 45%, rgba(201, 154, 78, 0.08));
-  border: 3px solid var(--brass-dim);
-  border-radius: 4px;
-  box-shadow: inset 0 0 26px rgba(8, 3, 15, 0.65), 0 6px 18px rgba(8, 3, 15, 0.4);
-  overflow: hidden;
-}
-.mirror::before {
-  /* 镜面斜光 */
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(115deg,
-    transparent 30%, rgba(244, 236, 255, 0.07) 34%, transparent 40%,
-    transparent 58%, rgba(244, 236, 255, 0.05) 62%, transparent 66%);
-}
-
-/* OPEN 24/7：挂在酒柜上方墙面的霓虹灯牌 */
-.wall-neon {
-  position: absolute;
-  right: 4%;
-  top: -62px;
-  padding: 6px 14px;
-  font-family: var(--font-pixel);
-  font-size: 15px;
-  letter-spacing: 0.2em;
-  color: var(--neon-cyan-soft);
-  text-shadow: var(--neon-text-cyan);
-  border: 2px solid var(--neon-cyan);
-  border-radius: var(--radius-sm);
-  background: var(--panel-deep);
-  box-shadow: var(--neon-box-cyan);
-  transform: rotate(-2deg);
-}
-.wall-neon::after {
-  /* 挂链两根 */
-  content: "";
-  position: absolute;
-  left: 20%; right: 20%; bottom: 100%;
-  height: 14px;
-  background:
-    linear-gradient(var(--ink-ghost), var(--ink-ghost)) left center / 2px 100% no-repeat,
-    linear-gradient(var(--ink-ghost), var(--ink-ghost)) right center / 2px 100% no-repeat;
-}
-
-/* ---------- 酒保（锚定在吧台上沿，露出半身） ---------- */
-.bartender-slot {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: calc(var(--counter-bottom) + var(--counter-h) - 26px);
-  width: clamp(120px, 20vh, 190px);
-  height: clamp(120px, 20vh, 190px);
-  z-index: 2;
-  cursor: pointer;
-  filter: drop-shadow(0 0 18px rgba(0, 0, 0, 0.6));
-}
-.bartender-tag {
-  /* 名牌加深色底衬（小吊牌），从酒瓶架里衬出来 */
-  position: absolute;
-  left: 50%;
-  transform: translateX(calc(-50% + 104px));
-  bottom: calc(var(--counter-bottom) + var(--counter-h) + 34px);
-  z-index: 2;
-  font-size: 13px;
-  padding: 3px 10px;
-  background: var(--panel-deep);
-  border: var(--stroke-thin) solid var(--neon-cyan);
-  border-radius: var(--radius-pill);
-  box-shadow: 0 0 8px var(--glow-cyan-16), 0 4px 10px rgba(8, 3, 15, 0.5);
-  pointer-events: none;
-}
-
-/* ---------- 吧台 ---------- */
-.counter {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: var(--counter-bottom);
-  width: var(--counter-w);
-  height: var(--counter-h);
-  z-index: 3;
-}
-.counter-top {
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 16px;
-  background:
-    linear-gradient(90deg,
-      transparent 0 22%, var(--glow-amber-12) 27%, transparent 34%,
-      transparent 66%, var(--glow-amber-12) 73%, transparent 80%),
-    linear-gradient(180deg, var(--bar-counter-top), var(--bar-counter));
-  border: 2px solid var(--line-counter);
-  border-radius: 4px;
-  box-shadow: var(--shadow-counter), inset 0 2px 0 rgba(255, 182, 72, 0.22);
-}
-.counter-face {
-  position: absolute;
-  top: 16px; left: 8px; right: 8px; bottom: 0;
-  background:
-    linear-gradient(90deg, rgba(0,0,0,.28) 0 2px, transparent 2px 14%, rgba(255,214,160,.06) 14% 15%, transparent 15% 38%, rgba(0,0,0,.2) 38% 39%, transparent 39% 66%, rgba(255,214,160,.05) 66% 67%, transparent 67% 88%, rgba(0,0,0,.22) 88% 89%, transparent 89% 100%),
-    linear-gradient(180deg, #46281a, #24120a);
-  background-blend-mode: multiply;
-  border: 2px solid var(--line-counter);
-  border-top: none;
-}
-.counter-face::after {
-  /* 吧台踢脚霓虹灯带 */
-  content: "";
-  position: absolute;
-  left: 4px; right: 4px; bottom: 4px;
-  height: 3px;
-  background-image: linear-gradient(180deg, var(--brass-hi), var(--brass) 50%, var(--brass-dim));
-  box-shadow: 0 0 10px var(--glow-amber-55), 0 0 24px var(--glow-amber-25);
-}
-.counter::after {
-  /* 吧台落在地板上的阴影 */
-  content: "";
-  position: absolute;
-  left: 1%; right: 1%; top: 100%;
-  height: 22px;
-  background: linear-gradient(180deg, rgba(8, 3, 15, 0.55), transparent);
-  pointer-events: none;
-}
-
-/* 台面小物：酒杯 ×2 + 一支没收的酒瓶 */
-.counter-props {
-  position: absolute;
-  left: 0; right: 0; top: -24px;
-  height: 24px;
-  pointer-events: none;
-}
-.glass {
-  position: absolute;
-  bottom: 0;
-  width: 12px;
-  height: 17px;
-  border: 1px solid rgba(244, 236, 255, 0.3);
-  border-radius: 2px 2px 3px 3px;
-  background: linear-gradient(180deg,
-    rgba(159, 243, 255, 0.16) 0 6px,
-    var(--neon-amber) 6px 14px,
-    rgba(244, 236, 255, 0.2) 14px 17px);
-  box-shadow: 0 0 8px var(--glow-amber-25);
-}
-.glass.g1 { left: 29%; }
-.glass.g2 { left: 32%; height: 14px; }
-.cbottle {
-  position: absolute;
-  bottom: 0;
-  left: 65%;
-  width: 10px;
-  height: 22px;
-  border-radius: 3px 3px 1px 1px;
-  background: linear-gradient(180deg, #2e6e5f, #16332f);
-  box-shadow: inset 2px 0 0 rgba(244, 236, 255, 0.18);
-}
-.cbottle::before {
-  content: "";
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 4px;
-  height: 7px;
-  background: #2e6e5f;
-}
-
-/* 吧台电话：找朋友 */
-.barphone {
-  position: absolute;
-  left: 6%;
-  bottom: calc(100% - 6px);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  z-index: 4;
-  padding: 4px;
-}
-.phone-shape {
+/* 招牌：两根吊杆把牌子吊下来，牌面背后一圈灯 */
+.signboard {
   position: relative;
-  width: 30px;
-  height: 20px;
-  border-radius: 4px;
-  background: linear-gradient(180deg, var(--neon-red), #7e1717);
-  border: 2px solid var(--line-counter);
-  box-shadow: 0 0 10px rgba(255, 65, 65, 0.35);
-  transform-origin: 50% 100%;
-  animation: phone-ring 5.5s ease-in-out infinite;
+  margin: 74px auto 0;
+  width: min(300px, 84%);
+  padding-top: 18px;
 }
-.phone-shape::before {
-  /* 听筒 */
-  content: "";
-  position: absolute;
-  top: -9px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 34px;
-  height: 8px;
-  border-radius: 4px;
-  background: linear-gradient(180deg, #a32222, #6b1212);
-  border: 1px solid var(--line-counter);
-}
-.phone-shape::after {
-  /* 拨号键 */
-  content: "";
-  position: absolute;
-  bottom: 3px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 14px;
-  height: 6px;
-  background: linear-gradient(90deg, rgba(0,0,0,.28) 0 2px, transparent 2px 14%, rgba(255,214,160,.06) 14% 15%, transparent 15% 38%, rgba(0,0,0,.2) 38% 39%, transparent 39% 66%, rgba(255,214,160,.05) 66% 67%, transparent 67% 88%, rgba(0,0,0,.22) 88% 89%, transparent 89% 100%);
-}
-@keyframes phone-ring {
-  0%, 84%, 100% { transform: rotate(0); }
-  86% { transform: rotate(-6deg); }
-  89% { transform: rotate(5deg); }
-  92% { transform: rotate(-3deg); }
-  95% { transform: rotate(2deg); }
-}
-.phone-label {
-  font-size: 12px;
-  padding: 3px 9px;
-  border-radius: var(--radius-pill);
-  border: var(--stroke-thin) solid var(--neon-cyan);
-  background: var(--panel-deep);
-  box-shadow: 0 0 8px var(--glow-cyan-16);
-  transition: transform 0.15s;
-}
-.barphone:hover .phone-label,
-.barphone:active .phone-label { transform: scale(1.08); }
-
-/* ---------- 吧台凳排（吧台前，站在地板上） ---------- */
-.stool-row {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: calc(var(--counter-bottom) - 28px);
-  width: var(--counter-w);
-  height: 66px;
-  z-index: 5;
-  pointer-events: none;
-}
-.stool {
-  position: relative;
-  display: block;
-  width: 46px;
-  height: 66px;
-}
-.stool::before {
-  /* 凳面 */
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 44px;
-  height: 15px;
-  border-radius: 8px 8px 3px 3px;
-  background: linear-gradient(180deg, var(--bar-counter-top), var(--bar-counter));
-  border: 2px solid var(--line-counter);
-  box-shadow: inset 0 2px 0 rgba(255, 182, 72, 0.25);
-}
-.stool i {
-  position: absolute;
-  top: 15px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 6px;
-  height: 46px;
-  background: linear-gradient(180deg, var(--ink-ghost), #241536);
-}
-.stool i::before {
-  /* 脚踏环 */
-  content: "";
-  position: absolute;
-  top: 22px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 30px;
-  height: 4px;
+.sign-rod {
+  position: absolute; top: -46px; width: 3px; height: 64px;
+  background: linear-gradient(180deg, #6d5228, #b08a4c);
   border-radius: 2px;
-  background: var(--ink-ghost);
 }
-.stool i::after {
-  /* 底座 + 地板影 */
-  content: "";
-  position: absolute;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 26px;
-  height: 5px;
-  border-radius: 50%;
-  background: rgba(8, 3, 15, 0.9);
-  box-shadow: 0 2px 10px rgba(8, 3, 15, 0.8);
+.sign-rod.rod-l { left: 16%; }
+.sign-rod.rod-r { right: 16%; }
+.sign-rod::after {              /* 吊杆顶端的固定盘 */
+  content: ""; position: absolute; left: 50%; top: -5px; transform: translateX(-50%);
+  width: 11px; height: 6px; border-radius: 3px;
+  background: radial-gradient(circle at 34% 28%, #e8c98f, #b08a4c 55%, #2f2413);
 }
-.stool.deco { position: absolute; opacity: 0.9; }
-.stool.deco.s1 { left: 17%; }
-.stool.deco.s2 { left: 40%; }
-
-/* 单人位：粉皮凳 + 招牌，头顶一束小射灯 */
-.solo-seat {
-  position: absolute;
-  left: 66%;
-  bottom: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0 6px;
-  pointer-events: auto;
+.sign-plate {
+  position: relative;
+  padding: 14px 12px 16px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #1a1226 0%, #0e0a17 100%);
+  border: 2px solid #3a2c14;
+  box-shadow:
+    inset 0 0 0 1px rgba(232, 201, 143, 0.3),
+    inset 0 0 26px rgba(255, 45, 120, 0.18),
+    0 10px 30px rgba(0, 0, 0, 0.6);
 }
-.solo-seat::before {
-  /* 小射灯光晕落在凳子上 */
-  content: "";
-  position: absolute;
-  bottom: -4px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 120px;
-  height: 150px;
-  background: radial-gradient(ellipse 42% 60% at 50% 78%,
-    var(--glow-amber-12), transparent 72%);
+.sign-plate::before {           /* 牌面外侧那圈灯管 */
+  content: ""; position: absolute; inset: 5px;
+  border-radius: 8px;
+  border: 2px solid rgba(255, 45, 120, 0.5);
+  box-shadow: 0 0 10px rgba(255, 45, 120, 0.45), inset 0 0 10px rgba(255, 45, 120, 0.3);
   pointer-events: none;
 }
-.solo-seat .stool.solo::before {
-  background: linear-gradient(180deg, var(--neon-pink-hot), var(--neon-pink));
-  box-shadow: 0 0 12px var(--glow-pink-40), inset 0 2px 0 rgba(244, 236, 255, 0.4);
-}
-.solo-label {
-  font-size: 14px;
-  white-space: nowrap;
-  padding: 4px 10px;
-  border-radius: var(--radius-pill);
-  border: var(--stroke-thin) solid var(--neon-amber);
-  background: var(--panel-deep);
-  box-shadow: 0 0 8px var(--glow-amber-25);
-  transition: transform 0.15s;
-}
-.solo-seat:hover .solo-label,
-.solo-seat:active .solo-label { transform: scale(1.08); }
+.sign-logo { display: block; width: 100%; height: auto; }
 
-/* solo 入口上方小提示："一个人？那你和我聊。" */
-.solo-hint {
-  font-family: var(--font-pixel);
-  font-size: 11px;
-  white-space: nowrap;
-  color: var(--neon-cyan-soft);
-  text-shadow: 0 0 6px var(--glow-cyan-40), 0 1px 3px rgba(8, 3, 15, 0.9);
-  opacity: 0.92;
-  margin-bottom: 1px;
-}
-
-/* ---------- 我的主页：常驻入口（右上角，不挡桌区/不撞 OPEN 24/7） ---------- */
-.home-entry {
-  position: fixed;
-  top: 10px;
-  right: 10px;
-  z-index: 77;
+.door-rule {
+  margin: 14px auto 0;
+  max-width: 300px;
+  text-align: center;
   font-size: 12px;
-  padding: 6px 12px;
-  color: var(--neon-purple);
-  text-shadow: var(--neon-text-purple);
-  background: var(--panel-deep);
-  border: var(--stroke-thin) solid var(--neon-purple);
-  border-radius: var(--radius-pill);
-  box-shadow: 0 0 10px var(--glow-purple-20), 0 4px 10px rgba(8, 3, 15, 0.5);
-  cursor: pointer;
-  transition: transform 0.15s, box-shadow 0.3s;
-}
-.home-entry::before { content: "▨ "; opacity: 0.85; }
-.home-entry:hover,
-.home-entry:active {
-  transform: scale(1.06);
-  box-shadow: 0 0 16px var(--glow-purple-45), 0 4px 10px rgba(8, 3, 15, 0.5);
+  line-height: 1.7;
+  color: var(--ink-dim, #877ba6);
 }
 
-/* ---------- 未注册引导横幅（九八口吻，顶部居中，生面孔才出现） ---------- */
-.guest-banner {
-  position: fixed;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 76;
-  display: inline-flex;
+/* ---------- 生面孔立牌（门口的 A 字架） ---------- */
+.guest-easel {
+  position: relative;
+  display: flex;
   align-items: center;
   gap: 10px;
-  max-width: 92vw;
-  padding: 7px 14px;
-  font-size: 12px;
+  margin: 0 16px 18px;
+  padding: 12px 14px 14px;
   text-decoration: none;
-  color: var(--ink-hi);
-  background: var(--panel-deep);
-  border: var(--stroke-thin) solid var(--neon-amber);
-  border-radius: var(--radius-pill);
-  box-shadow: 0 0 14px var(--glow-amber-25), 0 4px 12px rgba(8, 3, 15, 0.55);
-  white-space: nowrap;
-  transition: transform 0.15s;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #22192f, #171022);
+  border: 2px solid #3a2c14;
+  box-shadow: inset 0 0 0 1px rgba(232, 201, 143, 0.18), 0 8px 20px rgba(0, 0, 0, 0.55);
 }
-.guest-banner .gb-text {
-  color: var(--ink-mid);
-  overflow: hidden;
-  text-overflow: ellipsis;
+.guest-easel::before {          /* 立牌顶上的黄铜提手 */
+  content: ""; position: absolute; left: 50%; top: -7px; transform: translateX(-50%);
+  width: 46px; height: 7px; border-radius: 4px 4px 0 0;
+  background: linear-gradient(180deg, #e8c98f, #8a6a34);
 }
-.guest-banner .gb-go {
-  flex: none;
-  font-family: var(--font-pixel);
-  color: var(--neon-amber);
-  text-shadow: var(--neon-text-amber);
+.easel-body { flex: 1 1 auto; min-width: 0; font-size: 13px; line-height: 1.6; color: var(--ink-mid, #bbadd8); }
+.easel-body b { display: block; color: #ffd9a0; font-size: 14px; }
+.easel-go {
+  flex: none; font-size: 12.5px; font-weight: 700; color: #ff9ec4;
+  padding: 7px 10px; border-radius: 6px;
+  border: 1px solid rgba(255, 45, 120, 0.5);
+  background: rgba(255, 45, 120, 0.1);
 }
-.guest-banner:hover,
-.guest-banner:active { transform: translateX(-50%) scale(1.03); }
+.easel-legs {                   /* 立牌的两条腿 */
+  position: absolute; left: 0; right: 0; bottom: -10px; height: 10px;
+}
+.easel-legs::before, .easel-legs::after {
+  content: ""; position: absolute; bottom: 0; width: 4px; height: 10px; background: #3a2c14;
+}
+.easel-legs::before { left: 16%; transform: skewX(12deg); }
+.easel-legs::after { right: 16%; transform: skewX(-12deg); }
 
-/* ---------- 卡组徽标：有人的桌子挂"今晚聊什么"（man/woman/agent） ---------- */
-.deck-badge {
-  font-family: var(--font-pixel);
-  font-size: 10px;
-  line-height: 1;
-  padding: 3px 8px;
-  border-radius: var(--radius-pill);
-  color: var(--neon-amber);
-  border: var(--stroke-thin) solid var(--neon-amber);
-  background: var(--panel-deep);
-  text-shadow: 0 0 6px var(--glow-amber-25);
-  box-shadow: 0 0 8px var(--glow-amber-25);
-  white-space: nowrap;
-}
-.deck-badge[data-deck="woman"] {
-  color: var(--neon-pink-hot);
-  border-color: var(--neon-pink);
-  text-shadow: var(--neon-text-pink);
-  box-shadow: var(--neon-box-pink);
-}
-.deck-badge[data-deck="agent"] {
-  color: var(--neon-cyan-soft);
-  border-color: var(--neon-cyan);
-  text-shadow: var(--neon-text-cyan);
-  box-shadow: var(--neon-box-cyan);
+/* ==========================================================================
+   二、酒柜区：整面墙都是货
+   ========================================================================== */
+.zone-backbar { line-height: 0; }
+.backbar-art { width: 100%; }
+.backbar-art .bb {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* 与 viewBox 同比，配 preserveAspectRatio="meet" → 任何宽度都不裁不变形，
+     招牌 / 黑板 / 相框永远完整（1400 上曾被 slice 切掉顶部，已修） */
+  aspect-ratio: 390 / 470;
 }
 
-/* ---------- 前景地板 + 圆桌 ---------- */
-.floor {
-  position: absolute;
-  left: 0; right: 0; bottom: 0;
-  height: var(--floor-h);
-  z-index: 4;
-  background:
-    /* 吊灯落在地板上的两汪光 */
-    radial-gradient(ellipse 190px 44px at 27% 4%, var(--glow-amber-12), transparent 72%),
-    radial-gradient(ellipse 190px 44px at 73% 4%, var(--glow-amber-12), transparent 72%),
-    /* 吧台霓虹灯带的地面反光 */
-    linear-gradient(180deg, var(--glow-purple-20), transparent 14%),
-    /* 地板拼板缝：横缝 + 竖向错缝 */
-    linear-gradient(180deg, rgba(0,0,0,.3) 0 2px, transparent 2px 22%, rgba(255,214,160,.06) 22% 23%, transparent 23% 58%, rgba(0,0,0,.22) 58% 59%, transparent 59% 100%),
-    linear-gradient(90deg, rgba(0,0,0,.28) 0 2px, transparent 2px 14%, rgba(255,214,160,.06) 14% 15%, transparent 15% 38%, rgba(0,0,0,.2) 38% 39%, transparent 39% 66%, rgba(255,214,160,.05) 66% 67%, transparent 67% 88%, rgba(0,0,0,.22) 88% 89%, transparent 89% 100%),
-    linear-gradient(180deg, #1c1129, var(--bar-floor) 55%, #0e0818);
+/* ==========================================================================
+   三、吧台区：雪克站在吧台后
+   ========================================================================== */
+.zone-bar { background: linear-gradient(180deg, #150f22, #100c1c); }
+.bar-stage {
+  position: relative;
+  padding-top: 8px;
+  min-height: 300px;
 }
-.table {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  background: none;
-  border: none;
+
+/* 雪克：立绘比容器高一截，多出来的部分让吧台（z-index 更高）真实地挡住 ——
+   是"被吧台遮住"，不是"被裁掉"，所以没有硬切边。 */
+.xueke {
+  position: relative;
+  z-index: 1;
+  width: 190px;
+  height: 148px;
+  margin: 0 auto;
+}
+.xueke-body {
+  width: 190px;
+  height: 190px;
   cursor: pointer;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.55));
+}
+
+/* 雪克的话：一块挂在他旁边的实体小牌（不是浮字） */
+.xueke-say {
+  position: absolute;
+  right: 8px;
+  top: 26px;
+  z-index: 3;
+  max-width: 46%;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #241a3a, #17112a);
+  border: 1px solid #4a3a6d;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(201, 166, 255, 0.16);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink-mid, #bbadd8);
+}
+.xueke-say b {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--neon-cyan-soft, #9ff3ff);
+  margin-bottom: 3px;
+}
+.xueke-say::before {            /* 指向雪克的小尖角 */
+  content: ""; position: absolute; left: -6px; top: 18px;
+  width: 10px; height: 10px; transform: rotate(45deg);
+  background: #221838;
+  border-left: 1px solid #4a3a6d;
+  border-bottom: 1px solid #4a3a6d;
+}
+.xueke-say.pop { animation: say-pop 0.34s cubic-bezier(0.2, 1.4, 0.4, 1); }
+@keyframes say-pop { from { transform: translateY(4px) scale(0.96); opacity: 0.4; } to { transform: none; opacity: 1; } }
+
+/* 吧台本体：木台面 + 黄铜压条 + 立面护板 */
+.counter { position: relative; z-index: 2; margin-top: -6px; }
+.counter-top {
+  height: 16px;
+  background: linear-gradient(180deg, #7a5030 0%, #5a3a22 42%, #33203a 100%);
+  box-shadow: 0 -8px 22px rgba(255, 45, 120, 0.14);
+  border-top: 3px solid #c9a86a;
+}
+.counter-face {
+  height: 60px;
+  background:
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.28) 0 1.5px, transparent 1.5px 44px),
+    linear-gradient(180deg, #2a1c34 0%, #1a1226 100%);
+  border-bottom: 2px solid #0e0a17;
+  box-shadow: inset 0 6px 12px rgba(0, 0, 0, 0.5);
+}
+.counter-face::after {          /* 立面下缘的黄铜脚踏杆 */
+  content: ""; display: block; position: relative; top: 44px;
+  height: 4px;
+  background: linear-gradient(180deg, #e8c98f, #8a6a34 60%, #3d2d1a);
+}
+/* 台面小物：两只杯 + 一支瓶 + 一台电话（都画成实体，不是 emoji） */
+.counter-props { position: absolute; left: 0; right: 0; top: -22px; height: 24px; pointer-events: none; }
+.counter-props i { position: absolute; bottom: 0; display: block; }
+.prop-glass {
+  left: 12%; width: 13px; height: 17px;
+  background: linear-gradient(180deg, rgba(226, 236, 255, 0.2), rgba(224, 139, 58, 0.75) 62%);
+  border: 1px solid rgba(226, 236, 255, 0.4);
+  border-radius: 2px 2px 4px 4px;
+}
+.prop-glass.g2 { left: 19%; height: 13px; }
+.prop-bottle {
+  right: 16%; width: 11px; height: 24px;
+  background: linear-gradient(180deg, #6d5228 0 6px, #1f3d2a 6px);
+  border-radius: 3px 3px 2px 2px;
+  clip-path: polygon(38% 0, 62% 0, 62% 28%, 100% 46%, 100% 100%, 0 100%, 0 46%, 38% 28%);
+}
+/* 老式转盘电话：机身 + 拨号盘 + 架在上面的听筒 */
+.prop-phone {
+  right: 30%; width: 24px; height: 15px;
+  background: linear-gradient(180deg, #5c222e, #2c1016);
+  border-radius: 3px 3px 2px 2px;
+  box-shadow: inset 0 1px 0 rgba(255, 200, 200, 0.22), 0 2px 4px rgba(0, 0, 0, 0.6);
+}
+.prop-phone::before {           /* 拨号盘 */
+  content: ""; position: absolute; left: 3px; bottom: 2px;
+  width: 8px; height: 8px; border-radius: 50%;
+  border: 1.4px solid #c9a86a;
+}
+.prop-phone::after {            /* 听筒 */
+  content: ""; position: absolute; left: 1px; top: -5px;
+  width: 22px; height: 6px; border-radius: 4px;
+  background: linear-gradient(180deg, #8a3a48, #3d1620);
+  box-shadow: inset 0 1px 0 rgba(255, 200, 200, 0.3);
+}
+
+/* 吧台凳 */
+.stool-row {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 14px;
+  padding: 6px 12px 18px;
+  background: linear-gradient(180deg, #100c1c, #0e0a18);
+}
+.stool { display: block; width: 40px; height: 46px; position: relative; }
+.stool i {                       /* 坐垫 */
+  position: absolute; left: 0; top: 0; width: 40px; height: 12px;
+  border-radius: 7px;
+  background: linear-gradient(180deg, #40295f, #241640);
+  box-shadow: inset 0 1px 0 rgba(201, 166, 255, 0.28);
+}
+.stool::before {                 /* 立柱 */
+  content: ""; position: absolute; left: 50%; top: 11px; margin-left: -2px;
+  width: 4px; height: 26px;
+  background: linear-gradient(90deg, #6d5228, #b08a4c, #4a3a26);
+}
+.stool::after {                  /* 底盘 */
+  content: ""; position: absolute; left: 50%; bottom: 0; transform: translateX(-50%);
+  width: 26px; height: 6px; border-radius: 50%;
+  background: #0a0712;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+}
+.stool.deco { opacity: 0.72; }
+
+.solo-seat {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  transition: transform 0.15s ease-out;
+  padding: 0 6px 6px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  min-height: 64px;
 }
-.table:hover, .table:active { transform: translate(-50%, -56%) scale(1.06); }
-.table::before {
-  /* 空桌头顶的冷光落地（可点击暗示），有人后让位给暖光 */
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 58%;
-  transform: translate(-50%, -50%);
-  width: calc(var(--tw, 120px) * 1.9);
-  height: calc(var(--tw, 120px) * 1.1);
-  background: radial-gradient(ellipse 50% 42% at 50% 55%,
-    var(--glow-cyan-16), transparent 72%);
-  pointer-events: none;
-  transition: opacity 0.7s;
+.solo-seat .stool.solo i {
+  background: linear-gradient(180deg, #ff6ea8, #b01f4f);
+  box-shadow: 0 0 14px rgba(255, 45, 120, 0.5), inset 0 1px 0 rgba(255, 220, 235, 0.5);
 }
-.table.lit::before { opacity: 0; }
-.table-sign {
-  font-family: var(--font-pixel);
-  font-size: 17px;
-  color: var(--neon-cyan-soft);
-  text-shadow: var(--neon-text-cyan);
-  padding: 3px 12px;
-  border: var(--stroke-thin) solid var(--neon-cyan);
-  border-radius: var(--radius-sm);
-  background: var(--panel-deep);
-  box-shadow: var(--neon-box-cyan);
-  transition: color 0.5s, text-shadow 0.5s, box-shadow 0.5s, border-color 0.5s;
-}
-.table:nth-child(2n) .table-sign {
-  color: var(--neon-pink-hot);
-  text-shadow: var(--neon-text-pink);
-  border-color: var(--neon-pink);
-  box-shadow: var(--neon-box-pink);
-}
-/* 空桌冷光：低功率通电的青色霓虹（暗一档但一眼可辨），
-   带慢呼吸"点我"节奏；有人/悬停/带路中升到全亮本色 */
-.table:not(.lit):not(:hover):not(.loading) .table-sign {
-  color: var(--neon-cyan-soft);
-  text-shadow: 0 0 5px var(--glow-cyan-40);
-  box-shadow: 0 0 12px var(--glow-cyan-16), inset 0 0 6px var(--glow-cyan-16);
-  border-color: var(--neon-cyan);
-  opacity: 0.85;
-  animation: sign-beckon 3.6s ease-in-out var(--sign-delay, 0s) infinite;
-}
-@keyframes sign-beckon {
-  0%, 100% { filter: brightness(0.88); }
-  50%      { filter: brightness(1.35); }
-}
-/* 空桌桌面：冷光轮廓（青色描边 + 轻雾光），和满桌的暖光区分 */
-.table:not(.lit) .table-top {
-  border-color: rgba(45, 226, 255, 0.45);
-  box-shadow:
-    0 10px 24px rgba(0, 0, 0, 0.55),
-    0 0 16px var(--glow-cyan-16),
-    inset 0 2px 0 rgba(159, 243, 255, 0.18);
-}
-.table:not(.lit):hover .table-top {
-  box-shadow:
-    0 10px 24px rgba(0, 0, 0, 0.55),
-    0 0 30px var(--glow-cyan-40),
-    inset 0 2px 0 rgba(159, 243, 255, 0.3);
-}
-.table-top {
-  width: var(--tw, 120px);
-  height: calc(var(--tw, 120px) * 0.32);
-  border-radius: 50%;
-  background:
-    radial-gradient(ellipse at 50% 30%, #46301f 0%, #362015 55%, #241209 100%);
-  border: 2px solid var(--line-counter);
-  box-shadow:
-    0 10px 24px rgba(0, 0, 0, 0.55),
-    inset 0 2px 0 rgba(255, 182, 72, 0.08);
-  position: relative;
-  transition: box-shadow 0.6s, background 0.6s;
-}
-.table-top::before {
-  /* 桌面暖光光晕（有人才亮） */
-  content: "";
-  position: absolute;
-  left: 50%;
-  bottom: 30%;
-  transform: translateX(-50%);
-  width: 150%;
-  height: 300%;
-  background: radial-gradient(ellipse 46% 55% at 50% 92%,
-    var(--glow-amber-25), var(--glow-amber-12) 55%, transparent 76%);
-  opacity: 0;
-  transition: opacity 0.7s;
-  pointer-events: none;
-}
-.table-top::after {
-  /* 桌上小蜡烛：空桌熄着，有人点亮 */
-  content: "";
-  position: absolute;
-  left: 50%; top: 30%;
-  transform: translateX(-50%);
-  width: 6px; height: 6px;
-  border-radius: 2px;
-  background: var(--ink-ghost);
-  transition: background 0.5s, box-shadow 0.5s;
-}
-.table.lit .table-top {
-  background:
-    radial-gradient(ellipse at 50% 30%, #4a2c1c 0%, var(--bar-counter) 55%, #241209 100%);
-  box-shadow:
-    0 10px 24px rgba(0, 0, 0, 0.55),
-    0 -4px 28px var(--glow-amber-25),
-    inset 0 2px 0 rgba(255, 182, 72, 0.3);
-}
-.table.lit .table-top::before { opacity: 1; }
-.table.lit .table-top::after {
-  background: var(--neon-amber);
-  box-shadow: 0 0 10px var(--glow-amber-55), 0 0 22px var(--glow-amber-25);
-}
-.table-seats {
+.solo-label {
   font-size: 12px;
-  color: var(--ink-mid);
-  font-family: var(--font-pixel);
-  letter-spacing: 0.1em;
-  text-shadow: 0 0 6px var(--glow-cyan-16), 0 1px 3px rgba(8, 3, 15, 0.9);
-  transition: color 0.5s;
-}
-.table.lit .table-seats {
-  color: var(--neon-amber);
-  text-shadow: 0 0 8px var(--glow-amber-55);
-}
-/* 点桌 loading：桌牌闪烁，整桌不可再点 */
-.table.loading { pointer-events: none; }
-.table.loading .table-sign {
-  opacity: 1;
-  filter: none;
-  animation: sign-blink 0.8s steps(2) infinite;
-}
-@keyframes sign-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.45; }
-}
-
-/* ---------- 氛围语录（九八式酒吧广播，原地淡入淡出，不再横飞） ---------- */
-.quotes {
-  position: absolute;
-  inset: 0;
-  z-index: 50;
-  pointer-events: none;
-  overflow: hidden;
-}
-.quote {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  max-width: 84vw;
+  font-weight: 600;
+  color: #ff9ec4;
   white-space: nowrap;
-  font-family: var(--font-pixel);
-  font-size: 13px;
-  letter-spacing: 0.06em;
-  color: var(--ink-mid);
-  text-shadow: 0 0 6px rgba(8, 3, 15, 0.9);
-  opacity: 0;
-  animation: quote-breathe 7s ease-in-out forwards;
-}
-.quote.cool { color: var(--neon-cyan-soft); text-shadow: 0 0 8px var(--glow-cyan-40); }
-.quote.hot  { color: var(--neon-pink-hot); text-shadow: 0 0 8px var(--glow-pink-40); }
-@keyframes quote-breathe {
-  0%   { opacity: 0; transform: translate(-50%, -38%); }
-  14%  { opacity: 0.85; }
-  78%  { opacity: 0.85; transform: translate(-50%, -58%); }
-  100% { opacity: 0; transform: translate(-50%, -66%); }
+  padding: 5px 9px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 45, 120, 0.45);
+  background: rgba(255, 45, 120, 0.1);
 }
 
-/* ---------- 竖屏提示（顶部悬浮，几秒后自动淡出） ---------- */
-.rotate-hint {
-  position: fixed;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 70;
-  display: none;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  font-size: 12px;
-  color: var(--neon-amber);
-  text-shadow: var(--neon-text-amber);
-  background: var(--panel-deep);
-  border: var(--stroke-thin) solid var(--neon-amber);
-  border-radius: var(--radius-pill);
-  box-shadow: 0 0 14px var(--glow-amber-25);
-  white-space: nowrap;
-  pointer-events: none;
-  opacity: 1;
-  transition: opacity 1.2s ease, visibility 1.2s;
+/* ==========================================================================
+   四、卡座区：纵向桌卡列表
+   ========================================================================== */
+.zone-booths {
+  padding: 22px 12px 8px;
+  background:
+    linear-gradient(180deg, #0e0a18 0%, #130e20 12%, #130e20 100%);
 }
-.rotate-hint.bye { opacity: 0; visibility: hidden; }
-.hint-icon { display: inline-block; animation: hint-spin 2.4s linear infinite; }
-@keyframes hint-spin { to { transform: rotate(360deg); } }
-
-/* ---------- 找朋友：报房间码面板 ---------- */
-.codeboard {
-  position: fixed;
-  inset: 0;
-  z-index: 80;
+/* 卡座区入口的木隔断牌 */
+.zone-sign {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(8, 3, 15, 0.62);
-  backdrop-filter: blur(2px);
+  gap: 14px;
+  width: min(220px, 70%);
+  margin: 0 auto;
+  padding: 8px 12px;
+  border-radius: 5px;
+  background: linear-gradient(180deg, #6b4526, #3d2413 62%, #241407);
+  border: 1px solid #150c05;
+  box-shadow: inset 0 1px 0 rgba(232, 201, 143, 0.3), 0 6px 16px rgba(0, 0, 0, 0.55);
 }
+.zone-sign-text {
+  font-size: 15px; font-weight: 700; letter-spacing: 0.34em; text-indent: 0.34em;
+  color: #ffdca8;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+}
+.zone-sign-nail {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: radial-gradient(circle at 34% 28%, #e8c98f, #b08a4c 52%, #2f2413);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.7);
+}
+.zone-note {
+  margin: 10px 0 14px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--ink-dim, #877ba6);
+}
+
+.booths { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+
+/* 一张桌卡 = 一个卡座：左边木质桌号牌，中间人数，右边状态灯 */
+.booth {
+  width: 100%;
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px 10px 10px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 12px;
+  border: 1px solid #2e2447;
+  background:
+    linear-gradient(180deg, rgba(64, 41, 95, 0.5), rgba(28, 20, 40, 0.5)),
+    var(--panel-solid, #1c1730);
+  box-shadow: inset 0 1px 0 rgba(201, 166, 255, 0.14), 0 6px 14px rgba(0, 0, 0, 0.45);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.booth:active { transform: translateY(2px); }
+
+/* 桌号牌：一块钉在卡座隔板上的小木牌，上下两颗黄铜钉 */
+.booth-plate {
+  flex: none;
+  width: 56px;
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 5px 0;
+  border-radius: 5px;
+  background: linear-gradient(180deg, #7a4f2c, #452a15 60%, #2a1809);
+  border: 1px solid #17100a;
+  box-shadow: inset 0 1px 0 rgba(232, 201, 143, 0.32), 0 3px 0 #180f07;
+}
+.plate-nail {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: radial-gradient(circle at 34% 28%, #e8c98f, #b08a4c 52%, #2f2413);
+}
+.plate-no {
+  font-size: 22px; line-height: 1; font-weight: 800; color: #ffdca8;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.65);
+  font-style: normal;
+}
+.plate-unit { font-size: 10px; color: #c9a377; font-style: normal; letter-spacing: 0.1em; }
+
+.booth-info { flex: 1 1 auto; min-width: 0; }
+.booth-people {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink-hi, #f3ecff);
+}
+.booth-sub {
+  display: block;
+  margin-top: 3px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-dim, #877ba6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* 状态徽章：一盏小灯 + 一个字。空=青，开=粉，满=灭 */
+.booth-state {
+  flex: none;
+  width: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  font-style: normal;
+}
+.booth-state em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.state-lamp {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.14);
+}
+.booth-state[data-state="free"] .state-lamp {
+  background: radial-gradient(circle at 34% 30%, #9ff3ff, #2de2ff 55%, #10515e);
+  box-shadow: 0 0 10px rgba(45, 226, 255, 0.55);
+}
+.booth-state[data-state="free"] em { color: var(--neon-cyan-soft, #9ff3ff); }
+.booth-state[data-state="live"] .state-lamp {
+  background: radial-gradient(circle at 34% 30%, #ffd0e2, #ff2d78 55%, #67102f);
+  box-shadow: 0 0 12px rgba(255, 45, 120, 0.65);
+  animation: lamp-beat 1.9s ease-in-out infinite;
+}
+@keyframes lamp-beat { 0%, 100% { opacity: 1; } 50% { opacity: 0.66; } }
+.booth-state[data-state="live"] em { color: var(--neon-pink-hot, #ff6ea8); }
+.booth-state[data-state="full"] .state-lamp {
+  background: radial-gradient(circle at 34% 30%, #5c5470, #2b2739 60%, #16121f);
+  box-shadow: none;
+}
+.booth-state[data-state="full"] em { color: var(--ink-ghost, #574d75); }
+
+/* 已开灯的桌：卡片本身也亮起来（不是只有一个徽章） */
+.booth:has(.booth-state[data-state="live"]) {
+  border-color: rgba(255, 45, 120, 0.4);
+  box-shadow: inset 0 1px 0 rgba(255, 158, 196, 0.2), 0 0 18px rgba(255, 45, 120, 0.14), 0 6px 14px rgba(0, 0, 0, 0.45);
+}
+.booth[data-full="1"] { opacity: 0.6; }
+.booth.loading { opacity: 0.75; pointer-events: none; }
+
+/* ==========================================================================
+   五、店规（后门那块牌）
+   ========================================================================== */
+.zone-foot { padding: 22px 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
+.foot-plate {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  width: min(260px, 82%); margin: 0 auto;
+  padding: 9px 12px;
+  border-radius: 5px;
+  font-size: 12px; letter-spacing: 0.12em; color: #c9a377;
+  background: linear-gradient(180deg, #2a1c34, #150f22);
+  border: 1px solid #3a2c14;
+  box-shadow: inset 0 1px 0 rgba(232, 201, 143, 0.2);
+}
+.foot-nail {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: radial-gradient(circle at 34% 28%, #e8c98f, #b08a4c 52%, #2f2413);
+}
+
+/* ==========================================================================
+   找朋友弹层
+   ========================================================================== */
+.codeboard {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(6, 4, 12, 0.78);
+  backdrop-filter: blur(3px);
+}
+.codeboard[hidden] { display: none; }
 .codeboard-panel {
   position: relative;
-  width: min(320px, 86vw);
-  padding: 24px 20px 20px;
+  width: min(340px, 100%);
+  padding: 22px 20px 20px;
+  border-radius: 14px;
   text-align: center;
-  background: var(--panel);
-  border: 2px solid var(--neon-cyan);
-  border-radius: var(--radius-card);
-  box-shadow: var(--neon-box-cyan), var(--shadow-panel);
+  background: linear-gradient(180deg, #241a3a, #14101f);
+  border: 1px solid #4a3a6d;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(201, 166, 255, 0.18);
 }
 .codeboard-close {
-  position: absolute;
-  top: 4px;
-  right: 10px;
-  background: none;
-  border: none;
-  color: var(--ink-dim);
-  font-size: 22px;
-  line-height: 1;
-  cursor: pointer;
-  padding: 6px;
+  position: absolute; right: 8px; top: 6px;
+  width: 34px; height: 34px;
+  background: none; border: 0; cursor: pointer;
+  color: var(--ink-dim, #877ba6); font-size: 22px; line-height: 1;
 }
-.codeboard-close:hover { color: var(--ink-hi); }
-.codeboard-title {
-  font-size: 20px;
-  color: var(--neon-pink-hot);
-  text-shadow: var(--neon-text-pink);
-  margin-bottom: 8px;
-}
-.codeboard-line {
-  font-size: 13px;
-  color: var(--ink-mid);
-  margin-bottom: 16px;
-}
+.codeboard-title { font-size: 17px; margin-bottom: 6px; }
+.codeboard-line { font-size: 12.5px; color: var(--ink-mid, #bbadd8); margin-bottom: 14px; }
 .code-input {
   width: 100%;
-  padding: 10px 0 10px 0.5em;
-  font-size: 28px;
-  letter-spacing: 0.5em;
+  height: 56px;
   text-align: center;
-  color: var(--neon-cyan-soft);
-  background: var(--bar-bg-deep);
-  border: 2px solid var(--line-neon);
-  border-radius: var(--radius-btn);
+  font-size: 30px;
+  letter-spacing: 0.32em;
+  text-indent: 0.32em;
+  color: #ffd9a0;
+  background: #0d0a16;
+  border: 2px solid #4a3a6d;
+  border-radius: 10px;
   outline: none;
-  caret-color: var(--neon-cyan);
 }
-.code-input:focus { border-color: var(--neon-cyan); box-shadow: var(--focus-ring); }
-.code-input.err { animation: shake-x 0.3s; border-color: var(--neon-red); }
-@keyframes shake-x {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-6px); }
-  75% { transform: translateX(6px); }
-}
-.code-msg {
-  min-height: 18px;
-  margin: 10px 0;
-  font-size: 12px;
-  color: var(--neon-amber);
-}
+.code-input:focus { border-color: var(--neon-pink, #ff2d78); box-shadow: 0 0 0 3px rgba(255, 45, 120, 0.25); }
+.code-input.err { animation: code-shake 0.3s; border-color: var(--neon-red, #ff4667); }
+@keyframes code-shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+.code-msg { min-height: 18px; margin: 8px 0 4px; font-size: 12px; color: var(--neon-red, #ff4667); }
 .code-go {
   width: 100%;
-  padding: 12px;
-  font-size: 16px;
-  color: var(--ink-hi);
-  background: linear-gradient(180deg, var(--neon-pink-hot), var(--neon-pink));
-  border: none;
-  border-radius: var(--radius-btn);
+  min-height: 48px;
+  font-size: 15px;
+  color: #fff;
   cursor: pointer;
-  box-shadow: var(--neon-box-pink);
+  border: 1px solid rgba(255, 45, 120, 0.6);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #ff4d8d, #c4144f);
+  box-shadow: 0 6px 16px rgba(255, 45, 120, 0.3);
 }
-.code-go:disabled { opacity: 0.6; cursor: wait; }
+.code-go:disabled { opacity: 0.6; }
 
-/* ---------- 竖屏适配：整体纵向压缩，画面重心居中 ---------- */
-@media (orientation: portrait) {
-  .scene {
-    --counter-bottom: 38%;
-    --counter-h: 60px;
-    --floor-h: 38%;
-    --counter-w: 96vw;
-  }
-  .rotate-hint { display: inline-flex; }
-  .marquee { width: min(300px, 78vw); top: 46px; }
-  /* disco 球离开屏幕角，整球可见 */
-  .disco-wrap { left: 8%; top: 18px; transform: scale(0.62); transform-origin: top left; }
-  .ceiling { height: 150px; }
-  .hang-lamp { height: 86px; }
-  /* 竖屏标题几乎横贯全屏：左吊灯收起（左边有 disco 球），右吊灯让出"中"字 */
-  .hang-lamp.lamp-l { display: none; }
-  .hang-lamp.lamp-r { left: 92%; }
-  .hang-lamp i::after { width: 130px; height: 170px; }
-  .backwall {
-    bottom: 47%;
-    width: 92vw;
-    height: clamp(160px, 24vh, 210px);
-  }
-  .wall-neon {
-    right: auto;
-    left: 50%;
-    top: -52px;
-    transform: translateX(-50%) rotate(-2deg);
-    font-size: 13px;
-  }
-  .bartender-slot { width: 118px; height: 118px; }
-  .bartender-tag { transform: translateX(calc(-50% + 70px)); font-size: 13px; }
-  .barphone { left: 3%; }
-  .mirror { width: 128px; }
-  .glass.g1 { left: 24%; }
-  .glass.g2 { left: 28%; }
-  .cbottle { left: 70%; }
-  .stool-row { bottom: calc(var(--counter-bottom) - 26px); height: 58px; }
-  .stool { width: 40px; height: 58px; }
-  .stool i { height: 38px; }
-  .stool.deco.s1 { left: 14%; }
-  .stool.deco.s2 { display: none; }
-  .solo-seat { left: 58%; }
-  .solo-label { font-size: 13px; }
-  .quote { font-size: 12px; }
-  /* 桌子竖向脚印收紧：桌牌与相邻桌 0/8 拉开呼吸感 */
-  .table { gap: 4px; }
-  .table-sign { font-size: 15px; padding: 2px 9px; }
-  .table-seats { font-size: 11px; }
-  .deck-badge { font-size: 9px; padding: 2px 6px; }
-  /* 顶部三件套错位：生面孔横幅居左（避开 disco 球与主页入口），主页入口居右 */
-  .guest-banner {
-    top: 8px;
-    left: 60px;
-    right: 96px;
-    transform: none;
-    max-width: none;
-    justify-content: flex-start;
-    font-size: 11px;
-  }
-  .guest-banner:hover, .guest-banner:active { transform: none; }
-  .home-entry { top: 8px; right: 8px; font-size: 11px; padding: 5px 10px; }
-  /* 生面孔状态下横幅占住顶部，次要的转屏提示让路（本就 6s 自动淡出） */
-  .guest-mode .rotate-hint { display: none; }
+/* ==========================================================================
+   小屏微调（≤360）与降级
+   ========================================================================== */
+@media (max-width: 360px) {
+  .xueke, .xueke-body { width: 164px; }
+  .xueke { height: 128px; }
+  .xueke-body { height: 164px; }
+  .xueke-say { max-width: 44%; font-size: 11.5px; top: 18px; }
+  .booth-plate { width: 50px; }
+  .plate-no { font-size: 20px; }
+  .solo-label { font-size: 11px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
 }

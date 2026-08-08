@@ -192,3 +192,11 @@ Kim 定了 PM→Dev→QA 循环：零上下文子线程做真实体验 QA（第�
 - 「重新调一杯」入口(清13类本地key)；DIM_KEYWORDS 24格×4条扩池(60seed 53种组合,原恒1种)。
 - 分布结论：α二次扫参证明压头部会毁隐藏款稳定性，同分同型=图鉴设计，重复感根治靠标签扩池。
 - PM终检：smoke 323/0 + E2E solo全程重跑✓。部署 ideal-type-loading。
+
+## 2026-08-08 晚（R12：Kim手机实测五线大修+部署）
+- VOICE：雪克语言体系（≤20字计量腔，5分段池+LLM闸门xkGuard，错位机制性不可能）+10个SVG表情包(xueke-stickers.js)+xkBand契约；XUEKE-VOICE.md人设真源。
+- FRONT3：贴纸接线(揭晓/亮相/聊天/弹幕)+?fresh=1清档+微信长按保存(blob+UA实话文案)+全站提示vs功能审查(6假承诺修真)+规则三行+反馈框键盘bug+删入座品鉴谁模块。
+- SKIN3：签筒结构修复(考古发现露签是两版共有老bug；静止收筒内摇动才探出)+--tex-wood:none全站去木纹(滑轨钉保留)。
+- PORTRAIT：考古真相=pollinations服务端换默认模型(V1 URL已逐字一致仍出国漫脸)；V7暴力低精度像素prompt+英文维度词，实拉20+张验证。Kim图池方案(docs/ART-PROMPTS-R12.md)为根治。
+- LOBBY：大厅重构"走过卡座"(酒柜实体装饰/黑板价目/像素小画/99%霓虹/桌卡列表不封顶)+雪克透明根因(脸罩同背景色+5%透明)修复+材质v2木质为主。
+- run_worker_first加/laok-lines.js(worker拦截老K本地池)。PM终检smoke 323/0+E2E全绿+目检。

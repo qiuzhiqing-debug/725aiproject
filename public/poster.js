@@ -391,10 +391,34 @@ export async function renderPoster(aha, siteUrl) {
   // 占位文案，等 Kim 终审；铁律：不提「这桌/这个房间」
   ctx.fillText("扫码来 99% 酒吧调一杯", 100, H - 104);
 
-  return canvas.toDataURL("image/png");
+  return canvasToObjectUrl(canvas);
 }
 
 /* ---------- 工具 ---------- */
+
+/* R12 长按保存修复：输出 Blob URL 而不是 dataURL。
+   病因：1080×1920 PNG 的 data: URI 有好几 MB，微信 X5 / iOS WKWebView 对超长 data: URI 的
+   <img> 长按菜单支持很差（经常只弹「识别图中二维码」，压根没有「保存图片」这一项）。
+   blob: 是一条真实资源 URL，长按菜单命中率明显更高，也不用扛 base64 那 33% 的膨胀。
+   兼容兜底：老 WebView 没有 canvas.toBlob 或 URL.createObjectURL → 原样退回 dataURL，
+   宁可长按难存，也绝不让海报出不来。
+   注意：调用方负责在换图/离场时 URL.revokeObjectURL（app.js setPosterUrl 已经做了）。 */
+function canvasToObjectUrl(canvas) {
+  return new Promise((resolve) => {
+    const fallback = () => {
+      try { resolve(canvas.toDataURL("image/png")); } catch { resolve(""); }
+    };
+    try {
+      if (typeof canvas.toBlob !== "function" || typeof URL?.createObjectURL !== "function") return fallback();
+      canvas.toBlob((blob) => {
+        if (!blob) return fallback();
+        try { resolve(URL.createObjectURL(blob)); } catch { fallback(); }
+      }, "image/png");
+    } catch {
+      fallback();
+    }
+  });
+}
 
 // 黄铜压条：一根真的金属条（亮棱 / 本体 / 暗棱三段），横竖都能画。
 // 海报里所有「分隔」都用它，不用 1px 描边线 —— 这是「工艺密度」的来源。

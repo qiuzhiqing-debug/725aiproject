@@ -127,11 +127,11 @@
   --liquor-deep: #8a4d13;       /* 酒液底 */
   --foam: #f6e3c2;              /* 酒沫 */
 
-  /* 画出来的木纹（不是 repeating pattern：一组不等距的手绘纹路） */
-  --tex-wood:
-    linear-gradient(179.4deg, rgba(0, 0, 0, 0.3) 0 2px, transparent 2px 9px, rgba(201, 166, 255, 0.06) 9px 10px,
-      transparent 10px 27px, rgba(0, 0, 0, 0.24) 27px 28px, transparent 28px 46px,
-      rgba(201, 166, 255, 0.05) 46px 47px, transparent 47px 71px, rgba(0, 0, 0, 0.2) 71px 72px, transparent 72px 100%);
+  /* R12：木纹全站退役（Kim「这游戏哪里需要木纹」）。
+     --wood / --wood-hi / --wood-dim 仅保留为暗部色值，不再画任何"木纹质感"。
+     本变量保留为 none 是为了让所有 `background-image: var(--tex-wood)` 的
+     调用点自动降级成纯色暗面，不需要逐处删除（也避免误伤打分滑轨的钉子）。 */
+  --tex-wood: none;
   /* 绒布：柔和的斜向光泽，一层，不重复（受光面改成粉，被霓虹招牌照着） */
   --tex-velvet:
     radial-gradient(ellipse 140% 90% at 22% 0%, rgba(255, 110, 168, 0.1), transparent 62%),
@@ -405,14 +405,13 @@
   gap: 7px;
   align-items: flex-end;
 }
-/* 签 = 木质签 + 琥珀签头（画出来的木头，不是色块） */
+/* 签 = 琥珀签头 + 暗签身（R12 去木纹，与 style.css 的签筒里那三根签同一套画法） */
 .shaker-stick {
   width: 9px;
   height: 72px;
   border-radius: 3px 3px 0 0;
   background:
-    linear-gradient(90deg, rgba(0, 0, 0, 0.4) 0 1.5px, transparent 1.5px 6.5px, rgba(255, 220, 166, 0.25) 6.5px 100%),
-    linear-gradient(180deg, var(--neon-amber) 0 13px, #c9b489 13px 34%, #a8946e 34% 100%);
+    linear-gradient(180deg, var(--neon-amber) 0 13px, var(--ink-mid) 13px 100%);
   border: 1px solid var(--line-counter);
   box-shadow: 0 0 6px var(--glow-amber-25);
 }

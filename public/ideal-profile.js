@@ -923,6 +923,21 @@ const GENDER_TAGS = Object.freeze({
   any: "person",
 });
 
+// 生图 V7：维度描述必须走英文。V1~V6 直接把 DIMENSION_LABELS（中文「情绪价值/浪漫浓度」）
+// 塞进 pollinations prompt，中文 token 会把模型往「国漫/二次元写实脸」上拽——这是 R12
+// Kim 手机实测「不像人了，很讨厌这种国漫脸」的直接成因之一（已实拉图复现，见下方注释）。
+// 这里给八维各配一个短英文词，只用于生图，不影响任何文案/算分。
+const PORTRAIT_DIM_EN = Object.freeze({
+  boundary: "boundary-clear",
+  warmth: "warm",
+  money: "money-savvy",
+  play: "playful",
+  control: "commanding",
+  romance: "romantic",
+  absurd: "surreal",
+  meme: "meme-savvy",
+});
+
 // R2：seeking = 注册档案里「想看的取向」（m|f|x），优先决定画像的性别方向；
 // 缺省/非法时回退 genderPreference（题库/主角选择的旧行为）。保持纯函数、双端共用。
 const SEEKING_TO_GENDER = Object.freeze({ m: "m", f: "f", x: "n" });
@@ -967,21 +982,44 @@ export function buildIdealProfile({ records, genderPreference, seeking, seed }) 
 
   const figGender = pickFigureGender(module, seeking, genderPreference, seed);
   // FIGURE_DESC（V4/V5 的「有脸年轻好看」描述）随 V6 回退一并停用，表本身保留备查。
-  const dimDesc = `${DIMENSION_LABELS[top1.key] || "charm"}-focused, ${DIMENSION_LABELS[top2.key] || "playful"}`;
-  // 生图 V6 = 回退 V1「嘲弄风」（R11 · Kim：V5 审美风「太严肃而且更低级」）。
-  // 考古出处：commit a74d66e「feat(v2): backend 101/101 green + buildIdealProfile implemented」，
-  // 原文：`pixel art portrait of a ${gTag}, ${dimDesc} personality, cyberpunk neon bar background,
-  //        vivid colors, detailed, 8-bit style`（兜底原文见下方 fallbackUrl，出自同一版 52e8ce7）。
-  // 就是那版劣质 AI 味的廉价像素图——理想型本来就该是加载不出来的抽象玩意儿，越"努力"越好笑。
-  // 与 V1 的唯一差别：gTag 不再直接吃 genderPreference，而是走 R7 之后的 pickFigureGender，
-  // 保证「非恋人模组不默认出男图」这条不被回退带崩（figGender → GENDER_TAGS 同一张表）。
+  // R12 实测：只要 prompt 里出现 "young adult with an expressive face" 这类写实人像描述，
+  // 模型立刻回到光滑二次元脸 → 该表继续停用，别再往生图 prompt 里塞。
+  const dimDesc = `${PORTRAIT_DIM_EN[top1.key] || "charming"}, ${PORTRAIT_DIM_EN[top2.key] || "playful"}`;
+  //
+  // ===== 生图 V7（R12 · Kim 手机实测否掉 V6：「不像人了，很讨厌这种国漫脸」）=====
+  //
+  // 考古结论（git log --all -- public/ideal-profile.js，第一版满分男 = a74d66e
+  // 「feat(v2): backend 101/101 green + buildIdealProfile implemented」）：
+  //   V1 URL 模板 = https://image.pollinations.ai/prompt/${encodedPrompt}
+  //                 ?width=512&height=512&seed=${hashStr(seed)%99999}&referrer=idealtype&nologo=true
+  //   V1 prompt   = `pixel art portrait of a ${gTag}, ${dimDesc} personality,
+  //                  cyberpunk neon bar background, vivid colors, detailed, 8-bit style`
+  //   V1 兜底     = `pixel art portrait of a ${gTag}, neon bar, 8-bit style`（52e8ce7 引入）
+  // → V6 的 URL query / 尺寸 / model 参数与 V1 **逐字相同**，V1 本来就没带 model=。
+  //   所以「回退 prompt 后仍是国漫脸」不是回退没做干净，而是 pollinations 服务端默认
+  //   模型这一年换掉了：同一条 V1 URL 今天实拉出来就是写实/国漫 3D 脸（已复现）。
+  //   且 model=flux|turbo|sana 今天返回同一张图（model= 已被服务端忽略，kontext 直接 500），
+  //   换模型这条路走不通 → 只能靠 prompt 结构把风格压回去。
+  //
+  // V7 = 保 V1 精神（廉价、嘲弄、加载不出来的抽象玩意儿），换成今天真能出像素的写法：
+  //   1) 开头就锚死 sprite/icon，不再用 "portrait"（实测 "portrait" 一词直接召回写实人像）；
+  //   2) 删掉 "detailed"、"vivid colors"（这两个是把模型推向高精度渲染的元凶）；
+  //   3) 维度描述改英文（见 PORTRAIT_DIM_EN，中文 token 拽向国漫）；
+  //   4) 补 "very low resolution / chunky square pixels / flat solid colors / minimal detail"
+  //      —— 对应 Kim 的方向：更平面、更摩登、精度更低。
+  //   实拉 10+ 张验证：m/f/n × 多维度组合稳定出平涂大像素方块脸，非国漫脸。
+  // 与 V1 的唯一结构差别仍是：gTag 走 pickFigureGender（R7 起「非恋人模组不默认出男图」）。
   const gTag = GENDER_TAGS[figGender] || GENDER_TAGS.any;
-  const prompt = `pixel art portrait of a ${gTag}, ${dimDesc} personality, cyberpunk neon bar background, vivid colors, detailed, 8-bit style`;
+  const prompt = `8-bit pixel art avatar icon of a ${gTag}, ${dimDesc}, NES retro game sprite, very low resolution, chunky square pixels, flat solid colors, minimal detail, neon bar background`;
 
   const encodedPrompt = encodeURIComponent(prompt);
-  const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&seed=${hashStr(seed) % 99999}&referrer=idealtype&nologo=true`;
-  // 兜底立绘：更短的 prompt + 不同 seed，主图挂了再试一次（V1 原版兜底文案）
-  const fallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(`pixel art portrait of a ${gTag}, neon bar, 8-bit style`)}?width=512&height=512&seed=${(hashStr(seed + "fb") % 99999)}&referrer=idealtype&nologo=true`;
+  // query 逐字保留 V1 模板（width/height/seed/referrer/nologo 一个不差）。
+  // model= 显式钉成 V1 时代的默认模型 flux：今天服务端忽略它（三种 model 出同一张图），
+  // 钉上是为了将来 pollinations 再换默认模型时不会又被悄悄换掉。实测 200，不影响出图。
+  const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&seed=${hashStr(seed) % 99999}&referrer=idealtype&nologo=true&model=flux`;
+  // 兜底立绘：更短的 prompt + 不同 seed，主图挂了再试一次。
+  // 兜底刻意不带 model=，万一哪天 flux 被下线返 5xx，兜底这条仍是 V1 逐字 query，能出图。
+  const fallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(`8-bit pixel art avatar icon of a ${gTag}, NES retro game sprite, chunky square pixels, flat solid colors, minimal detail`)}?width=512&height=512&seed=${(hashStr(seed + "fb") % 99999)}&referrer=idealtype&nologo=true`;
 
   const modProf = MODULE_PROFILES[module] || MODULE_PROFILES.lover;
   const introTemplate = seedPick(modProf.intros, seed + "intro");

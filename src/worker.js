@@ -197,6 +197,35 @@ export default {
       return stub.fetch("https://do/info");
     }
 
+    /* ---- R12 换源：/laok-lines.js 的 LAOK_POOL 由 worker 下发雪克版 ----
+     * 背景：public/app.js 里 `import { LAOK_POOL } from "./laok-lines.js"`，开牌那一瞬
+     * 先用 pickPool(scene) 同步显示一句**本地池**的话，等 /api/laok 回来再淡入替换。
+     * 那个本地池是老K腔，而且 solo_react 里有「分不高，但你舍不得打零分，对吧」这种
+     * **猜分数**的句子 —— Kim 打 2 分时照样能抽到，这就是她实测炸出来的那一半。
+     * public/laok-lines.js 与 public/app.js 都不归本线程写，所以在**下发环节**换源：
+     * 把该文件里的 `export const LAOK_POOL = {...}` 整段替换成雪克版（每条 ≤20 字、
+     * 与分数无关，任何分数下说出来都不会打架），KING_ORDERS 原样透传 —— P 线程后续
+     * 改指令卡照常生效。正则匹配不上就原样放行（fail-open，绝不因此白屏）。
+     * ⚠️ 生效条件（本线程无权改配置，请配置的所有者补一行）：
+     *   wrangler.jsonc / wrangler.new.jsonc 的 assets.run_worker_first 目前是 ["/api/*"]，
+     *   静态资源直接由 assets 层出，**不进 Worker**，所以这段拦截现在是空转的。
+     *   改成 ["/api/*", "/laok-lines.js"] 即生效。没改之前它不做任何事、也不会出错，
+     *   /api/laok 下发的分段台词照样正确 —— 只有"开牌那一瞬的第一句"还是老K腔。
+     * 后续动作：laok-lines.js 的所有者把池按 docs/XUEKE-VOICE.md 落到文件里之后，
+     * 删掉这段拦截即可（届时替换是个 no-op，删不删都不影响行为）。 */
+    if (url.pathname === "/laok-lines.js" && req.method === "GET") {
+      const orig = await env.ASSETS.fetch(req);
+      if (!orig.ok) return orig;
+      const src = await orig.text();
+      const patched = src.replace(/export const LAOK_POOL = \{[\s\S]*?\n\};/, XK_FRONT_POOL_SRC);
+      return new Response(patched, {
+        headers: {
+          "content-type": "text/javascript; charset=utf-8",
+          "cache-control": "public, max-age=0, must-revalidate",
+        },
+      });
+    }
+
     const asset = await env.ASSETS.fetch(req);
     if (req.method !== "GET" || !asset.ok) return asset;
     const headers = new Headers(asset.headers);
@@ -517,7 +546,7 @@ async function handleShowcaseComment(req, env) {
   const rateKey = ip + "|" + String(body.name || "");
   const now = Date.now();
   const last = showcaseCommentRate.get(rateKey) || 0;
-  if (now - last < 3000) return jsonRes({ error: "评论太快了，稍等一下" }, 429);
+  if (now - last < 3000) return jsonRes({ error: "手慢点，一杯一杯来。" }, 429);
 
   const text = esc(cleanUserText(body.text, COMMENT_MAX_LENGTH));
   if (!text) return jsonRes({ error: "评论不能为空" }, 400);
@@ -540,24 +569,262 @@ async function handleShowcaseComment(req, env) {
   return jsonRes({ comments: found.rec.comments.slice(-COMMENT_STORE_LIMIT).reverse() });
 }
 
-/* ============ 酒保雪克（LLM）============ */
+/* ============ 酒保雪克（LLM）============
+ * 人设与腔调真源：docs/XUEKE-VOICE.md（改台词先改那份文档）。
+ * R12 重写起因（Kim 手机实测）：这里原来跑的是「老K腔」——文艺唠嗑长句、
+ * 自称"雪克的建议"、句尾漂亮话——**人设错位**；更要命的是台词与分数不对应
+ * （她打 2 分，雪克说"舍不得扣分"）。Kim 定性：「这会让我感觉这个游戏做特别差」。
+ * 两条铁律因此写死在代码里：
+ *   ① 腔调铁律：雪克 = 机器酒保的精确计量口吻，短句，每条 ≤20 字。
+ *   ② 分数对应铁律：任何随分数下发的台词，一律先落分段（0-2/3-4/5-6/7-8/9-10）
+ *      再在段内 seed 抽取。跨段语义（低分说"舍不得扣"、高分说"倒掉"）永不可能出现。
+ */
 
-const BARTENDER_SYSTEM = `你是「雪克」，一间像素赛博酒吧的浪子酒保。你见过所有人的醉态：表白失败的、装醉真哭的、嘴硬心软的。你嘴毒心软，锐评从不留情但从不伤人身份，只损具体行为。永远说中文。锐评必须 60 字以内，短平快，像酒保擦着杯子随口甩出来的那句话。句尾偶尔（不是每次）加一句过来人的漂亮话。不要用"作为AI"之类的话，你就是雪克。`;
+/* ---------------------------------------------------------------------------
+ * 雪克语言核心（本文件唯一的台词真源；/api/bartender 与 /api/laok 共用）
+ * ------------------------------------------------------------------------ */
+
+// 人设块：注入两个端点的 system prompt。**禁止**在别处另写一份人设。
+const XUEKE_PERSONA = `你是「雪克」，酒吧「99%」的酒保。
+你不是人：你是一台黄铜的老式调酒机器成了精，用了三十年，圆头、马甲、天线上顶一颗橄榄。
+说话方式：短句。机器酒保的精确计量口吻——分数在你眼里是刻度、配比、浓度、出杯标准。
+性格：正经的呆（认真到过头），毒舌但暖，对酒极度严肃，对暧昧装作不懂（其实全懂）。
+硬规则：
+- 只输出一句话，中文，不超过 20 个字。
+- 不用 emoji、不用波浪号、不用感叹号连发、不加引号、不加任何前后缀说明。
+- 不说"作为AI"，不自称"雪克的建议"，不讲人生道理、不发金句、不用网络烂梗。
+- 不写文艺长句、不排比、不抒情；一句说完就闭嘴。
+- 只评这一局的事，不评客人的人品、长相、感情经历。`;
+
+// 分段口径。必须与 public/xueke-stickers.js 的 xuekeBand() 逐字一致（改一处就改两处）。
+// 口径：四舍五入到整数 → 夹到 0..10 → 落段；非数字 → null（调用方自己决定中性处理）。
+const XK_BANDS = Object.freeze(["0-2", "3-4", "5-6", "7-8", "9-10"]);
+function xkBand(score) {
+  const n = Math.round(Number(score));
+  if (!Number.isFinite(n)) return null;
+  const v = n < 0 ? 0 : n > 10 ? 10 : n;
+  if (v <= 2) return "0-2";
+  if (v <= 4) return "3-4";
+  if (v <= 6) return "5-6";
+  if (v <= 8) return "7-8";
+  return "9-10";
+}
+
+/* 分段台词池。**这是分数对应铁律的落点**：
+ * 每条只属于它那一段，段内语义不许跨段（低分池里绝不会有"舍不得扣分"，
+ * 高分池里绝不会有"倒掉/不合格"）。每段 ≥6 条，每条 ≤20 字。 */
+const XK_BAND_LINES = Object.freeze({
+  "0-2": Object.freeze([
+    "这个分数，我建议直接倒掉。",
+    "低于安全线。杯子我收了。",
+    "这杯不合格，我重新调。",
+    "扣得干净，一滴都没剩。",
+    "这分数进不了我的杯子。",
+    "评级：不予出杯。",
+    "你把它喝成了白开水。",
+  ]),
+  "3-4": Object.freeze([
+    "三四分。兑水兑得有点多。",
+    "不到及格线，我皱了下眉。",
+    "这杯偏淡，差一口气。",
+    "配比失衡。喝得下，不推荐。",
+    "低了。这杯我不署名。",
+    "勉强入口，谈不上出杯。",
+  ]),
+  "5-6": Object.freeze([
+    "五六分。将就着能喝。",
+    "刚过中线。杯子擦干净了。",
+    "中间分。你还在跟自己商量。",
+    "不烫嘴也不解渴，正常。",
+    "这杯合格，仅仅是合格。",
+    "标准杯量，没有惊喜。",
+  ]),
+  "7-8": Object.freeze([
+    "七八分。我给你多加一份。",
+    "过线了。这杯我点头。",
+    "高于均值。斟满。",
+    "这分数值得一杯好的。",
+    "不错。冰我给你换新的。",
+    "评级良好，出杯。",
+  ]),
+  "9-10": Object.freeze([
+    "九分往上，酒精浓度超标了。",
+    "这分给的，我天线开花了。",
+    "接近满杯。这杯我陪你干。",
+    "评级：优。举杯。",
+    "给这么高，我得记进账本。",
+    "满上。今晚这杯不收钱。",
+  ]),
+});
+
+/* 场景池：与分数无关的台词（猜分偏差 / 罚酒 / 国王 / 等人 / 开局收局 / 泛用）。
+ * 与分数无关 = 任何分数下说出来都不会打架，所以不需要分段。每池 ≥6 条，每条 ≤20 字。 */
+const XK_SCENE_LINES = Object.freeze({
+  reveal_close: Object.freeze([
+    "偏差在允许范围内。",
+    "全桌读数一致，少见。",
+    "都猜中了，这桌不好骗。",
+    "误差归零，罚酒省了。",
+    "刻度对上了，继续。",
+    "一桌明白人，我少倒两杯。",
+  ]),
+  reveal_far: Object.freeze([
+    "偏差超标，罚酒备好。",
+    "读数全错。杯子端起来。",
+    "没一个摸到刻度。",
+    "差太远，我多开一瓶。",
+    "全场偏差报警。",
+    "你们和TA不在一个量程。",
+  ]),
+  king_chance: Object.freeze([
+    "分毫不差。这手我敬一下。",
+    "误差零，牌归你。",
+    "读心读到刻度上了。",
+    "一分不差，国王的牌拿稳。",
+    "校准得比我还准。",
+    "全场就你对上了刻度。",
+  ]),
+  penalty: Object.freeze([
+    "杯子端起来，愿赌服输。",
+    "喝。猜错不丢人。",
+    "这杯是你自己量出来的。",
+    "别苦脸，量我给得讲道理。",
+    "喝完这题翻篇。",
+    "慢点，夜还长。",
+  ]),
+  solo_open: Object.freeze([
+    "就咱俩。题我出，分你打。",
+    "坐。杯子我擦好了。",
+    "灯调暗了，开始。",
+    "一个人来的客人不少。",
+    "今晚你打分，我倒酒。",
+    "人齐了。你、我、一杯酒。",
+  ]),
+  solo_close: Object.freeze([
+    "打完了，画像调出来了。",
+    "分我收好了，剩下的不归我管。",
+    "结账不收钱，收答案。",
+    "杯子放下，轮廓出来了。",
+    "画像我存柜子里了。",
+    "下回带个人来对一对。",
+  ]),
+  wait: Object.freeze([
+    "人还没齐，酒跑不了。",
+    "先坐。我把杯子擦完。",
+    "还差几位，冰我先镇上。",
+    "灯留着，人到就开。",
+    "别盯门口，该来的在路上。",
+    "开局不差这几分钟。",
+  ]),
+  // solo_react 只在「拿不到分数」时才会命中（拿得到就走 XK_BAND_LINES）。
+  // 所以这一池里每条都必须**不暗示任何分数高低**——老K版那条
+  // 「分不高，但你舍不得打零分，对吧」就是死在这条规矩上的。
+  solo_react: Object.freeze([
+    "记下了。下一题。",
+    "这分打得不犹豫。",
+    "分我收着，画像不会骗你。",
+    "行，刻度我记下了。",
+    "这题你答得比上一道快。",
+    "我不评价，我就记账。",
+  ]),
+  generic: Object.freeze([
+    "我在吧台，有事招呼。",
+    "这桌今晚有点意思。",
+    "继续，记账交给我。",
+    "音乐我换了首慢的。",
+    "急的人今晚都猜不准。",
+    "灯我又调了调。",
+  ]),
+});
+// 注意：不要在这里写 `XK_SCENE_LINES.default = ...` —— 对象是 Object.freeze 的，
+// 赋值在 workerd 里会直接抛 TypeError 把整个 Worker 启动失败（wrangler dev 已复现过一次）。
+// scene="default"（/api/laok 的缺省场景）不需要单独一条：laokPoolLine 查不到就回落 generic。
+
+/* 下发给前端的 LAOK_POOL 源码（见 fetch() 里 /laok-lines.js 的换源注释）。
+ * 前端那一层拿不到分数，所以只能给**与分数无关**的池 —— 正好就是 XK_SCENE_LINES。
+ * 它显示的是"开牌瞬间的第一句"，随后被 /api/laok 的分段台词淡入替换。 */
+const XK_FRONT_POOL_SRC =
+  "export const LAOK_POOL = " +
+  JSON.stringify(
+    Object.fromEntries(
+      Object.entries(XK_SCENE_LINES).map(([k, v]) => [k, [...v]])
+    ),
+    null,
+    2
+  ) +
+  ";";
+
+// FNV-1a + 高位取模（低位偏斜会让池里一半条目永远抽不到）——沿用 titleHash 的手法
+function xkHash(s) {
+  let h = 0x811c9dc5;
+  const str = String(s);
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = (h * 0x01000193) >>> 0;
+  }
+  return h;
+}
+function xkPick(pool, seed) {
+  if (!Array.isArray(pool) || !pool.length) return "";
+  return pool[Math.floor((xkHash(String(seed)) / 4294967296) * pool.length)];
+}
+
+/* 分段行文的语气指令：注进 LLM prompt，也写在 docs/XUEKE-VOICE.md 里。
+ * 它是「硬规则」那一半——另一半是下面的 xkGuard 出口校验。 */
+const XK_BAND_TONE = Object.freeze({
+  "0-2": "这是极低分，客人几乎无法忍受。语气=不予出杯、倒掉、低于安全线。严禁出现任何褒奖、宽容、'舍不得扣分'、'满分'类表达。",
+  "3-4": "这是不及格分。语气=皱眉、偏淡、兑水多、勉强。严禁褒奖，也严禁说成完全无法接受。",
+  "5-6": "这是中间分。语气=将就能喝、合格但无惊喜、不置可否。严禁说很好，也严禁说很差。",
+  "7-8": "这是高分，客人挺能接受。语气=点头、过线、斟满、值得一杯好的。严禁批评、严禁说不合格。",
+  "9-10": "这是极高分，接近满分。语气=浓度超标、天线开花、举杯、记进账本。严禁任何批评或惋惜。",
+});
+
+/* 出口校验（xkGuard）：LLM 说的话必须和实际分数不打架，否则一律丢弃走降级池。
+ * 这是「LLM 输出无法校验分段」的对策——我们校验的不是语气，是**矛盾**：
+ *   ① 长度超 26 字（留一点余量给标点）→ 丢
+ *   ② 出现"N分"且 N 与实际分数不同 → 丢（雪克报错刻度＝立刻穿帮）
+ *   ③ 出现与本段互斥的关键词（低分说满分/舍不得、高分说倒掉/不合格）→ 丢
+ *   ④ 出现 emoji / 引号包裹 / "作为AI" 之类的舞台说明 → 丢
+ * 校验不通过不报错，静默回落分段池——用户永远看到一句对得上分数的话。 */
+const XK_BAN_LOW = /满分|舍不得|给得大方|无可挑剔|值得一杯|开花|干杯|举杯|优秀|加一份|斟满/;
+const XK_BAN_HIGH = /倒掉|不合格|不予出杯|兑水|偏淡|安全线|皱眉|扣得干净|白开水|不署名/;
+const XK_BAN_ALWAYS = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]|作为AI|作为人工智能|^["'「『]|～/u;
+function xkGuard(text, band, score) {
+  const t = String(text || "").trim();
+  if (!t) return null;
+  if (Array.from(t).length > 26) return null;
+  if (XK_BAN_ALWAYS.test(t)) return null;
+  // ② 报错的刻度：句子里的「N分」必须等于真实分数
+  const nums = t.match(/(\d+(?:\.\d+)?)\s*分/g) || [];
+  if (nums.length && Number.isFinite(Number(score))) {
+    for (const seg of nums) {
+      const v = Number(seg.replace(/\s*分/, ""));
+      if (Math.round(v) !== Math.round(Number(score))) return null;
+    }
+  }
+  // ③ 跨段互斥词
+  if ((band === "0-2" || band === "3-4") && XK_BAN_LOW.test(t)) return null;
+  if ((band === "7-8" || band === "9-10") && XK_BAN_HIGH.test(t)) return null;
+  return t;
+}
+
+const BARTENDER_SYSTEM = XUEKE_PERSONA;
 
 const BARTENDER_FALLBACK = {
+  // round_comment 不再是一个平池：随分数走的评论必须按段取，见 bartenderFallback()。
+  // 这里只留「拿不到分数时」的中性兜底（一句都不许暗示分数高低）。
   round_comment: [
-    "这分打的，我吧台的冰都没这么冷。",
-    "都散了吧，这题暴露的不是TA，是你们各自的前任。",
-    "猜得这么准，你们是一起长大的还是一起摔过跤的？",
-    "行，这轮谁都别装了，酒杯见底再说话。",
-    "我看这不叫打分，这叫互相递刀。爱是刀口舔蜜，慢用。",
-    "分差这么大，建议你们先统一一下人生观再玩。",
-    "这个分数，雪克只能说：懂的都懂，不懂的喝一杯就懂了。",
+    "这轮记下了。下一题。",
+    "分收了。杯子我擦着。",
+    "行，翻篇。continue。",
+    "账我记着呢。继续。",
+    "这题过了。倒酒。",
+    "收工一题。夜还长。",
   ],
   profile_text: [
-    "TA大概是那种，嘴上说随便、心里有满分答案的人。跟这种人过日子，你得学会读空气，也得学会关掉空气。",
-    "这位理想型，优点是真实，缺点是太真实。雪克的建议：爱一个人之前，先确认你笑点和TA的雷点错得开。",
-    "看这画像，是个能陪你疯也能陪你怂的主。别急着满分，留一分给日子慢慢打。",
+    "调出来了。这杯配方是你一分一分给的。\n甜度、烈度、冰量，都按你的口味走。\n剩下那 1%，不归我管。",
+    "画像出杯。核心成分你自己心里有数。\n我只负责按你的刻度倒，不加也不减。\n合不合口，你说了算。",
+    "配方存档。这一杯不复刻，别人点不到。\n你给的分很稳，从头到尾没飘过。\n拿走吧，别洒了。",
   ],
 };
 
@@ -575,29 +842,50 @@ function bartenderAllow(ip) {
   return true;
 }
 
-function bartenderFallback(scene) {
+/* 降级池取词。**分数对应铁律的第二个落点**：
+ * round_comment 一旦拿得到分数，就必须从该分数所在的分段池里取，不许走中性平池。
+ * 取词是 seed 确定性的（同一局同一题永远同一句），不是 Math.random——
+ * 刷新页面换一句话是 R12 之前的老毛病，看着像"雪克在改口"。 */
+function bartenderFallback(scene, context) {
+  if (scene === "round_comment") {
+    const band = xkBand(context?.score);
+    if (band) {
+      const seed = `${band}|${context?.question || ""}|${context?.score}`;
+      return { text: xkPick(XK_BAND_LINES[band], seed), band };
+    }
+  }
   const pool = BARTENDER_FALLBACK[scene] || BARTENDER_FALLBACK.round_comment;
-  return pool[Math.floor(Math.random() * pool.length)];
+  const seed = JSON.stringify(context || {}) + scene;
+  return { text: xkPick(pool, seed), band: null };
 }
 
 async function handleBartender(req, env) {
   const ip = req.headers.get("cf-connecting-ip") || "local";
   if (!bartenderAllow(ip)) {
-    return jsonRes({ error: "rate_limited", msg: "雪克忙不过来了，一分钟后再来" }, 429);
+    return jsonRes({ error: "rate_limited", msg: "杯子排满了，一分钟后再来。" }, 429);
   }
   let body;
   try { body = await readJson(req, 64 * 1024); } catch { return jsonRes({ error: "body 不是合法 JSON" }, 400); }
   const scene = body.scene === "profile_text" ? "profile_text" : "round_comment";
   const context = body.context && typeof body.context === "object" ? body.context : {};
 
+  // 降级池先算出来：它是**主路径**，LLM 只是增量（见文件头 §分数对应铁律）。
+  const fb = bartenderFallback(scene, context);
+  const band = fb.band; // round_comment 且拿得到分数时才有值
+  const withBand = (obj) => (band ? { ...obj, xkBand: band } : obj);
+
   if (!env.LLM_API_KEY || !env.LLM_BASE_URL) {
-    return jsonRes({ text: bartenderFallback(scene), source: "fallback" });
+    return jsonRes(withBand({ text: fb.text, source: "fallback" }));
   }
 
   const model = scene === "profile_text" ? "claude-fable-5" : "claude-haiku-4-5-20251001";
+  // 硬规则注入：实际分数 + 分段语气指令 + 字数上限。LLM 说错刻度，出口 xkGuard 会拦。
+  const bandRule = band
+    ? `\n\n【分数对应铁律 · 违反即作废】本题主角打的是 ${context.score} 分（满分 10），落在 ${band} 段。${XK_BAND_TONE[band]}\n如果你要在句子里写出分数，只能写 ${context.score} 分，写别的数字就是错的。`
+    : "";
   const userPrompt = scene === "profile_text"
-    ? `根据下面这局酒桌游戏的数据，用雪克的口吻给主角写一段理想型画像文案（150 字以内，不用锐评字数限制），核心画像要贴合数据，相处细节可以发散但要具体、不套模板：\n${JSON.stringify(context).slice(0, 4000)}`
-    : `锐评本轮（60 字以内）。本轮数据：\n${JSON.stringify(context).slice(0, 4000)}`;
+    ? `用雪克的口吻给主角写理想型画像文案：3 句短句，每句 ≤20 字，句间换行。把画像说成一杯酒的配方（甜度/烈度/冰量/出杯标准）。不抒情、不排比、不讲道理。数据：\n${JSON.stringify(context).slice(0, 4000)}`
+    : `就本轮说一句话（≤20 字）。本轮数据：\n${JSON.stringify(context).slice(0, 4000)}${bandRule}`;
 
   try {
     const controller = new AbortController();
@@ -611,7 +899,7 @@ async function handleBartender(req, env) {
       },
       body: JSON.stringify({
         model,
-        max_tokens: scene === "profile_text" ? 600 : 200,
+        max_tokens: scene === "profile_text" ? 400 : 120,
         system: BARTENDER_SYSTEM,
         messages: [{ role: "user", content: userPrompt }],
       }),
@@ -626,10 +914,16 @@ async function handleBartender(req, env) {
       .join("")
       .trim();
     if (!text) throw new Error("empty completion");
-    return jsonRes({ text, source: "llm", model });
+    // 出口校验：round_comment 且有分段时，LLM 的话必须和分数不打架才准出杯。
+    if (band) {
+      const safe = xkGuard(text, band, context.score);
+      if (!safe) return jsonRes(withBand({ text: fb.text, source: "fallback", guard: "band_mismatch" }));
+      return jsonRes(withBand({ text: safe, source: "llm", model }));
+    }
+    return jsonRes(withBand({ text, source: "llm", model }));
   } catch {
-    // LLM 挂了 / 超时 → 预置文案降级，保证酒保永远在场
-    return jsonRes({ text: bartenderFallback(scene), source: "fallback" });
+    // LLM 挂了 / 超时 → 分段降级池，保证酒保永远在场、且永远对得上分数
+    return jsonRes(withBand({ text: fb.text, source: "fallback" }));
   }
 }
 
@@ -713,38 +1007,28 @@ async function handleRecover(req, env) {
 
 /* ============ 雪克 LLM 代理（/api/laok，永不 5xx） ============ */
 
-// 定稿于 docs/LAOK-PROMPT.md，改动需同步该文档
-const LAOK_SYSTEM = `你是雪克，酒吧「99%」的老板，也是酒桌游戏《理想型·加载中》里的常驻角色。客人在玩"满分男/满分女/满分Agent"打分游戏：主角给缺点打分，其他人猜分，猜偏罚酒。你在吧台看着，轮到你时搭一句。
+// 定稿于 docs/XUEKE-VOICE.md（R12 起以那份为准；docs/LAOK-PROMPT.md 是老K时代的遗留，已作废）。
+// R12：这里原本是「老K腔」——文艺唠嗑、40 字长句、知世故的过来人。
+// 雪克不是那个人：他是一台黄铜老机器，说话按刻度走，20 字以内说完。
+const LAOK_SYSTEM = XUEKE_PERSONA + `
 
-人设：知世故而不世故。你什么人间戏码都见过，所以什么都不惊讶；跟谁都能聊两句、接得住梗，但从不越界。幽默是随口顺一句的松弛感，不是段子。你平视客人，不俯视不讨好。
+你现在在《理想型·加载中》的牌桌边上。客人在玩打分游戏：主角给一条缺点打 0-10 分，
+其他人猜这个分，猜偏 2 分以上要罚酒，一分不差的人当国王。轮到你时搭一句。
 
-输入是 JSON，含场景类型和上下文：
-- reveal：某题结算，含题目梗概、主角真分、全场猜分偏差
-- solo：单人局，客人刚打完一题的分，你接一句
-- penalty：有人被罚酒，你补一句
-
-输出要求：
-- 只输出一句话，不超过40个字，中文口语，像随口说的
-- 先接住刚发生的事（题、分数、偏差），能提题里的具体细节最好
-- 只评这一局的事，不评客人的人品、长相、感情经历
-
-禁止：
-- emoji、波浪号、"亲""哦~"、连续感叹号
-- 网络烂梗、口号、大道理、人生建议、装深沉的金句
-- 舞台说明、引号包裹、任何解释性前后缀
+场景说明（scene 字段）：
+- reveal_close 开牌，全桌猜得准    - reveal_far 开牌，全桌偏差大
+- solo_react   单人局，客人刚打完一题的分
+- king_chance  有人分毫不差         - penalty 有人被罚酒
+- solo_open / solo_close / wait / generic 开局、收局、等人、泛用氛围
 
 直接给那句话，别的什么都不要输出。`;
 
-// 内置兜底池：public/laok-lines.js（P 线程交付）不存在时使用
-const LAOK_BUILTIN_POOL = Object.freeze({
-  default: [
-    "来了就坐，酒不急，话也不急。",
-    "今晚的事今晚聊，明天的事交给明天的酒。",
-    "我这吧台什么都听过，你这点事不算事。",
-    "喝口酒，慢慢说，我不赶时间。",
-    "人心这东西，猜十次能中一次就算懂了。",
-  ],
-});
+// 内置兜底池：**R12 起 /api/laok 的降级不再读 public/laok-lines.js 的 LAOK_POOL**。
+// 原因见文件头两条铁律：那份池是老K腔，且 solo_react 里有「分不高，但你舍不得打零分」
+// 这类**猜测分数**的句子——Kim 打 2 分时它照样能抽中，这就是 R12 炸出来的那个 bug。
+// laok-lines.js 不归本线程写，所以这里直接换源：台词一律走 XK_BAND_LINES / XK_SCENE_LINES。
+// （KING_ORDERS 仍然从 laok-lines.js 读，那是卡面语言，不是雪克说的话，不受影响。）
+const LAOK_BUILTIN_POOL = XK_SCENE_LINES;
 
 /* ============ R9 第一期功能开关（PRD-R9-PHASE1 §四：关不删，二期拨回即用）============
  * gallery        图鉴 UI（前端隐藏；/api/user/:id/codex 端点保留可写）
@@ -795,13 +1079,26 @@ function loadLaokLines() {
   return laokLinesPromise;
 }
 
-async function laokPoolLine(scene) {
-  let pool = null;
-  const mod = await loadLaokLines();
-  const p = mod?.LAOK_POOL?.[scene];
-  if (Array.isArray(p) && p.length) pool = p;
-  if (!pool) pool = LAOK_BUILTIN_POOL[scene] || LAOK_BUILTIN_POOL.default;
-  return pool[Math.floor(Math.random() * pool.length)];
+/* 降级取词。R12 两条铁律都落在这一个函数里：
+ *   ① 拿得到分数（ctx.score 是 0-10 的数）→ 一律走 XK_BAND_LINES 的对应分段，
+ *      跨段语义在源头就不存在。reveal_close / reveal_far 这类「猜分偏差」场景
+ *      同时也是有分数的场景，所以用 seed 的一个 bit 在「说分数」和「说偏差」
+ *      之间二选一 —— 两边都与现场事实相符，且**确定性**（同一题永远同一句）。
+ *   ② 拿不到分数（开局/等人/罚酒/国王/泛用）→ 走 XK_SCENE_LINES 的场景池，
+ *      那些池里的每一条都与分数无关，任何分数下说出来都不会打架。
+ * 不再读 public/laok-lines.js 的 LAOK_POOL（老K腔 + 会猜分数），见上方注释。 */
+function laokPoolLine(scene, ctx) {
+  const band = xkBand(ctx?.score);
+  const seed = `${scene}|${ctx?.score}|${ctx?.q || ""}|${ctx?.avgDiff}`;
+  const spread = XK_SCENE_LINES[scene]; // 只有 reveal_close/reveal_far/... 才命中
+  if (band) {
+    // 有分段：默认说分数；若本场景另有一套「与分数无关且切题」的池（偏差/国王），
+    // 用 hash 的最低位在两者间确定性二选一，保住花色又保住正确性。
+    if (spread && (xkHash(seed + "flavor") & 1)) return { text: xkPick(spread, seed), band };
+    return { text: xkPick(XK_BAND_LINES[band], seed), band };
+  }
+  const pool = spread || XK_SCENE_LINES.generic;
+  return { text: xkPick(pool, seed), band: null };
 }
 
 // 国王指令卡校验：只校验 id 存在；laok-lines.js / KING_ORDERS 缺失时不校验
@@ -817,25 +1114,40 @@ async function kingOrderExists(orderId) {
 // 60s 内存级缓存：scene+ctx 相同直接复用，防刷 pollinations
 const laokCache = new Map(); // key -> { ts, body }
 const LAOK_CACHE_MS = 60 * 1000;
-const LAOK_MAX_CHARS = 80;
+const LAOK_MAX_CHARS = 26; // R12：雪克 ≤20 字，留 6 字给标点余量（老K时代是 80）
 
 async function handleLaok(url) {
+  // 降级池是主路径：先算出一句「一定对得上分数」的话，LLM 只是可选的增量。
+  let scene = "default";
+  let ctx = {};
+  let fb = { text: XK_SCENE_LINES.generic[0], band: null };
   try {
-    const scene = cleanUserText(url.searchParams.get("scene"), 40) || "default";
+    scene = cleanUserText(url.searchParams.get("scene"), 40) || "default";
     const ctxRaw = String(url.searchParams.get("ctx") || "").slice(0, 4000);
-    let ctx = {};
     try { ctx = JSON.parse(ctxRaw || "{}"); } catch { ctx = {}; }
     if (!ctx || typeof ctx !== "object") ctx = {};
+    fb = laokPoolLine(scene, ctx);
 
-    const cacheKey = scene + "\u0000" + ctxRaw;
+    const cacheKey = scene + " " + ctxRaw;
     const hit = laokCache.get(cacheKey);
     if (hit && Date.now() - hit.ts < LAOK_CACHE_MS) return jsonRes(hit.body);
 
     let body = null;
     try {
+      // 硬规则注入：实际分数 + 该分段的语气指令 + 20 字上限（见 XK_BAND_TONE）
+      const bandRule = fb.band
+        ? `
+[分数对应铁律 · 违反即作废] 主角这题打的是 ${ctx.score} 分（满分 10），落在 ${fb.band} 段。` +
+          `${XK_BAND_TONE[fb.band]}
+句子里如果出现分数，只能是 ${ctx.score} 分。`
+        : "";
       const prompt =
-        `${LAOK_SYSTEM}\n\n[场景] ${scene}\n[现场情况] ${JSON.stringify(ctx).slice(0, 2000)}\n` +
-        `请以雪克的身份，就现场情况说一句话（不超过40个字，只输出这句话本身）。`;
+        `${LAOK_SYSTEM}
+
+[场景] ${scene}
+[现场情况] ${JSON.stringify(ctx).slice(0, 2000)}${bandRule}
+` +
+        `请以雪克的身份说一句话（不超过 20 个字，只输出这句话本身）。`;
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 5 * 1000);
       const res = await fetch(
@@ -844,23 +1156,23 @@ async function handleLaok(url) {
       );
       clearTimeout(timer);
       if (res.ok) {
-        const text = (await res.text()).trim();
-        if (text && Array.from(text).length <= LAOK_MAX_CHARS) {
-          body = { text, source: "llm" };
-        }
+        const raw = (await res.text()).trim();
+        // 出口校验：有分段时必须过 xkGuard（分数矛盾/跨段词/超长/emoji 一律作废）；
+        // 无分段时只做长度与格式的基本体检。
+        const text = fb.band
+          ? xkGuard(raw, fb.band, ctx.score)
+          : (raw && Array.from(raw).length <= LAOK_MAX_CHARS && !XK_BAN_ALWAYS.test(raw) ? raw : null);
+        if (text) body = fb.band ? { text, source: "llm", xkBand: fb.band } : { text, source: "llm" };
       }
     } catch {}
-    if (!body) body = { text: await laokPoolLine(scene), source: "pool" };
+    if (!body) body = fb.band ? { text: fb.text, source: "pool", xkBand: fb.band } : { text: fb.text, source: "pool" };
 
     laokCache.set(cacheKey, { ts: Date.now(), body });
     if (laokCache.size > 300) laokCache.clear(); // 防内存膨胀
     return jsonRes(body);
   } catch {
-    // 契约：永不 5xx
-    return jsonRes({
-      text: LAOK_BUILTIN_POOL.default[Math.floor(Math.random() * LAOK_BUILTIN_POOL.default.length)],
-      source: "pool",
-    });
+    // 契约：永不 5xx。fb 在最上面就有值，这里一定拿得到一句对得上分数的话。
+    return jsonRes(fb.band ? { text: fb.text, source: "pool", xkBand: fb.band } : { text: fb.text, source: "pool" });
   }
 }
 
@@ -2528,6 +2840,11 @@ export class RoomDO {
       question: cur.question.text,
       results,
       exact: exactIds,
+      // R12 契约：分数所在的雪克分段，FRONT 用它配表情包（public/xueke-stickers.js
+      // 的 stickerForBand(xkBand, seed)）。取值集合固定：
+      //   "0-2" | "3-4" | "5-6" | "7-8" | "9-10"
+      // 口径与 xueke-stickers.js 的 xuekeBand() 逐字一致，前端不必自己再算一遍。
+      xkBand: xkBand(cur.score),
       // 每题爆灯/灭灯（R2）：playerId -> "burst"|"off"，随 reveal 广播
       lights: cur.lights || {},
       comment: null,
@@ -2537,6 +2854,8 @@ export class RoomDO {
       score: cur.score,
       results,
       comment: null,
+      xkBand: xkBand(cur.score), // 同 reveal.xkBand，回看历史轮时前端照样配得上表情
+
       // R3 字段契约：每题爆/灭灯快照 {voterId: "burst"|"off"}（reveal 阶段投票时增量同步）
       lights: { ...(cur.lights || {}) },
     });
@@ -2677,6 +2996,9 @@ export class RoomDO {
       details: profile.relationship.details,
       title: title.title,
       titleSub: title.sub,
+      // R12 契约：亮相页的雪克分段，按**全场均分**落段（每题的段在 reveal.xkBand）。
+      // 取值 "0-2"|"3-4"|"5-6"|"7-8"|"9-10"，供 stickerForBand 配表情包。
+      xkBand: xkBand(avg),
       stats: {
         avgScore: Math.round(avg * 10) / 10,
         tolerancePct: Math.round((avg / 10) * 100),

@@ -3,108 +3,132 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>酒吧大厅 · 理想型·加载中</title>
+  <title>大厅 · 理想型·加载中</title>
   <link rel="stylesheet" href="../theme-v2.css" />
   <link rel="stylesheet" href="./lobby.css" />
 </head>
 <body>
-  <div id="scene" class="scene fx-vignette fx-scanlines fx-noise">
 
-    <!-- 墙面质感层：护墙板 + 侧墙氛围光 -->
-    <div class="wall" aria-hidden="true"></div>
+<!-- ==========================================================================
+     大厅 R12「走过卡座」：整页 = 一间连续的店，从上往下走。
+       门头 → 酒柜区 → 吧台区（雪克） → 卡座区（纵向桌卡列表） → 店规
+     不是一屏塞死的桌位网格；列表语义天然不封顶。
+     ========================================================================== -->
+<div class="bar fx-vignette fx-noise" id="bar">
 
-    <!-- 天花板：吊灯 + 像素 disco ball -->
-    <div class="ceiling">
-      <div class="disco-wrap"><div class="disco-ball"><i class="disco-chain"></i></div></div>
-      <div class="hang-lamp lamp-l"><i></i></div>
-      <div class="hang-lamp lamp-r"><i></i></div>
-    </div>
-
-    <!-- 霓虹招牌 Logo -->
-    <header class="marquee">
-      <img class="logo neon-flicker" src="../assets-v2/logo.svg" alt="理想型·加载中" />
-    </header>
-
-    <!-- 背景：酒柜背墙（木柜 + 双层瓶架） -->
-    <div class="backwall">
-      <!-- OPEN 24/7 霓虹牌：挂在酒柜上方的墙面 -->
-      <div class="wall-neon neon-flicker" aria-hidden="true">OPEN 24/7</div>
-      <div class="shelf shelf-1"></div>
-      <div class="shelf shelf-2"></div>
-      <div class="bottles bottles-1" aria-hidden="true"></div>
-      <div class="bottles bottles-2" aria-hidden="true"></div>
-      <!-- 酒柜中段：雪克身后的吧镜 -->
-      <div class="mirror" aria-hidden="true"></div>
-    </div>
-
-    <!-- 酒保：站在吧台后 -->
-    <div class="bartender-slot" id="bartenderSlot" title="雪克"></div>
-    <div class="bartender-tag px-title neon-cyan">雪克</div>
-
-    <!-- 吧台 -->
-    <div class="counter">
-      <div class="counter-top"></div>
-      <div class="counter-face"></div>
-      <!-- 台面小物：酒杯 + 待洗的酒瓶 -->
-      <div class="counter-props" aria-hidden="true">
-        <i class="glass g1"></i><i class="glass g2"></i><i class="cbottle"></i>
-      </div>
-      <!-- 吧台电话：找朋友（输房间码） -->
-      <button class="barphone" id="findFriendsBtn" type="button" title="找朋友">
-        <span class="phone-label px-title neon-cyan">找朋友</span>
-        <span class="phone-shape" aria-hidden="true"></span>
-      </button>
-    </div>
-
-    <!-- 吧台前的吧台凳：两张空凳 + 一张单人位 -->
-    <div class="stool-row">
-      <span class="stool deco s1" aria-hidden="true"><i></i></span>
-      <span class="stool deco s2" aria-hidden="true"><i></i></span>
-      <button class="solo-seat" id="soloSeat" type="button"
-              title="吧台这个位置本来就是留给一个人的，视野还最好。">
-        <span class="solo-hint">一个人？那你和我聊。</span>
-        <span class="solo-label px-title neon-amber">坐吧台，和雪克喝</span>
-        <span class="stool solo" aria-hidden="true"><i></i></span>
-      </button>
-    </div>
-
-    <!-- 前景圆桌区 -->
-    <div class="floor" id="floor">
-      <!-- 桌子由 lobby.js 生成：桌号霓虹牌 + 圆桌剪影 + 人数 -->
-    </div>
-
-    <!-- 氛围语录层（雪克式酒吧广播，低密度淡入淡出） -->
-    <div class="quotes" id="quotes" aria-hidden="true"></div>
-
-    <!-- 竖屏提示（几秒后自动淡出） -->
-    <div class="rotate-hint px-title" id="rotateHint">
-      <span class="hint-icon" aria-hidden="true">⟳</span>
-      转过来，酒吧横着更好看
-    </div>
-
-    <!-- 常驻入口：我的主页（无身份时引导去吧台调酒） -->
-    <button class="home-entry px-title" id="homeEntry" type="button">我的主页</button>
-
-    <!-- 未注册引导横幅（lobby.js 检查 localStorage 后展示） -->
-    <a class="guest-banner px-title" id="guestBanner" href="/v2/cocktail.html" hidden>
-      <span class="gb-text">生面孔？先去吧台调杯酒，我好记住你。</span>
-      <span class="gb-go">去调酒 →</span>
-    </a>
-
-    <!-- 找朋友：报房间码 -->
-    <div class="codeboard" id="codeboard" hidden>
-      <div class="codeboard-panel" role="dialog" aria-label="找朋友">
-        <button class="codeboard-close" id="codeClose" type="button" aria-label="关闭">×</button>
-        <div class="codeboard-title px-title neon-pink">找朋友</div>
-        <p class="codeboard-line">报个房间码，我带你过去。</p>
-        <input class="code-input px-title" id="codeInput" inputmode="numeric" maxlength="4"
-               placeholder="0000" autocomplete="off" />
-        <div class="code-msg px-title" id="codeMsg"></div>
-        <button class="code-go px-title" id="codeGo" type="button">带我过去</button>
-      </div>
-    </div>
+  <!-- ---------- 常驻工具条：黄铜挂牌，钉在门框上 ---------- -->
+  <div class="doorbar">
+    <button class="brasstag" id="findFriendsBtn" type="button">
+      <span class="brasstag-ico" aria-hidden="true"></span><span>报房间码</span>
+    </button>
+    <button class="brasstag" id="homeEntry" type="button">
+      <span class="brasstag-ico ico-book" aria-hidden="true"></span><span>我的柜子</span>
+    </button>
   </div>
 
-  <script type="module" src="./lobby.js"></script>
+  <!-- ---------- 一、门头：吊灯 + 招牌（有支架有电线） ---------- -->
+  <header class="zone zone-door">
+    <div class="ceiling" aria-hidden="true">
+      <span class="hang-lamp l1"><i></i></span>
+      <span class="hang-lamp l2"><i></i></span>
+      <span class="disco-wrap"><span class="disco-ball"><i class="disco-chain"></i></span></span>
+    </div>
+    <!-- 招牌：两根黄铜吊杆把牌子吊在天花板下，牌子背后一圈灯管 -->
+    <div class="signboard">
+      <span class="sign-rod rod-l" aria-hidden="true"></span>
+      <span class="sign-rod rod-r" aria-hidden="true"></span>
+      <div class="sign-plate">
+        <img class="sign-logo neon-flicker" src="../assets-v2/logo.svg" alt="理想型·加载中" />
+      </div>
+    </div>
+    <p class="door-rule">酒和灯只能把人送到 99%，差的那 1%，是个人。</p>
+  </header>
+
+  <!-- ---------- 未注册引导：门口那块立牌 ---------- -->
+  <a class="guest-easel" id="guestBanner" href="/v2/cocktail.html" hidden>
+    <span class="easel-body">
+      <b>生面孔？</b>
+      <span>先去吧台调杯酒，我好记住你。</span>
+    </span>
+    <span class="easel-go">去调酒 →</span>
+    <span class="easel-legs" aria-hidden="true"></span>
+  </a>
+
+  <!-- ---------- 二、酒柜区：密集酒瓶群 + 像素小画 + 黑板 ---------- -->
+  <section class="zone zone-backbar" aria-label="酒柜">
+    <!-- 整面酒柜由 lobby.js 画成一张 SVG（瓶群/相框/黑板/壁灯全是实体） -->
+    <div class="backbar-art" id="backbarArt"></div>
+  </section>
+
+  <!-- ---------- 三、吧台区：雪克站在吧台后 ---------- -->
+  <section class="zone zone-bar" aria-label="吧台">
+    <div class="bar-stage">
+      <!-- 雪克（bartender.js 组件，scene:false = 直接站进这间店） -->
+      <div class="xueke" id="bartenderStage">
+        <div class="xueke-body" id="bartenderSlot" title="雪克"></div>
+      </div>
+      <!-- 雪克的话：实体小黑板挂牌，不是浮字 -->
+      <div class="xueke-say" id="xuekeSay"><b>雪克</b><span id="xuekeLine">今晚想喝点什么故事？</span></div>
+
+      <!-- 吧台：木台面 + 黄铜压条 + 台面小物 -->
+      <div class="counter">
+        <div class="counter-top" aria-hidden="true"></div>
+        <div class="counter-props" aria-hidden="true">
+          <i class="prop-glass"></i><i class="prop-glass g2"></i><i class="prop-bottle"></i>
+          <i class="prop-phone"></i>
+        </div>
+        <div class="counter-face" aria-hidden="true"></div>
+      </div>
+
+      <!-- 吧台凳：两张空凳 + 一张留给一个人的 -->
+      <div class="stool-row">
+        <span class="stool deco" aria-hidden="true"><i></i></span>
+        <button class="solo-seat" id="soloSeat" type="button"
+                title="吧台这个位置本来就是留给一个人的，视野还最好。">
+          <span class="stool solo" aria-hidden="true"><i></i></span>
+          <span class="solo-label">一个人？坐吧台，和雪克喝</span>
+        </button>
+        <span class="stool deco" aria-hidden="true"><i></i></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------- 四、卡座区：纵向桌卡列表（点卡入桌） ---------- -->
+  <section class="zone zone-booths" aria-label="卡座">
+    <!-- 区隔牌：木牌 + 黄铜钉，钉在卡座区入口的隔断上 -->
+    <div class="zone-sign">
+      <span class="zone-sign-nail" aria-hidden="true"></span>
+      <span class="zone-sign-text">卡 座</span>
+      <span class="zone-sign-nail" aria-hidden="true"></span>
+    </div>
+    <p class="zone-note" id="boothNote">桌子都留着，人到就开。</p>
+
+    <ul class="booths" id="boothList"><!-- lobby.js 生成 --></ul>
+  </section>
+
+  <!-- ---------- 五、后门：店规 ---------- -->
+  <footer class="zone zone-foot">
+    <div class="foot-plate">
+      <span class="foot-nail" aria-hidden="true"></span>
+      <span>本店只调到 99%</span>
+      <span class="foot-nail" aria-hidden="true"></span>
+    </div>
+  </footer>
+</div>
+
+<!-- ---------- 找朋友：吧台电话本 ---------- -->
+<div class="codeboard" id="codeboard" hidden>
+  <div class="codeboard-panel" role="dialog" aria-label="报房间码">
+    <button class="codeboard-close" id="codeClose" type="button" aria-label="关闭">×</button>
+    <div class="codeboard-title px-title neon-pink">报房间码</div>
+    <p class="codeboard-line">报个房间码，我带你过去。</p>
+    <input class="code-input px-title" id="codeInput" inputmode="numeric" maxlength="4"
+           placeholder="0000" autocomplete="off" />
+    <div class="code-msg" id="codeMsg"></div>
+    <button class="code-go px-title" id="codeGo" type="button">带我过去</button>
+  </div>
+</div>
+
+<script type="module" src="./lobby.js"></script>
 </body>
 </html>

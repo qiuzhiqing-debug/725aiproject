@@ -93,6 +93,27 @@ let moduleProfiles = null;
    写死线上域名而不是 location.origin —— 海报会被转发出去，预览/本地域名扫了打不开。 */
 const SITE_LANDING_URL = "https://ideal-type-loading.kimnin-iup.workers.dev/";
 
+/* ---------- R12 微信环境（提示=功能铁律） ----------
+   微信内置浏览器（X5 / WKWebView）长按一张 <img>，弹出的菜单常常只有「识别图中二维码」，
+   没有「保存图片」——我们的海报右下角正好有个二维码，命中率更高。
+   所以：① 海报改出 blob: URL（poster.js canvasToObjectUrl），长按菜单比 data: URI 稳；
+        ② 微信里的提示改成说实话的版本，不再承诺「长按保存整张海报」这件我们保证不了的事。
+   非微信环境（系统浏览器/Safari/Chrome）长按保存是稳的，保留原文案。 */
+const IS_WECHAT = /MicroMessenger/i.test(navigator.userAgent || "");
+const POSTER_TIP_WECHAT = "长按图片选「保存图片」；不行就截图，一样香。扫码的人来 99% 酒吧调一杯。";
+const POSTER_TIP_DEFAULT = "长按保存整张海报。扫码的人来 99% 酒吧调一杯。";
+
+/* 海报 URL 换手：blob: URL 不 revoke 会一直占着内存（1080×1920 PNG 一张好几 MB，
+   一局翻好几个人就是几十 MB）。所有写 ui.posterUrl 的地方都必须走这里。
+   dataURL 兜底路径不是 blob:，revoke 会静默失败，不影响。 */
+function setPosterUrl(url) {
+  const old = ui.posterUrl;
+  if (old && old !== url && old.startsWith("blob:")) {
+    try { URL.revokeObjectURL(old); } catch {}
+  }
+  ui.posterUrl = url || null;
+}
+
 const WAITING_FALLBACK = { m: "你老公来咯", f: "你老婆来咯", n: "你的TA来咯" };
 const WAITING_WINGS = "🪽🪽";
 
@@ -259,21 +280,49 @@ const RESET_COCKTAIL_KEYS = Object.freeze([
   "mfn_aha_saved", "mfn_codex_saved", "statsKey",
 ]);
 
-function resetCocktailIdentity() {
+/* 只清 key、不跳转。「重新调一杯」按钮和 ?fresh=1 共用这一份清单，
+   两条入口清掉的东西必须逐字一致（否则「生面孔」名不副实）。 */
+function clearCocktailIdentity() {
   try {
     for (const k of RESET_COCKTAIL_KEYS) localStorage.removeItem(k);
-    // 房间回座令牌是 mfn_token_<code>，key 数量不定，前缀扫一遍
+    // 前缀类 key（数量不定，扫一遍）：
+    //   mfn_token_<code>  房间回座令牌
+    //   liked:<recordId>  展示柜点赞去重台账
+    // R12 审查修复：liked:* 原来不清 —— 结果「按生面孔重走一遍」之后，
+    // 别人展示柜上那些卡还是灰的、点不了赞，生面孔名不副实。跟身份一起清。
     const doomed = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k && k.startsWith("mfn_token_")) doomed.push(k);
+      if (k && (k.startsWith("mfn_token_") || k.startsWith("liked:"))) doomed.push(k);
     }
     doomed.forEach((k) => localStorage.removeItem(k));
   } catch {
     /* 隐私模式写不了 localStorage：清不了也别拦着跳转 */
   }
+}
+
+function resetCocktailIdentity() {
+  clearCocktailIdentity();
   location.href = "/v2/cocktail.html";
 }
+
+/* ---------- R12 ?fresh=1 强制清档 ----------
+   Kim 的微信里存着旧档案，要一条「发出去就是全新体验」的链接：
+   带 ?fresh=1 进页 → 立刻执行与「重新调一杯」同款清理（同一份 RESET_COCKTAIL_KEYS）→
+   把 fresh 参数从地址栏抹掉（replaceState，不产生历史条目、不刷新、不跳转）→ 原地继续。
+   必须跑在下面 ui 初始化读 localStorage 之前，否则清完了旧昵称还会被读进内存。 */
+(function applyFreshParam() {
+  try {
+    const q = new URLSearchParams(location.search);
+    if (q.get("fresh") !== "1") return;
+    clearCocktailIdentity();
+    q.delete("fresh");
+    const qs = q.toString();
+    history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "") + location.hash);
+  } catch {
+    /* 参数处理失败绝不能挡住进页 */
+  }
+})();
 
 // 调酒身份（/v2/cocktail.html 存的 ideal_cocktail）：跟人走，不让用户重选
 function readCocktail() {
@@ -707,7 +756,7 @@ function onMessage(msg) {
         ui.ahaArtUrl = null; // 立绘确认可用后才写展示柜
         clearTimeout(ui.ahaSaveTimer);
         ui.ahaSaveTimer = null;
-        ui.posterUrl = null;
+        setPosterUrl(null);
         ui.stickDoneSent = false;
         if (msg.state.phase === "picking") {
           ui.shakeMode = null;
@@ -842,8 +891,10 @@ function bindSound() {
 }
 
 /* --- 首页 --- */
-// 入座第四问「想品鉴谁」（R9 PRD §3.2）：每人一份、私密语义、无圈层标签。
+// 「想品鉴谁」选项表（R9 PRD §3.2）：每人一份、私密语义、无圈层标签。
 // 值随 join 送 { seeking }，服务端按被拷问者的 seeking 决定当轮 renderGender。
+// R12：入座表单里的这一问已删（与抽签后的方向弹层重复），本表保留 —— 数据链没断，
+// ui.seeking 仍是弹层的默认值来源，且二期若要恢复入座预选，这里现成的。
 const SEEK_OPTIONS = [
   { id: "m", label: "男", emoji: "🕺" },
   { id: "f", label: "女", emoji: "💃" },
@@ -855,10 +906,12 @@ const SEEK_OPTIONS = [
    四连问（称呼 / 杯子 / 罚酒 / 想品鉴谁）已下沉到桌局组件 renderTable()，首页不再承担表单。
    调酒不再是门：index.html 的强制跳转闸已删，「点一杯」是自愿入口（/v2/cocktail.html）。
    除 logo 外文案全部占位，等 Kim 终审（PRD §六 待拍板项 ①②）。 */
+/* R12：Kim 嫌原来三行复杂（并否掉「主角得把底线说清楚」这类表述）。
+   下面三行是 PM 定稿，逐字使用，任何人改字前先回去问 PM。 */
 const HOME_HOW_LINES = [
-  "抽签抽出今晚的主角，全桌猜 TA 给这条标准打几分。",
-  "猜错的喝，猜中的看戏——主角得把自己的底线说清楚。",
-  "一局下来，系统把 TA 的理想型调出来，当场对账。",
+  "抽签定主角，一人一轮。",
+  "每题一条“满分男但…”，主角打分，其他人猜TA打几分——猜错的喝。每题独立，当场开牌。",
+  "一局打完，雪克把 TA 的理想型端上来。",
 ];
 
 // 首页/桌局共用的极简顶栏（只留「我的」和声音，bindSound 认这两个 id）
@@ -883,7 +936,7 @@ function renderHome() {
         <b>点一杯</b>
         <small>${cocktail ? `你的今晚特调：${esc(cocktail.name)}` : "调一杯，留下你的口味档案"}</small>
       </button>
-      <button class="link-btn" id="resetCocktailBtn" title="清掉本地调酒与账号缓存，按生面孔重走一遍">重新调一杯</button>
+      <button class="link-btn" id="resetCocktailBtn" title="清掉这台设备上的调酒与账号缓存，按生面孔重走一遍（云端旧档案不删）">重新调一杯</button>
       <div class="glass landing-how">
         ${HOME_HOW_LINES.map((l) => `<p>${esc(l)}</p>`).join("")}
       </div>
@@ -910,19 +963,37 @@ function openFeedbackModal() {
   const wrap = document.createElement("div");
   wrap.id = "fbModal";
   wrap.className = "fb-overlay";
+  /* R12 修 Kim 报的「滑动时文本框被压缩」（提示=功能铁律：写着能填 500 字就得真能填）。
+     病因（style.css:3769 .fb-overlay / 3781 .fb-modal，CSS 不归本线管，所以全用内联覆盖）：
+       ① .fb-overlay 是 fixed + flex + align-items:center 且不滚动；
+       ② .fb-modal 是 flex item，默认 flex-shrink:1；
+       ③ textarea 只有 rows="4"，没有 min-height，作为 grid 项可以被压到几乎没有。
+     手机上地址栏收起 / 软键盘弹起会把 fixed 容器的高度砍掉一截 → 装不下就压缩 →
+     首当其冲被压扁的就是 textarea。
+     修法：容器改成顶部对齐 + 自身可滚动（装不下就滚，不许压），弹窗 flex-shrink:0，
+     textarea 给死 min-height 且 flex/grid 都不许收缩。开着时锁 body 滚动，关掉时还原。 */
+  wrap.style.cssText = "align-items:flex-start;justify-content:center;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:20px 20px 28px";
   wrap.innerHTML = `
-    <div class="fb-modal glass" role="dialog" aria-modal="true" aria-label="反馈">
+    <div class="fb-modal glass" role="dialog" aria-modal="true" aria-label="反馈"
+      style="flex:0 0 auto;margin:auto 0;max-height:none">
       <b class="fb-title">跟我说句话</b>
-      <textarea id="fbText" rows="4" maxlength="500" placeholder="哪儿别扭、哪儿好玩，随便说。"></textarea>
-      <input type="text" id="fbContact" maxlength="60" placeholder="联系方式（可不填）" />
+      <textarea id="fbText" rows="4" maxlength="500" placeholder="哪儿别扭、哪儿好玩，随便说。"
+        style="min-height:112px;flex:0 0 auto;box-sizing:border-box"></textarea>
+      <input type="text" id="fbContact" maxlength="60" placeholder="联系方式（可不填）" style="flex:0 0 auto" />
       <div class="row fb-actions">
         <button class="btn ghost small grow" id="fbCancel">先不说</button>
         <button class="btn small grow" id="fbSend">递给雪克</button>
       </div>
     </div>`;
-  const close = () => { wrap.remove(); ui.feedbackBusy = false; };
+  const prevBodyOverflow = document.body.style.overflow;
+  const close = () => {
+    wrap.remove();
+    document.body.style.overflow = prevBodyOverflow;
+    ui.feedbackBusy = false;
+  };
   wrap.addEventListener("click", (ev) => { if (ev.target === wrap) close(); });
   document.body.appendChild(wrap);
+  document.body.style.overflow = "hidden"; // 弹窗开着时背后不跟着滚（滚动是压缩的诱因之一）
   document.getElementById("fbCancel").addEventListener("click", close);
   document.getElementById("fbText").focus();
   document.getElementById("fbSend").addEventListener("click", async () => {
@@ -977,12 +1048,12 @@ function seatFormHtml() {
       <div class="emoji-grid drink-choice-grid" id="drinkGrid">
         ${DRINK_OPTIONS.map((d) => `<button data-drink="${d.id}" class="${d.id === ui.drink ? "sel" : ""}" title="${d.label}">${d.emoji}<small>${d.label}</small></button>`).join("")}
       </div>
-      <label class="dim">今晚想品鉴谁</label>
-      <div class="emoji-grid drink-choice-grid seek-choice-grid" id="seekGrid">
-        ${SEEK_OPTIONS.map((o) => `<button data-seek="${o.id}" class="${o.id === ui.seeking ? "sel" : ""}" title="${o.label}">${o.emoji}<small>${o.label}</small></button>`).join("")}
-      </div>
-      <div class="dim seek-note">轮到你被拷问时，题目按这个方向出，随时能改。</div>
     </div>`;
+  /* R12（Kim）：入座表单里的「今晚想品鉴谁」整块删除（含 seek-note 说明行）。
+     理由：和抽签后的方向确认弹层完全重复，方向的唯一入口 = 弹层（syncDirectionOverlay）。
+     删的是 UI，不是数据链 —— ui.seeking / mfn_seeking / resolveSeeking() 全部保留：
+     join 时照样带 seeking（见 createRoom/joinRoom），弹层照样拿它当默认值（ui.dirSeeking）。
+     顺带清掉了原说明行「随时能改」——审查里它承诺得比实际大（只有轮到自己时能改）。 */
 }
 
 function bindSeatForm() {
@@ -1000,15 +1071,9 @@ function bindSeatForm() {
     ui.drink = b.dataset.drink;
     renderTable();
   });
-  // 第四问：想品鉴谁（本机记住上次选择；不回写注册档案，档案只在 /u 改）
-  document.getElementById("seekGrid")?.addEventListener("click", (ev) => {
-    const b = ev.target.closest("button[data-seek]");
-    if (!b) return;
-    ui.seeking = b.dataset.seek;
-    ui.seekingTouched = true;
-    try { localStorage.setItem("mfn_seeking", ui.seeking); } catch {}
-    renderTable();
-  });
+  // R12：原「今晚想品鉴谁」#seekGrid 的绑定随 UI 一起删除。
+  // 方向的唯一入口是抽签后的方向确认弹层（bindDirectionOverlay → confirm_direction），
+  // 那里仍然会写 ui.seeking + localStorage.mfn_seeking，数据链没断。
 }
 
 function renderTable() {
@@ -1654,6 +1719,163 @@ function renderSetup(s) {
   bindSound();
 }
 
+/* ============================================================
+   R12 雪克表情包（VOICE 线并行产出 public/xueke-stickers.js）
+   契约：
+     export const XUEKE_STICKERS = { id: { svg, label } }
+     export function stickerForScore(score)   // 返回贴纸 id 或 {svg,label}
+     worker 广播 reveal/aha 时可能附 xkBand（"0-2" / "3-4" … / "9-10"）
+   防御铁律（本线不许因为 VOICE 线晚到就崩）：
+     · 文件不存在 → 动态 import reject → catch 掉，永不渲染贴纸；
+     · 导出名缺失 / stickerForScore 抛错 / 返回 id 查不到 / svg 字段没有 → 一律不渲染；
+     · 贴纸只是「加一块」，原有文字锐评在任何失败路径下都照常显示。
+   svg 直接 innerHTML：内容来自本站同源静态模块（不是用户输入），与 BRAND_MARK_SVG 同级信任。
+   ============================================================ */
+let xkTable = null;     // XUEKE_STICKERS
+let xkPick = null;      // stickerForScore(score)
+let xkPickBand = null;  // stickerForBand(band)：VOICE 线额外给的，有就优先用（比自己折算档位准）
+function loadStickers() {
+  return lazyImport("xkStickers", "./xueke-stickers.js")
+    .then((mod) => {
+      if (mod && mod.XUEKE_STICKERS && typeof mod.XUEKE_STICKERS === "object") xkTable = mod.XUEKE_STICKERS;
+      if (typeof mod?.stickerForScore === "function") xkPick = mod.stickerForScore;
+      if (typeof mod?.stickerForBand === "function") xkPickBand = mod.stickerForBand;
+      return mod;
+    })
+    .catch(() => null); // 模块没到 = 这个功能不存在，不是错误
+}
+loadStickers(); // 首屏就预热，reveal 到来时通常已就位
+
+// 任意形态（id 字符串 / {svg,label} 对象）→ 统一成 {id,svg,label}；拿不出 svg 就是 null
+function xkNormalize(entry) {
+  try {
+    if (!entry) return null;
+    if (typeof entry === "string") {
+      const hit = xkTable?.[entry];
+      return hit?.svg ? { id: entry, svg: String(hit.svg), label: String(hit.label || "") } : null;
+    }
+    if (typeof entry === "object" && entry.svg) {
+      return { id: String(entry.id || ""), svg: String(entry.svg), label: String(entry.label || "") };
+    }
+  } catch {}
+  return null;
+}
+function xkById(id) {
+  return xkNormalize(String(id || ""));
+}
+function xkByScore(score) {
+  const n = Number(score);
+  if (typeof xkPick !== "function" || !Number.isFinite(n)) return null;
+  try { return xkNormalize(xkPick(n)); } catch { return null; }
+}
+// worker 的 xkBand（"0-2"…"9-10"）→ 区间中点，喂回 stickerForScore。
+// 只在 VOICE 线没导出 stickerForBand 时才用这条折算路（自己造的第二套映射，能不用就不用）。
+function xkScoreFromBand(band) {
+  const m = /^\s*(\d+)\s*-\s*(\d+)\s*$/.exec(String(band ?? ""));
+  if (!m) return null;
+  const lo = Number(m[1]), hi = Number(m[2]);
+  return Number.isFinite(lo) && Number.isFinite(hi) ? Math.round((lo + hi) / 2) : null;
+}
+function xkByBand(band) {
+  const b = String(band ?? "").trim();
+  if (!b) return null;
+  if (typeof xkPickBand === "function") {
+    try { const hit = xkNormalize(xkPickBand(b)); if (hit) return hit; } catch {}
+  }
+  const mid = xkScoreFromBand(b); // stickerForBand 没有 → 拿区间中点走 stickerForScore
+  return mid == null ? null : xkByScore(mid);
+}
+// band 优先（worker/VOICE 说了算），band 缺失才退回本地实际分
+function xkPickFor(band, score) {
+  return xkByBand(band) || xkByScore(score);
+}
+// 槽位是否有东西可画（band / score 至少一个能用）——决定渲染期要不要吐这个 span
+function xkHasKey(band, score) {
+  const b = String(band ?? "").trim();
+  return !!b || Number.isFinite(Number(score));
+}
+
+/* 渲染期同步产出一个「待填槽」：模块此刻可能还没到，先占位（display:none 不占版面），
+   render 之后 mountXkStickers() 统一补图。补不上就永远是个隐藏的空 span。 */
+const XK_SIZES = { lg: "clamp(96px,32vw,148px)", sm: "40px" };
+function xkSlotHtml(band, score, size = "lg") {
+  if (!xkHasKey(band, score)) return "";
+  const px = XK_SIZES[size] || XK_SIZES.lg;
+  return `<span class="xk-sticker xk-${esc(size)}" data-xk-band="${esc(String(band ?? ""))}" data-xk-score="${esc(String(score ?? ""))}"
+    style="display:none;width:${px};max-width:100%;flex:0 0 auto;line-height:0"></span>`;
+}
+// 已知 id 的贴纸槽（弹幕/聊天里的 [sticker:xxx] 用）
+function xkIdSlotHtml(id, size = "sm") {
+  const px = XK_SIZES[size] || XK_SIZES.sm;
+  return `<span class="xk-sticker xk-${esc(size)}" data-xk-id="${esc(id)}"
+    style="display:none;width:${px};max-width:100%;flex:0 0 auto;line-height:0"></span>`;
+}
+// 把一枚贴纸真正画进槽里（svg 自适应槽宽）
+function xkFillSlot(slot, sticker) {
+  if (!slot || !sticker || slot.dataset.xkDone === "1") return;
+  slot.dataset.xkDone = "1";
+  slot.innerHTML = sticker.svg;
+  const svg = slot.querySelector("svg");
+  if (svg) {
+    svg.style.width = "100%";
+    svg.style.height = "auto";
+    svg.style.display = "block";
+    svg.setAttribute("role", "img");
+    if (sticker.label) svg.setAttribute("aria-label", sticker.label);
+  }
+  slot.style.display = "block";
+  if (sticker.label) slot.title = sticker.label;
+  // 贴纸画出来了 → 同一条消息里那行「[sticker:xx]」文本码兜底可以收起来
+  const fallback = slot.parentElement?.querySelector(".xk-code-fallback");
+  if (fallback) fallback.style.display = "none";
+}
+// 每次 render 后调用：把 DOM 里所有空槽填上（模块没到就静默返回）
+function mountXkStickers(root = document) {
+  const slots = root.querySelectorAll?.(".xk-sticker:not([data-xk-done])");
+  if (!slots || !slots.length) return;
+  loadStickers().then(() => {
+    if (!xkTable && typeof xkPick !== "function") return; // 契约没到，保持空槽
+    slots.forEach((slot) => {
+      if (!slot.isConnected) return;
+      const sticker = slot.dataset.xkId
+        ? xkById(slot.dataset.xkId)
+        : xkPickFor(slot.dataset.xkBand, slot.dataset.xkScore);
+      xkFillSlot(slot, sticker);
+    });
+  }).catch(() => {});
+}
+
+/* --- 弹幕/聊天里的贴纸消息码 [sticker:xk-nod] ---
+   发送端把 id 包成纯文本码走现有 danmaku/chat 通道（不动 social.js、不动 worker 协议），
+   渲染端识别后画 SVG；旧客户端 / 贴纸模块没到时，看到的就是这行文本码，不崩不报错。 */
+const XK_CODE_RE = /^\[sticker:([A-Za-z0-9_-]{1,40})\]$/;
+function xkCodeOf(text) {
+  const m = XK_CODE_RE.exec(String(text ?? "").trim());
+  return m ? m[1] : null;
+}
+function xkCode(id) {
+  return `[sticker:${id}]`;
+}
+// 贴纸按钮排：从 XUEKE_STICKERS 的真实 key 现场生成 —— 模块没到就一个按钮都不出
+function mountXkPickers() {
+  loadStickers().then(() => {
+    const ids = xkTable ? Object.keys(xkTable).filter((id) => xkTable[id]?.svg) : [];
+    if (!ids.length) return;
+    document.querySelectorAll(".xk-picker:not([data-xk-built])").forEach((row) => {
+      row.dataset.xkBuilt = "1";
+      row.innerHTML = ids.slice(0, 12).map((id) => {
+        const label = String(xkTable[id]?.label || id);
+        return `<button type="button" class="xk-pick" data-xk-pick="${esc(id)}" title="${esc(label)}"
+          aria-label="发送雪克贴纸 ${esc(label)}"
+          style="flex:0 0 auto;width:44px;height:44px;padding:4px;border:0;border-radius:10px;background:rgba(255,255,255,.06);cursor:pointer;line-height:0">
+          ${xkIdSlotHtml(id, "sm")}</button>`;
+      }).join("");
+      row.style.display = "flex";
+      mountXkStickers(row);
+    });
+  }).catch(() => {});
+}
+
 /* --- 雪克锐评 NPC（R2）：/api/laok 非阻塞取词，到了再淡入，失败静默 --- */
 
 const laokMemo = new Map(); // key -> 文案（"" = 请求中或失败，失败即静默）
@@ -1680,13 +1902,18 @@ function laokFetch(scene, ctx, key) {
     .catch(() => {});
 }
 
-// 渲染期：该 key 已有文案才亮框；文案后到时由 patchLaokBox 现场淡入
-function laokBoxHtml(key) {
+/* 渲染期：该 key 已有文案才亮框；文案后到时由 patchLaokBox 现场淡入。
+   R12：opts.stickerBand / opts.stickerScore 任一给到 → 锐评位上方先出一张大贴纸，
+   原来的文字锐评降为下面一行小字（inline style，不新增 CSS 选择器——CSS 不归本线管）。
+   贴纸模块没到时槽是隐藏的空 span，这个框看起来跟 R11 一模一样。 */
+function laokBoxHtml(key, opts = {}) {
   if (!laokMemo.has(key)) return "";
   const text = laokMemo.get(key);
-  return `<div class="laok-box ${text ? "show" : ""}" data-laok-key="${esc(key)}">
+  const stickerHtml = xkSlotHtml(opts.stickerBand, opts.stickerScore, opts.stickerSize || "lg");
+  const textStyle = stickerHtml ? ` style="font-size:12px;line-height:1.55;opacity:.72;margin:2px 0 0"` : "";
+  return `<div class="laok-box ${text || stickerHtml ? "show" : ""}" data-laok-key="${esc(key)}">
     <span class="laok-avatar" aria-hidden="true"></span>
-    <div class="laok-line"><b>雪克</b><p class="laok-text">${esc(text)}</p></div>
+    <div class="laok-line"${stickerHtml ? ` style="min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:4px"` : ""}><b>雪克</b>${stickerHtml}<p class="laok-text"${textStyle}>${esc(text)}</p></div>
   </div>`;
 }
 
@@ -1711,6 +1938,7 @@ function patchLaokBox(key) {
 }
 
 function mountLaokAvatar() {
+  mountXkStickers(); // R12：顺手把本屏所有贴纸空槽补上（贴纸模块缺失时静默）
   const slot = document.querySelector(".laok-box.show .laok-avatar");
   if (!slot || slot.firstChild) return;
   loadBartender()
@@ -1953,7 +2181,12 @@ function renderReveal(s) {
       <div class="big-score ${fresh ? "seq-score" : ""}" ${fresh ? `style="--d:${scoreDelay.toFixed(2)}s"` : ""}>${rv.score}<span class="unit">分</span></div>
       ${rv.comment ? `<div class="detail-item">主角补刀：${esc(rv.comment)}</div>` : ""}
     </div>
-    ${laokBoxHtml(laokKey)}
+    ${laokBoxHtml(laokKey, {
+      // R12 每题揭晓：雪克先甩一张表情包（按主角实际分选），文字锐评降为下面一行小字。
+      // xkBand 是 worker 广播的权威档位，没有就用本地拿到的 rv.score。
+      stickerBand: rv.xkBand ?? cur.xkBand ?? s.xkBand,
+      stickerScore: rv.score,
+    })}
     ${solo ? "" : `<div class="glass stack">
       ${rv.results.map((x, i) => `
         <div class="reveal-row ${fresh ? "seq" : (x.drink ? "drink" : "") + " " + (x.exact ? "exact" : "")}" data-i="${i}" ${rowD(i)}>
@@ -2305,6 +2538,15 @@ function renderAha(s, aha, isFinal) {
         : `<div class="dim">细节还在杯底沉淀，先看前两页。</div>`}
     </div>`;
 
+  /* R12 亮相终局贴纸：雪克在灯排上方甩一张「这一局到底几分」的表情包，
+     档位优先用 worker 广播的 xkBand，缺失就用本局平均分 stats.avgScore（0-10 同一量纲）。
+     文字用本地语录池一条（一局一条，key 认 aha.id）——亮相页会随翻页反复重渲染，
+     这里不接 /api/laok，免得翻一次页打一次 LLM。 */
+  const ahaLaokKey = `aha:${s.code}:${aha.id || aha.protagonist?.name || ""}`;
+  const ahaBand = aha.xkBand ?? aha.stats?.xkBand ?? s.xkBand;
+  const ahaScore = Number(aha.stats?.avgScore);
+  if (!laokMemo.has(ahaLaokKey)) laokMemo.set(ahaLaokKey, pickPool(solo ? "solo_close" : "generic"));
+
   $app.innerHTML = `
     ${header(s, `${esc(aha.protagonist?.name || "")} 的${esc(W.noun)}来了`)}
     <div class="aha-stage-nav" role="tablist" aria-label="${esc(W.noun)}报告阶段">
@@ -2312,6 +2554,7 @@ function renderAha(s, aha, isFinal) {
     </div>
     <div class="flip-scene" id="ahaStage" role="button" tabindex="0" aria-live="polite" aria-label="点击查看${stage < 2 ? stages[stage + 1] : stages[0]}">${stageBody}</div>
     <button class="stage-next" id="stageNext">${stage < 2 ? `点击继续 · ${stages[stage + 1]}` : `回到${esc(W.noun)}立绘`}<span>→</span></button>
+    ${laokBoxHtml(ahaLaokKey, { stickerBand: ahaBand, stickerScore: ahaScore })}
     <div class="glass stack center light-panel">
       ${solo ? `<div class="dim">你给这张${esc(W.noun)}：💗 爆灯 / 🖤 灭灯（点了可改）</div>` : ""}
       <div class="lamp-row">${lampRow}</div>
@@ -2321,7 +2564,13 @@ function renderAha(s, aha, isFinal) {
           <button class="btn light-burst grow ${mine === "burst" ? "selected" : ""}" id="burstBtn">${mine === "burst" ? "已爆灯" : "爆灯"}</button>
           <button class="btn light-off grow ${mine === "off" ? "selected" : ""}" id="offBtn">${mine === "off" ? "已灭灯" : "灭灯"}</button>
         </div>
-        <div class="dim">${solo ? "一盏灯，点了可改，记进你的展示柜。" : "灯可以改，最后一票记进海报。"}</div>
+        <!-- R12 审查修复（提示=功能铁律）：
+             ① 原 solo 文案「记进你的展示柜」是假的 —— 展示柜记录在立绘加载成功那一刻就写完了
+                （maybeSaveAhaProfile），那时候你还没点灯，写进去的 burstTotal 恒为 0，
+                而后端 records 是 append-only、没有更新口子（跨文件，已列入转交清单）。改成不承诺。
+             ② 原多人文案「最后一票记进海报」也是假的 —— 海报一次性渲染，投完灯不会重画。
+                现在补了「重洗一张」按钮，所以照实说：海报按出图那一刻的灯数来，改完可以重洗。 -->
+        <div class="dim">${solo ? "一盏灯，点了可改。" : "灯可以改。海报按出图那一刻的灯数来，改完灯可以重洗一张。"}</div>
       ` : s.current?.youAreProtagonist && !isFinal && !solo
           ? `<div class="dim">全场在给你的${esc(W.noun)}亮灯。别紧张，灯不咬人。</div>`
           : lt.burstNames?.length
@@ -2329,12 +2578,15 @@ function renderAha(s, aha, isFinal) {
             : ""}
     </div>
     ${ui.posterUrl
-      ? `<img class="poster-img" src="${ui.posterUrl}" alt="理想型海报" /><div class="dim center">长按保存整张海报。扫码的人来 99% 酒吧调一杯。</div><button class="btn" id="posterHomeBtn">进入我的主页</button>`
+      ? `<img class="poster-img" src="${ui.posterUrl}" alt="理想型海报" /><div class="dim center">${esc(IS_WECHAT ? POSTER_TIP_WECHAT : POSTER_TIP_DEFAULT)}</div>
+         <button class="btn ghost small" id="posterAgainBtn" ${ui.posterBusy ? "disabled" : ""}>${ui.posterBusy ? "重洗中…" : "灯改了？重洗一张"}</button>
+         <button class="btn" id="posterHomeBtn">进入我的主页</button>`
       : `<button class="btn ghost" id="posterBtn" ${ui.posterBusy ? "disabled" : ""}>${ui.posterBusy ? "海报在暗房里洗…" : "生成海报"}</button>`}
     ${!isFinal ? (me.isHost
       ? `<button class="btn" id="nextBtn">${s.players.some((p) => !p.done) ? "下一位主角" : "收局看总榜"}</button>`
       : `<div class="dim center">等房主抽下一位。</div>`) : ""}`;
   bindSound();
+  mountLaokAvatar(); // 雪克头像 + R12 终局贴纸槽
 
   const setStage = (next) => {
     ui.ahaStage = Math.max(0, Math.min(2, next));
@@ -2396,7 +2648,8 @@ function renderAha(s, aha, isFinal) {
       artImg.addEventListener("error", artFailed);
     }
   }
-  document.getElementById("posterBtn")?.addEventListener("click", async () => {
+  const makePoster = async () => {
+    if (ui.posterBusy) return;
     ui.posterBusy = true;
     render();
     try {
@@ -2405,7 +2658,7 @@ function renderAha(s, aha, isFinal) {
       //  · loadedImageUrl = 亮相页确认加载成功的那张立绘，海报优先复用（走缓存，不再等超时）；
       //  · waitingText = 图真没来时海报占位用的那句「你老公来咯」；
       //  · 二维码目标改成站点落地首页（SITE_LANDING_URL），不再是本房间深链。
-      ui.posterUrl = await renderPoster(
+      setPosterUrl(await renderPoster(
         {
           ...aha, profile, waitingText: waitingLine,
           // 只有当这张已加载的图确实属于当前这条 aha 时才复用（finished 回看会来回翻页，
@@ -2414,7 +2667,7 @@ function renderAha(s, aha, isFinal) {
             .includes(ui.ahaArtUrl) ? ui.ahaArtUrl : "",
         },
         SITE_LANDING_URL,
-      );
+      ));
       // 埋点 poster_shared：一期不新增 UI，海报没有独立「分享」按钮（出图后是长按保存 + 扫码进店），
       // 所以把「海报洗出来了」这一刻当作一次分享意图，只在生成成功后记一次。
       track("poster_shared", { roomCode: s.code });
@@ -2423,7 +2676,11 @@ function renderAha(s, aha, isFinal) {
     }
     ui.posterBusy = false;
     render();
-  });
+  };
+  document.getElementById("posterBtn")?.addEventListener("click", makePoster);
+  // R12 审查修复：原文案说「最后一票记进海报」，但海报是一次性渲染、投完灯没有重出图的口子。
+  // 补一个「重洗一张」，让承诺真的成立（同时文案也改成不承诺「最后一票」）。
+  document.getElementById("posterAgainBtn")?.addEventListener("click", makePoster);
   document.getElementById("posterHomeBtn")?.addEventListener("click", goMyPage);
   document.getElementById("nextBtn")?.addEventListener("click", () => sendOrWarn({ type: "next" }));
   document.getElementById("burstBtn")?.addEventListener("click", () => castLight("burst"));
@@ -2468,8 +2725,8 @@ function renderFinished(s) {
   again.onclick = () => location.href = "/";
   $app.appendChild(again);
   // 翻页换人：海报、阶段、已确认立绘 URL 一起清（ahaArtUrl 留着会让海报贴错人的图）
-  document.getElementById("prevAha").onclick = () => { renderFinished._idx = idx - 1; ui.posterUrl = null; ui.ahaStage = 0; ui.ahaArtUrl = null; render(); };
-  document.getElementById("nextAha").onclick = () => { renderFinished._idx = idx + 1; ui.posterUrl = null; ui.ahaStage = 0; ui.ahaArtUrl = null; render(); };
+  document.getElementById("prevAha").onclick = () => { renderFinished._idx = idx - 1; setPosterUrl(null); ui.ahaStage = 0; ui.ahaArtUrl = null; render(); };
+  document.getElementById("nextAha").onclick = () => { renderFinished._idx = idx + 1; setPosterUrl(null); ui.ahaStage = 0; ui.ahaArtUrl = null; render(); };
 }
 
 /* ---------- 非诚勿扰互动体系：弹幕 / 灯光特效 / 聊天抽屉（PRD §9） ---------- */
@@ -2480,6 +2737,11 @@ function renderFinished(s) {
   wrap.innerHTML = `
     <div id="dmLayer" class="dm-layer" aria-hidden="true"></div>
     <div id="dmEmojiPanel" class="dm-emoji-panel hidden" aria-label="选择现场反应">
+      <!-- 贴纸排：.dm-emoji-panel 是 7 列 grid（style.css:1607），所以必须 grid-column:1/-1
+           整行贯通，否则会被塞进一个格子里、只露出第一张（QA 一眼看穿）。
+           flex-basis 那两条是给「万一样式线把面板改成 flex」留的兜底。 -->
+      <div class="xk-picker" id="dmXkRow" aria-label="雪克贴纸"
+        style="display:none;grid-column:1/-1;flex:0 0 100%;width:100%;gap:6px;overflow-x:auto;padding:2px 0 6px;-webkit-overflow-scrolling:touch"></div>
       ${QUICK_REACTIONS.map((e) => `<button class="dm-e" data-e="${e}" aria-label="发送 ${e}">${e}</button>`).join("")}
     </div>
     <div id="dmBar" class="dm-bar hidden">
@@ -2492,6 +2754,8 @@ function renderFinished(s) {
     <aside id="chatDrawer" class="chat-drawer">
       <div class="chat-head"><b>桌边闲聊</b><button id="chatClose" class="chat-close">✕</button></div>
       <div id="chatMsgs" class="chat-msgs"></div>
+      <div class="xk-picker" id="chatXkRow" aria-label="雪克贴纸"
+        style="display:none;gap:6px;overflow-x:auto;padding:6px 10px;-webkit-overflow-scrolling:touch"></div>
       <div class="chat-input">
         <input id="chatIn" type="text" maxlength="120" placeholder="唠一句…" />
         <button class="btn small" id="chatSend">发</button>
@@ -2533,10 +2797,33 @@ function renderFinished(s) {
     setEmojiPanelOpen(dmEmojiPanel.classList.contains("hidden"));
   });
   dmEmojiPanel.addEventListener("click", (event) => {
+    // R12 贴纸按钮排先认（它和 emoji 同在这块面板里）
+    const pick = event.target.closest("[data-xk-pick]");
+    if (pick) {
+      event.stopPropagation();
+      sendDm(xkCode(pick.dataset.xkPick)); // 以 [sticker:xx] 文本码走现有弹幕通道
+      setEmojiPanelOpen(false);
+      return;
+    }
     const button = event.target.closest(".dm-e");
     if (!button) return;
     sendQuick(button.dataset.e);
     setEmojiPanelOpen(false);
+  });
+  // 贴纸排按钮由 XUEKE_STICKERS 的真实 key 现场生成；模块没到 → 一个按钮都不出，面板照旧
+  mountXkPickers();
+  document.getElementById("chatXkRow").addEventListener("click", (event) => {
+    const pick = event.target.closest("[data-xk-pick]");
+    if (!pick) return;
+    const payload = chatPayload(xkCode(pick.dataset.xkPick));
+    if (!payload) return;
+    sound.unlock();
+    send(payload);
+    if (PREVIEW && ui.state) {
+      ui.state.chat = ui.state.chat || [];
+      ui.state.chat.push({ id: (ui.state.chat.at(-1)?.id || 0) + 1, name: ui.state.you.name, emoji: "🍷", text: payload.text, reactions: {} });
+      renderChat();
+    }
   });
   document.addEventListener("click", (event) => {
     if (!dmEmojiPanel.classList.contains("hidden") && !dmEmojiPanel.contains(event.target) && event.target !== dmEmojiToggle) {
@@ -2621,7 +2908,10 @@ function renderChat() {
   box.innerHTML = chat.length ? chat.map((m) => `
     <div class="chat-msg ${m.name === myName ? "mine" : ""}" data-id="${m.id}">
       <div class="cm-head">${esc(m.emoji)} <b>${esc(m.name)}</b></div>
-      <div class="cm-text">${esc(m.text)}</div>
+      <div class="cm-text">${xkCodeOf(m.text)
+        // R12：贴纸消息码 → 画 SVG；贴纸模块没到就是个隐藏空槽，旁边照样留原文本码兜底
+        ? `${xkIdSlotHtml(xkCodeOf(m.text), "lg")}<span class="xk-code-fallback" style="font-size:12px;opacity:.5">${esc(m.text)}</span>`
+        : esc(m.text)}</div>
       <div class="cm-reacts">
         ${Object.entries(m.reactions || {}).map(([e, reaction]) => `
           <button class="react-chip ${reaction.mine ? "mine" : ""}" data-id="${m.id}" data-e="${esc(e)}"
@@ -2630,6 +2920,7 @@ function renderChat() {
       ${ui.pickerFor === m.id ? `<div class="emoji-picker">${MESSAGE_REACTIONS.map((e) =>
         `<button class="picker-e" data-id="${m.id}" data-e="${e}">${e}</button>`).join("")}</div>` : ""}
     </div>`).join("") : `<div class="dim center" style="padding:24px 0">还没人说话，开个头？</div>`;
+  mountXkStickers(box); // R12：把本次渲染出来的贴纸槽补上
   if (atBottom) box.scrollTop = box.scrollHeight; // 不能恒真：抽屉开着翻历史时不该被拽回底部
   // 抽屉开着时持续推进已读水位，避免关闭后出现幽灵未读红点
   if (ui.chatOpen) {
@@ -2644,9 +2935,20 @@ function spawnDanmaku({ name, emoji, text, special }) {
   if (!layer) return;
   const el = document.createElement("div");
   const t = String(text ?? ""); // text 缺失时不能抛异常打断 onMessage
+  const stickerId = xkCodeOf(t); // R12 贴纸弹幕：[sticker:xk-nod]
   const isEmojiOnly = QUICK_REACTIONS.includes(t);
-  el.className = "dm-item" + (special ? " " + special : "") + (isEmojiOnly ? " dm-emoji" : "");
-  el.textContent = isEmojiOnly ? t : `${emoji || ""} ${name ? name + "：" : ""}${t}`;
+  el.className = "dm-item" + (special ? " " + special : "") + (isEmojiOnly || stickerId ? " dm-emoji" : "");
+  if (stickerId) {
+    // 贴纸飘屏：名字小字 + 一张贴纸；贴纸模块没到就退回原文本码（不崩、不空白）
+    el.style.display = "flex";
+    el.style.alignItems = "center";
+    el.style.gap = "6px";
+    el.innerHTML = `${name ? `<span style="font-size:12px;opacity:.7">${esc(name)}</span>` : ""}
+      ${xkIdSlotHtml(stickerId, "sm")}<span class="xk-code-fallback" style="font-size:12px;opacity:.6">${esc(t)}</span>`;
+    mountXkStickers(el);
+  } else {
+    el.textContent = isEmojiOnly ? t : `${emoji || ""} ${name ? name + "：" : ""}${t}`;
+  }
   el.style.top = 6 + Math.random() * 38 + "vh";
   el.style.animationDuration = (isEmojiOnly ? 5 : 7 + Math.min(3, t.length * 0.1)) + "s";
   layer.appendChild(el);
