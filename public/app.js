@@ -83,6 +83,143 @@ let buildIdealProfileFn = null;
 // R6「你老公来咯」彩蛋：从 ideal-profile.js 读 MODULE_PROFILES.waiting（只读不改）。
 let moduleProfiles = null;
 
+/* ========== R13 精选立绘图池：探测 + 确定性选图 ==========
+   背景：Kim 用生图工具往 public/art/ 投放精选立绘（type-{01..16}-{m|f}-{a|b|c|d}.png），
+   亮相立绘从「每局在线生图」升级为「精选图池优先、缺图回退在线生成」。
+
+   索引方案 = 前端探测（不是 manifest）：本项目没有构建链，manifest 只能人肉维护，
+   Kim 补一张图忘了改清单就等于图白画（静默失效）。探测自愈：文件落盘立刻生效、
+   删掉立刻退回在线生图，零维护。
+   不拖慢亮相的三条保证：
+     ① 只探当前这一局的 (typeId × figGender)，最多 4 个同源 HEAD（几 KB，无图片体积）；
+     ② 进 aha 阶段（onMessage 收到 phase=aha 那一刻）就并行开跑，早于首帧渲染；
+     ③ 结果按 key 记进 sessionStorage + 内存 Map，同一场刷新/翻页都不再探。
+   渲染侧还有一道 ART_POOL_WAIT_MS 硬闸：探测没在 900ms 内回话就直接上在线生图，
+   探测结果回来晚了也不再抢已经在加载的图。 */
+const ART_POOL_CACHE_KEY = "mfn_art_pool_v1";
+const ART_POOL_WAIT_MS = 900;
+const artPoolMemo = new Map();     // "1-m" -> string[]（已确认存在的 URL，按 a→d 顺序）
+const artPoolPending = new Map();  // "1-m" -> Promise<string[]>
+let artPoolHelpers = null;         // { artPoolCandidates, pickArtFromPool }
+let artPoolHelpersPending = null;
+
+// 选图必须走 ideal-profile.js 的 pickArtFromPool（seedIndex 高位法，和档案其它 seed 抽取同源），
+// 否则同一局刷新可能换图、也不再有 a/b/c/d 轮换。多人局里 worker 已经把完整 profile 发下来，
+// app.js 不一定 import 过 ideal-profile.js → 这里显式确保它到手（懒加载已有缓存，不会重复拉）。
+function ensureArtPoolHelpers() {
+  if (artPoolHelpers) return Promise.resolve(artPoolHelpers);
+  if (!artPoolHelpersPending) {
+    artPoolHelpersPending = loadIdealProfile()
+      .then((mod) => {
+        if (typeof mod?.pickArtFromPool === "function") {
+          artPoolHelpers = {
+            artPoolCandidates: mod.artPoolCandidates,
+            pickArtFromPool: mod.pickArtFromPool,
+          };
+        }
+        return artPoolHelpers;
+      })
+      .catch(() => null);
+  }
+  return artPoolHelpersPending;
+}
+
+function artPoolCacheRead() {
+  try { return JSON.parse(sessionStorage.getItem(ART_POOL_CACHE_KEY) || "{}") || {}; }
+  catch { return {}; }
+}
+function artPoolCacheWrite(key, urls) {
+  try {
+    const all = artPoolCacheRead();
+    all[key] = urls;
+    sessionStorage.setItem(ART_POOL_CACHE_KEY, JSON.stringify(all));
+  } catch {}
+}
+
+// 从 profile.portrait 取本局图池上下文。新契约由 ideal-profile.js 直接下发 artPool；
+// 老 worker / 老房间存的旧 profile 没有这几个字段 → 用型号 id + 方向现算（helpers 已懒加载到手时）。
+function artPoolContext(profile) {
+  const portrait = profile?.portrait || {};
+  const typeId = portrait.typeId ?? profile?.type?.id ?? null;
+  const figGender = portrait.figGender || null;
+  const seed = portrait.artSeed || "";
+  let candidates = Array.isArray(portrait.artPool) ? portrait.artPool : null;
+  if (!candidates && typeId && figGender) {
+    if (!artPoolHelpers) ensureArtPoolHelpers(); // 到手后下一次重绘就能算出候选
+    else candidates = artPoolHelpers.artPoolCandidates(typeId, figGender);
+  }
+  if (!candidates || !candidates.length || !typeId || !figGender) return null;
+  return { key: `${typeId}-${figGender}`, candidates, seed };
+}
+
+// 单张探测：同源 HEAD，只问「在不在」，不下载 1.4MB 的 PNG 本体。
+// ⚠️ 坑：wrangler.jsonc 里 assets.not_found_handling = "single-page-application"，
+//    不存在的静态文件不会返 404，而是 200 + index.html（Content-Type: text/html）。
+//    所以只看 res.ok 会把「没画的型号」全判成有图 → 必须再验 Content-Type 是 image/*。
+// HEAD 被拦/异常（离线、代理不认 HEAD）一律当作「不在」→ 安全地退回在线生图。
+async function artProbe(url) {
+  try {
+    const res = await fetch(url, { method: "HEAD", cache: "force-cache" });
+    if (!res.ok) return "";
+    return /^image\//i.test(res.headers.get("content-type") || "") ? url : "";
+  } catch { return ""; }
+}
+
+// 探测一组候选并记忆。返回「存在的 URL 列表」（可能是空数组 = 该型号还没画）。
+function artPoolResolve(ctx) {
+  ensureArtPoolHelpers(); // 与探测并行，谁先到都不影响
+  if (!ctx) return Promise.resolve([]);
+  if (artPoolMemo.has(ctx.key)) return Promise.resolve(artPoolMemo.get(ctx.key));
+  const cached = artPoolCacheRead()[ctx.key];
+  if (Array.isArray(cached)) {
+    artPoolMemo.set(ctx.key, cached);
+    return Promise.resolve(cached);
+  }
+  if (artPoolPending.has(ctx.key)) return artPoolPending.get(ctx.key);
+  const job = Promise.all(ctx.candidates.map(artProbe))
+    .then((hits) => {
+      const urls = hits.filter(Boolean);
+      artPoolMemo.set(ctx.key, urls);
+      artPoolCacheWrite(ctx.key, urls);
+      artPoolPending.delete(ctx.key);
+      return urls;
+    })
+    .catch(() => {
+      artPoolPending.delete(ctx.key);
+      return [];
+    });
+  artPoolPending.set(ctx.key, job);
+  return job;
+}
+
+// 进 aha 阶段就调：不 await、不阻塞任何渲染，纯预热。
+function artPoolPrefetch(aha) {
+  try { artPoolResolve(artPoolContext(aha?.profile)); } catch {}
+}
+
+// 已探完（且选图函数到手）就同步给答案：首帧 <img src> 直接是精选图，不闪在线图。
+// 返回 ""=本局没有精选图（走在线生图）；undefined=还没结论（交给下面的异步等待）。
+function artPoolPickSync(profile) {
+  const ctx = artPoolContext(profile);
+  if (!ctx) return "";           // 中性方向 / 契约缺字段 → 明确「没有图池」，一次探测都不发
+  if (!artPoolHelpers) return undefined;
+  if (!artPoolMemo.has(ctx.key)) {
+    const cached = artPoolCacheRead()[ctx.key];
+    if (Array.isArray(cached)) artPoolMemo.set(ctx.key, cached);
+    else return undefined;       // 还没答案
+  }
+  return artPoolHelpers.pickArtFromPool(artPoolMemo.get(ctx.key), ctx.seed);
+}
+
+// 异步版：探测 + helpers 都到齐后给出本局那张精选图（没有就 ""）。
+function artPoolPickAsync(profile) {
+  const ctx = artPoolContext(profile);
+  if (!ctx) return Promise.resolve("");
+  return Promise.all([artPoolResolve(ctx), ensureArtPoolHelpers()])
+    .then(([urls]) => (artPoolHelpers ? artPoolHelpers.pickArtFromPool(urls, ctx.seed) : ""))
+    .catch(() => "");
+}
+
 /* ---------- R11 生图等待占位（Kim 点名必做） ----------
    立绘 / 海报在等 pollinations 出图时，屏幕上只留这一句大字 + 下一行两只翅膀，
    原来的人设文字（原型名 / 呈现方式）全部让位；图加载失败的兜底也用同一块。
@@ -749,7 +886,10 @@ function onMessage(msg) {
       ui.kingSent = false;
       ui.kingOrderPage = 0;
       if (msg.state.phase !== ui.lastPhase) {
-        if (msg.state.phase === "aha") sound.riff(); // 理想型入场 riff
+        if (msg.state.phase === "aha") {
+          sound.riff(); // 理想型入场 riff
+          artPoolPrefetch(msg.state.aha); // R13：进 aha 立刻并行探精选图池，早于首帧
+        }
         if (msg.state.phase === "drinking") sound.chug();
         ui.ahaStage = 0;
         // 档案写入判重不在这里重置：saved 状态按 aha.id 持久化（见 savedAhaKeys）
@@ -2447,6 +2587,12 @@ function renderAha(s, aha, isFinal) {
     return;
   }
   const profile = resolveAhaProfile(aha) || {};
+  /* R13 精选立绘图池：本局型号在 public/art/ 里有精选图就用精选图，没有才在线生图。
+     poolPick： url=用这张 / ""=本型号没有精选图（含 figGender=n，压根不探）/ undefined=探测还没回话。
+     undefined 时首帧 src 留空（「你老公来咯」大字本来就是等图占位），
+     最多再等 ART_POOL_WAIT_MS 就上在线图，绝不让探测拖慢亮相。 */
+  const poolPick = artPoolPickSync(profile);
+  if (poolPick === undefined) artPoolPrefetch(aha);
   // 契约防御（P0-1）：任何字段缺失都不许抛异常，缺哪块就跳过哪块
   const card = profile.matchCard || {};
   const portrait = profile.portrait || {};
@@ -2507,7 +2653,12 @@ function renderAha(s, aha, isFinal) {
     <div class="aha-stage portrait-stage" style="--profile-primary:${primary};--profile-accent:${accent}">
       <div class="art-wrap" id="artWrap">
         ${waitingHeroHtml(waitingLine)}
-        <img id="artImg" src="${esc(portrait.imageUrl || aha.imageUrl || "")}" alt="${esc(portrait.alt || (chipText ? `${chipText}理想型立绘` : "理想型立绘"))}" />
+        <img id="artImg"${(() => {
+          // 探测还没回话（poolPick===undefined）时整个 src 属性都不写：
+          // 写成 src="" 浏览器会立刻抛一次 error，把回退链平白推进一格（实测多打一次在线生图）。
+          const u = poolPick === undefined ? "" : (poolPick || portrait.imageUrl || aha.imageUrl || "");
+          return u ? ` src="${esc(u)}"` : "";
+        })()} alt="${esc(portrait.alt || (chipText ? `${chipText}理想型立绘` : "理想型立绘"))}" />
         ${chipText ? `<span class="archetype-chip">${esc(chipText)}</span>` : ""}
         ${waitingText ? `<div class="waiting-egg" role="status" id="waitingEgg" style="display:none">${esc(waitingText)}</div>` : ""}
       </div>
@@ -2606,10 +2757,18 @@ function renderAha(s, aha, isFinal) {
   const artImg = document.getElementById("artImg");
   const artWrap = document.getElementById("artWrap");
   if (artImg) {
-    let triedFallback = false;
-    let fallbackTimer = null;
+    /* R13 回退链（一条链走到底，不再是「主图 + 一张 fallback」两段式）：
+         精选图池 → V7 在线生图 → 短 prompt 兜底图 →（全挂）来咯占位大字。
+       精选图是同源本地文件，命中时基本一帧就到，2200ms 催图定时器用不上；
+       只有在线生图那几环才需要催（pollinations 现生成经常几秒不回）。 */
+    const onlineUrl = portrait.imageUrl || aha.imageUrl || "";
+    let artChain = [poolPick === undefined ? "" : poolPick, onlineUrl, portrait.fallbackUrl || ""]
+      .filter((u, i, arr) => u && arr.indexOf(u) === i);
+    let chainIdx = 0;
+    let stepTimer = null;
+    let chainStarted = poolPick !== undefined; // 等探测期间不接受任何推进事件
     const artLoaded = () => {
-      clearTimeout(fallbackTimer);
+      clearTimeout(stepTimer);
       artWrap?.classList.add("loaded");
       // 图到了：大字占位被 <img> 盖住，「你老公来咯」缩回顶部那枚小胶囊常驻。
       const egg = document.getElementById("waitingEgg");
@@ -2620,12 +2779,8 @@ function renderAha(s, aha, isFinal) {
       ui.ahaSaveTimer = null;
       maybeSaveAhaProfile(s, aha, profile, ui.ahaArtUrl);
     };
-    const artFailed = () => {
-      if (!triedFallback && portrait.fallbackUrl && artImg.src !== new URL(portrait.fallbackUrl, location.href).href) {
-        triedFallback = true;
-        artImg.src = portrait.fallbackUrl;
-        return;
-      }
+    const artGiveUp = () => {
+      clearTimeout(stepTimer);
       artWrap?.classList.add("failed");
       artImg.remove();
       // 图彻底没来：记录照写（不带图），展示柜显示原型占位而不是坏链
@@ -2634,18 +2789,43 @@ function renderAha(s, aha, isFinal) {
       ui.ahaSaveTimer = null;
       maybeSaveAhaProfile(s, aha, profile, "");
     };
-    if (portrait.fallbackUrl) {
-      fallbackTimer = setTimeout(() => {
-        if (artWrap?.classList.contains("loaded") || triedFallback) return;
-        triedFallback = true;
-        artImg.src = portrait.fallbackUrl;
-      }, 2200);
-    }
-    if (artImg.complete && artImg.naturalWidth > 0) artLoaded();
-    else if (artImg.complete) artFailed();
-    else {
-      artImg.addEventListener("load", artLoaded, { once: true });
-      artImg.addEventListener("error", artFailed);
+    const armStepTimer = () => {
+      clearTimeout(stepTimer);
+      if (chainIdx < artChain.length - 1) stepTimer = setTimeout(stepArt, 2200);
+    };
+    const stepArt = () => {
+      clearTimeout(stepTimer);
+      if (!chainStarted || artWrap?.classList.contains("loaded")) return;
+      chainIdx += 1;
+      if (chainIdx >= artChain.length) { artGiveUp(); return; }
+      artImg.src = artChain[chainIdx];
+      armStepTimer();
+    };
+    artImg.addEventListener("load", () => { if (artImg.naturalWidth > 0) artLoaded(); });
+    artImg.addEventListener("error", stepArt);
+    if (poolPick === undefined) {
+      // 探测还没回话：命中就把精选图插到链头，超时/未命中就照旧从在线生图开始。
+      let started = false;
+      const startChain = (poolUrl) => {
+        if (started) return;
+        started = true;
+        chainStarted = true;
+        if (poolUrl) artChain = [poolUrl, ...artChain.filter((u) => u !== poolUrl)];
+        chainIdx = 0;
+        if (!artChain.length) { artGiveUp(); return; }
+        artImg.src = artChain[0];
+        armStepTimer();
+      };
+      artPoolPickAsync(profile).then(startChain).catch(() => startChain(""));
+      setTimeout(() => startChain(""), ART_POOL_WAIT_MS);
+    } else if (!artChain.length) {
+      artGiveUp();
+    } else if (artImg.complete && artImg.naturalWidth > 0) {
+      artLoaded();
+    } else if (artImg.complete) {
+      stepArt();
+    } else {
+      armStepTimer();
     }
   }
   const makePoster = async () => {
@@ -2663,8 +2843,15 @@ function renderAha(s, aha, isFinal) {
           ...aha, profile, waitingText: waitingLine,
           // 只有当这张已加载的图确实属于当前这条 aha 时才复用（finished 回看会来回翻页，
           // ui.ahaArtUrl 是上一条的就必须丢掉，否则海报会贴错人的立绘）。
-          loadedImageUrl: [portrait.imageUrl, portrait.fallbackUrl, aha.imageUrl]
-            .includes(ui.ahaArtUrl) ? ui.ahaArtUrl : "",
+          // R13：精选图池那张也算「属于这条 aha 的图」（同源本地文件，海报直接复用不用等生图）。
+          // ui.ahaArtUrl 存的是 img.currentSrc（绝对 URL），精选图是相对路径 → 两种写法都放行。
+          loadedImageUrl: [
+            portrait.imageUrl, portrait.fallbackUrl, aha.imageUrl,
+            ...(Array.isArray(portrait.artPool) ? portrait.artPool : []),
+            ...(Array.isArray(portrait.artPool)
+              ? portrait.artPool.map((u) => { try { return new URL(u, location.href).href; } catch { return u; } })
+              : []),
+          ].includes(ui.ahaArtUrl) ? ui.ahaArtUrl : "",
         },
         SITE_LANDING_URL,
       ));
@@ -3169,6 +3356,19 @@ function buildPreviewState(screen) {
         ? { id: 13, code: "#13", key: "money+", name: "算盘打得响的首席财务官", family: "worldly", hidden: true }
         : { id: 7, code: "#07", key: "romance+", name: "浪漫浓度超标的细节收藏家", family: "hot", hidden: false };
     }
+    // R13 QA（仅本地预览，PREVIEW 已限 127.0.0.1/localhost）：?ptype=1..16 强制本局型号，
+    // 用来在同一条链路上分别截「精选图池命中」和「该型号没图→回退在线生图」两态。
+    const ptype = Number(previewParams.get("ptype"));
+    if (Number.isInteger(ptype) && ptype >= 1 && ptype <= 16) {
+      profile.type = { ...profile.type, id: ptype, code: `#${String(ptype).padStart(2, "0")}` };
+      profile.portrait = {
+        ...profile.portrait,
+        typeId: ptype,
+        artPool: artPoolHelpers
+          ? artPoolHelpers.artPoolCandidates(ptype, profile.portrait.figGender)
+          : [],
+      };
+    }
     return {
       id: `preview-${seed}`,
       light: { burst: 3, off: 1, voted: 4, total: 4, mine: null, yours: null, canVote: true, burstNames: ["coco", "阿豪", "麦当劳"], offNames: ["这是一个超长昵称测试员"] },
@@ -3332,7 +3532,9 @@ function bootPreview(screen) {
 (async function boot() {
   if (PREVIEW) {
     try {
-      const [{ DECKS }, { buildIdealProfile, MODULE_PROFILES }] = await Promise.all([loadQuestions(), loadIdealProfile()]);
+      const [{ DECKS }, idealMod] = await Promise.all([loadQuestions(), loadIdealProfile()]);
+      const { buildIdealProfile, MODULE_PROFILES } = idealMod;
+      await ensureArtPoolHelpers(); // R13：预览态首帧就能同步定精选图，截图不吃探测竞态
       renderLobby._decks = DECKS;
       buildIdealProfileFn = buildIdealProfile;
       moduleProfiles = MODULE_PROFILES;

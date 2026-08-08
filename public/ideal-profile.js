@@ -959,6 +959,41 @@ function pickFigureGender(module, seeking, genderPreference, seed) {
   return seedIndex(String(seed) + "fig" + module, 2) === 0 ? "m" : "f";
 }
 
+/* ===================== R13 精选立绘图池（public/art/） =====================
+   Kim 用生图工具产出的精选立绘按 docs/ART-PROMPTS-R12.md 的命名规则落盘：
+     public/art/type-{01..16}-{m|f}-{a|b|c|d}.png
+   本文件只负责「按规则算出候选 URL」+「按 seed 确定性选一张」两件纯函数的事，
+   真正判断文件在不在（探测/缓存）由 app.js 在浏览器侧做——ideal-profile.js 被
+   src/worker.js import，必须保持无 DOM、无 fetch，纯函数双端共用。
+
+   为什么是「前端探测」而不是「构建 manifest」：
+     · 本项目没有构建链（wrangler dev 直接吐 public/），没有地方跑生成脚本；
+     · manifest 需要人肉维护，Kim 补图忘了改清单 = 图白画（静默失效，最贵的错）；
+     · 探测自愈：文件一落盘立刻生效，删了也立刻退回在线生图。
+   代价是每个（型号×性别）最多 4 个同源 HEAD，且只探当前这一局的型号，
+   进 aha 阶段就并行开跑 + sessionStorage 记忆 → 不占亮相的时间预算。 */
+export const ART_POOL_VARIANTS = Object.freeze(["a", "b", "c", "d"]);
+export const ART_POOL_BASE = "/art/"; // 根绝对路径：展示柜(u.html)、海报复用同一条 URL 都不受当前路径影响
+
+// 候选 URL 列表（不代表文件存在）。figGender=n（中性）没有图池文件 → 返回空数组，
+// 上层看到空数组直接走在线生图，一次探测都不发。
+export function artPoolCandidates(typeId, figGender) {
+  const id = Number(typeId);
+  if (!Number.isInteger(id) || id < 1 || id > 16) return [];
+  if (figGender !== "m" && figGender !== "f") return [];
+  const nn = String(id).padStart(2, "0");
+  return ART_POOL_VARIANTS.map((v) => `${ART_POOL_BASE}type-${nn}-${figGender}-${v}.png`);
+}
+
+// 从「实际存在的候选」里按 seed 定一张：同一局 seed → 永远同一张变体；
+// 换一局 seed 就在 a/b/c/d 之间轮换 = 一张人设图对多份档案的抽卡感雏形。
+// 走 seedIndex（高位法），和档案里其它 seed 抽取同一套手法，避开 FNV 低位偏斜。
+export function pickArtFromPool(available, seed) {
+  const list = (available || []).filter(Boolean);
+  if (!list.length) return "";
+  return list[seedIndex(`${seed}|art`, list.length)];
+}
+
 export function buildIdealProfile({ records, genderPreference, seeking, seed }) {
   seed = String(seed ?? "ideal-default");
   const genderKey = SEEKING_TO_GENDER[seeking] || genderPreference;
@@ -1064,6 +1099,13 @@ export function buildIdealProfile({ records, genderPreference, seeking, seed }) 
 
   const portrait = {
     prompt, imageUrl, fallbackUrl,
+    // R13 精选图池：把「本局该看哪几张候选 / 用哪个 seed 选」一并下发，
+    // app.js 探测到哪几张真实存在后用 pickArtFromPool(存在的, artSeed) 定图。
+    // 回退链：精选图 → imageUrl（V7 在线生图）→ fallbackUrl（短 prompt 兜底）→ 来咯占位。
+    typeId: type.id,
+    figGender,
+    artSeed: seed,
+    artPool: artPoolCandidates(type.id, figGender),
     archetype,
     alt: `${archetype}的立绘`,
     palette: { primary: palette.primary, accent: palette.accent },
